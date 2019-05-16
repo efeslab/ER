@@ -945,19 +945,19 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       bool branch = (*replayPath)[replayPosition++];
       
       if (res==Solver::True) {
-        true_count++;
+        // get the constraint and the replayPosition when the assertion fail
         if (!branch) {
             std::string constraints;
             getConstraintLog(current, constraints,Interpreter::KQUERY);
             auto f = interpreterHandler->openOutputFile("debugKQuery");
             if (f)
                 *f << constraints;
-            klee_message("replay: %d count: %d res: 1 branch: %d\n", replayPosition-1,true_count, branch);
+            klee_message("replay: %d res: 1 branch: %d\n", replayPosition-1, branch);
         }    
         assert(branch && "hit invalid branch in replay path mode");
       } else if (res==Solver::False) {
-        false_count++;
-        klee_message("replay: %d count: %d res: 0 branch: %d\n", replayPosition-1, false_count, branch);
+          if (branch)
+            klee_message("replay: %d res: 0 branch: %d\n", replayPosition-1, branch);
         assert(!branch && "hit invalid branch in replay path mode");
       } else {
         // add constraints

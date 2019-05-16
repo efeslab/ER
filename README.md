@@ -1,3 +1,5 @@
+# The Repo is copied from KLEE repo, and slightly modified for study pupose. Please refer to th original repo (http://klee.github.io/).
+
 KLEE Symbolic Virtual Machine
 =============================
 

@@ -1,4 +1,6 @@
-#### `The Repo is copied from KLEE repo, and slightly modified for study pupose. Original repo (http://klee.github.io/).`
+#### `The Repo is copied from KLEE repo, and slightly modified for study pupose.` 
+
+#### Original repo (http://klee.github.io/).
 
 KLEE Symbolic Virtual Machine
 =============================

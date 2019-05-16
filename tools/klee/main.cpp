@@ -302,7 +302,7 @@ private:
   Interpreter *m_interpreter;
   TreeStreamWriter *m_pathWriter, *m_symPathWriter;
   std::unique_ptr<llvm::raw_ostream> m_infoFile;
-
+  
   SmallString<128> m_outputDirectory;
 
   unsigned m_numTotalTests;     // Number of tests received from the interpreter

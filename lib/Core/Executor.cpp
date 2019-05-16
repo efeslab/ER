@@ -128,6 +128,17 @@ cl::opt<bool> EmitAllErrors(
              "(default=false, i.e. one per (error,instruction) pair)"),
     cl::cat(TestGenCat));
 
+cl::opt<bool>
+WriteQueryStats("write-query-stats",
+    cl::init(false),
+    cl::desc("Write query states for each instruction (default=false)"),
+    cl::cat(TestGenCat));
+
+cl::opt<bool>
+WriteQueryChange("write-query-change",
+    cl::init(false),
+    cl::desc("Write the stats for query only if there is an change (default=false)"),
+    cl::cat(TestGenCat));
 
 /* Constraint solving options */
 
@@ -934,8 +945,19 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       bool branch = (*replayPath)[replayPosition++];
       
       if (res==Solver::True) {
+        true_count++;
+        if (!branch) {
+            std::string constraints;
+            getConstraintLog(current, constraints,Interpreter::KQUERY);
+            auto f = interpreterHandler->openOutputFile("debugKQuery");
+            if (f)
+                *f << constraints;
+            klee_message("replay: %d count: %d res: 1 branch: %d\n", replayPosition-1,true_count, branch);
+        }    
         assert(branch && "hit invalid branch in replay path mode");
       } else if (res==Solver::False) {
+        false_count++;
+        klee_message("replay: %d count: %d res: 0 branch: %d\n", replayPosition-1, false_count, branch);
         assert(!branch && "hit invalid branch in replay path mode");
       } else {
         // add constraints
@@ -2947,16 +2969,45 @@ void Executor::run(ExecutionState &initialState) {
   std::vector<ExecutionState *> newStates(states.begin(), states.end());
   searcher->update(0, newStates, std::vector<ExecutionState *>());
 
+  uint32_t current_cost = 0;
+
+  if (WriteQueryStats) {
+    dump_os = interpreterHandler->openOutputFile("stats.txt");
+  }
+
   while (!states.empty() && !haltExecution) {
     ExecutionState &state = searcher->selectState();
     KInstruction *ki = state.pc;
     stepInstruction(state);
 
     executeInstruction(state, ki);
-    processTimers(&state, maxInstructionTime);
+
+    bool dump = false;
+    Instruction *i = ki->inst;
+    
+    if (state.queryCost.toMicroseconds() != current_cost) {
+      dump = true;
+      current_cost = state.queryCost.toMicroseconds();
+    }
+
+    if (!WriteQueryChange && !dump) {
+      if (i->getOpcode() == Instruction::IndirectBr ||
+          i->getOpcode() == Instruction::Switch) {
+        dump = true;
+        current_cost = state.queryCost.toMicroseconds();
+      }
+      else if (i->getOpcode() == Instruction::Br) {
+        BranchInst *bi = cast<BranchInst>(i);
+        if (!bi->isUnconditional()) {
+          dump = true;
+        }
+      }
+    }
+
+    processTimers(&state, maxInstructionTime, dump);
 
     checkMemoryUsage();
-
+    
     updateStates(&state);
   }
 

@@ -104,8 +104,45 @@ void Executor::addTimer(Timer *timer, time::Span rate) {
   timers.push_back(new TimerInfo(timer, rate));
 }
 
+std::string getInstructionStr(KInstruction *ki) {
+  Instruction *i = ki->inst;
+  switch (i->getOpcode()) {
+    // Control flow
+    case Instruction::Ret: {
+      return "Ret";
+    }
+    case Instruction::Br: {
+      return "Br";
+    }
+    case Instruction::IndirectBr: {
+      return "IndirectBr";
+    }
+    case Instruction::Switch: {
+      return "Switch";
+    }
+    case Instruction::Unreachable: {
+      return "Unreachable";
+    }
+    case Instruction::Invoke: 
+    case Instruction::Call: {
+      return "Invoke / Call";
+    }
+    case Instruction::PHI: {
+      return "PHI";
+    }
+    case Instruction::Select: {
+      return "Select";
+    }
+    case Instruction::VAArg: {
+      return "VAArg";
+    }
+    default:
+      return "Other";  
+ }
+}
+
 void Executor::processTimers(ExecutionState *current,
-                             time::Span maxInstTime) {
+                             time::Span maxInstTime, bool dump) {
   static unsigned callsWithoutCheck = 0;
   unsigned ticks = timerTicks;
 
@@ -114,7 +151,7 @@ void Executor::processTimers(ExecutionState *current,
     ticks = 1;
   }
 
-  if (ticks || dumpPTree || dumpStates) {
+  if (ticks || dumpPTree || dumpStates || dump) {
     if (dumpPTree) {
       char name[32];
       sprintf(name, "ptree%08d.dot", (int) stats::instructions);
@@ -126,26 +163,26 @@ void Executor::processTimers(ExecutionState *current,
       dumpPTree = 0;
     }
 
-    if (dumpStates) {
-      auto os = interpreterHandler->openOutputFile("states.txt");
+    if (dumpStates || dump) {
 
-      if (os) {
-        for (ExecutionState *es : states) {
-          *os << "(" << es << ",";
-          *os << "[";
+      if (dump_os) {
+        //for (ExecutionState *es : states) {
+          ExecutionState *es = current;
+          *dump_os << "(" << es << ",";
+          *dump_os << "[";
           auto next = es->stack.begin();
           ++next;
           for (auto sfIt = es->stack.begin(), sf_ie = es->stack.end();
                sfIt != sf_ie; ++sfIt) {
-            *os << "('" << sfIt->kf->function->getName().str() << "',";
+            *dump_os << "('" << sfIt->kf->function->getName().str() << "',";
             if (next == es->stack.end()) {
-              *os << es->prevPC->info->line << "), ";
+              *dump_os << es->prevPC->info->line << "), ";
             } else {
-              *os << next->caller->info->line << "), ";
+              *dump_os << next->caller->info->line << "), ";
               ++next;
             }
           }
-          *os << "], ";
+          *dump_os << "], ";
 
           StackFrame &sf = es->stack.back();
           uint64_t md2u = computeMinDistToUncovered(es->pc,
@@ -154,18 +191,19 @@ void Executor::processTimers(ExecutionState *current,
                                                                es->pc->info->id);
           uint64_t cpicnt = sf.callPathNode->statistics.getValue(stats::instructions);
 
-          *os << "{";
-          *os << "'depth' : " << es->depth << ", ";
-          *os << "'weight' : " << es->weight << ", ";
-          *os << "'queryCost' : " << es->queryCost << ", ";
-          *os << "'coveredNew' : " << es->coveredNew << ", ";
-          *os << "'instsSinceCovNew' : " << es->instsSinceCovNew << ", ";
-          *os << "'md2u' : " << md2u << ", ";
-          *os << "'icnt' : " << icnt << ", ";
-          *os << "'CPicnt' : " << cpicnt << ", ";
-          *os << "}";
-          *os << ")\n";
-        }
+          *dump_os << "{";
+          *dump_os << "'Instr' : '" << getInstructionStr(es->prevPC) << "', ";
+          *dump_os << "'depth' : " << es->depth << ", ";
+          *dump_os << "'weight' : " << es->weight << ", ";
+          *dump_os << "'queryCost' : " << es->queryCost << ", ";
+          *dump_os << "'coveredNew' : " << es->coveredNew << ", ";
+          *dump_os << "'instsSinceCovNew' : " << es->instsSinceCovNew << ", ";
+          *dump_os << "'md2u' : " << md2u << ", ";
+          *dump_os << "'icnt' : " << icnt << ", ";
+          *dump_os << "'CPicnt' : " << cpicnt << ", ";
+          *dump_os << "}";
+          *dump_os << ")\n";
+        //}
       }
 
       dumpStates = 0;

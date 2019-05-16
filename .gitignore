@@ -6,6 +6,7 @@ Output/
 
 # commonly used as cmake build directory
 /build
+/build_debug
 
 cscope.*
 *~
@@ -30,3 +31,6 @@ lit.site.cfg
 autoconf/aclocal.m4
 autoconf/autom4te.cache/
 autom4te.cache/
+
+# test files
+examples

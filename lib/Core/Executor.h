@@ -122,6 +122,9 @@ private:
   static const char *TerminateReasonNames[];
 
   class TimerInfo;
+    
+    int true_count = 0;
+    int false_count = 0;
 
   std::unique_ptr<KModule> kmodule;
   InterpreterHandler *interpreterHandler;
@@ -473,7 +476,10 @@ private:
   void addTimer(Timer *timer, time::Span rate);
 
   void initTimers();
-  void processTimers(ExecutionState *current, time::Span maxInstTime);
+
+  //FIXME: ADD_BY_SYM
+  std::unique_ptr<llvm::raw_fd_ostream> dump_os = nullptr;
+  void processTimers(ExecutionState *current, time::Span maxInstTime, bool dump=false);
   void checkMemoryUsage();
   void printDebugInstructions(ExecutionState &state);
   void doDumpStates();

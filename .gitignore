@@ -33,4 +33,7 @@ autoconf/autom4te.cache/
 autom4te.cache/
 
 # test files
-/examples
+examples
+
+# ctag file for atom
+.tags

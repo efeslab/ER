@@ -35,6 +35,12 @@ llvm::cl::opt<std::string> Z3QueryDumpFile(
     llvm::cl::desc("Dump Z3's representation of the query to the specified path"),
     llvm::cl::cat(klee::SolvingCat));
 
+llvm::cl::opt<bool> Z3QueryStats(
+    "debug-z3-dump-queries-stats", llvm::cl::init(false),
+    llvm::cl::desc("Dump Z3's representation of the query to the specified path
+                    in debug-z3-dump-queries, add stats to the file"),
+    llvm::cl::cat(klee::SolvingCat));
+
 llvm::cl::opt<bool> Z3ValidateModels(
     "debug-z3-validate-models", llvm::cl::init(false),
     llvm::cl::desc("When generating Z3 models validate these against the query"),
@@ -293,6 +299,9 @@ bool Z3SolverImpl::internalRunSolver(
     *dumpedQueriesFile << "; start Z3 query\n";
     *dumpedQueriesFile << Z3_solver_to_string(builder->ctx, theSolver);
     *dumpedQueriesFile << "(check-sat)\n";
+    if (Z3QueryStats) {
+      *dumpedQueriesFile << "(get-info :all-statistics)\n";
+    }
     *dumpedQueriesFile << "(reset)\n";
     *dumpedQueriesFile << "; end Z3 query\n\n";
     dumpedQueriesFile->flush();

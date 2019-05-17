@@ -36,4 +36,4 @@ autom4te.cache/
 examples
 
 # ctag file for atom
-.tags
+.tags*

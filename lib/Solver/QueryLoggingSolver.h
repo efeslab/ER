@@ -27,7 +27,7 @@ class QueryLoggingSolver : public SolverImpl {
 
 protected:
   Solver *solver;
-  std::unique_ptr<llvm::raw_ostream> os;
+
   // @brief Buffer used by logBuffer
   std::string BufferString;
   // @brief buffer to store logs before flushing to file
@@ -56,6 +56,8 @@ protected:
   void flushBufferConditionally(bool writeToFile);
 
 public:
+  std::unique_ptr<llvm::raw_ostream> os;
+
   QueryLoggingSolver(Solver *_solver, std::string path, const std::string &commentSign,
                      time::Span queryTimeToLog, bool logTimedOut);
 

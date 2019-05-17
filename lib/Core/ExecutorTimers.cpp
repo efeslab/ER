@@ -142,7 +142,7 @@ std::string getInstructionStr(KInstruction *ki) {
 }
 
 void Executor::processTimers(ExecutionState *current,
-                             time::Span maxInstTime, bool dump) {
+                             time::Span maxInstTime, bool dump, bool change) {
   static unsigned callsWithoutCheck = 0;
   unsigned ticks = timerTicks;
 
@@ -177,9 +177,7 @@ void Executor::processTimers(ExecutionState *current,
             *dump_os << "('" << sfIt->kf->function->getName().str() << "',";
             if (next == es->stack.end()) {
               *dump_os << es->prevPC->info->line << ", " <<
-                          es->prevPC->info->assemblyLine << "), ";
-              *dump_os << es->pc->info->line << ", " <<
-                          es->pc->info->assemblyLine << ") ";
+                          es->prevPC->info->assemblyLine << ")";
             } else {
               *dump_os << next->caller->info->line << ", " <<
                           next->caller->info->assemblyLine << "), ";
@@ -211,6 +209,35 @@ void Executor::processTimers(ExecutionState *current,
       }
 
       dumpStates = 0;
+    }
+
+    if (change) {
+      QueryLoggingSolver* qlSolver = dynamic_cast<QueryLoggingSolver*>(solver->solver->impl);
+      if (qlSolver) {
+        ExecutionState *es = current;
+        *(qlSolver->os) << "# Stack: [";
+        auto next = es->stack.begin();
+        ++next;
+        for (auto sfIt = es->stack.begin(), sf_ie = es->stack.end();
+             sfIt != sf_ie; ++sfIt) {
+          *(qlSolver->os) << "('" << sfIt->kf->function->getName().str() << "',";
+          if (next == es->stack.end()) {
+            *(qlSolver->os)<< es->prevPC->info->line << ", " <<
+                        es->prevPC->info->assemblyLine << ")";
+          } else {
+            *(qlSolver->os) << next->caller->info->line << ", " <<
+                        next->caller->info->assemblyLine << "), ";
+            ++next;
+          }
+        }
+        *(qlSolver->os) << "]\n";
+
+        *(qlSolver->os) << "# Instr : " << getInstructionStr(es->prevPC) << "\n";
+        *(qlSolver->os) << "# depth : " << es->depth << "\n";
+        *(qlSolver->os) << "# weight : " << es->weight << "\n";
+        *(qlSolver->os) << "# queryCost : " << es->queryCost << "\n";
+        *(qlSolver->os) << "\n\n";
+      }
     }
 
     if (maxInstTime && current &&

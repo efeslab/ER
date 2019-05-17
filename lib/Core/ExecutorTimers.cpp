@@ -21,6 +21,8 @@
 #include "klee/Internal/System/Time.h"
 #include "klee/OptionCategories.h"
 
+#include "QueryLoggingSolver.h"
+
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
 

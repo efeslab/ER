@@ -123,7 +123,7 @@ std::string getInstructionStr(KInstruction *ki) {
     case Instruction::Unreachable: {
       return "Unreachable";
     }
-    case Instruction::Invoke: 
+    case Instruction::Invoke:
     case Instruction::Call: {
       return "Invoke / Call";
     }
@@ -137,7 +137,7 @@ std::string getInstructionStr(KInstruction *ki) {
       return "VAArg";
     }
     default:
-      return "Other";  
+      return "Other";
  }
 }
 
@@ -176,9 +176,11 @@ void Executor::processTimers(ExecutionState *current,
                sfIt != sf_ie; ++sfIt) {
             *dump_os << "('" << sfIt->kf->function->getName().str() << "',";
             if (next == es->stack.end()) {
-              *dump_os << es->prevPC->info->line << "), ";
+              *dump_os << es->prevPC->info->line << ", " <<
+                          es->prevPC->info->assemblyLine << "), ";
             } else {
-              *dump_os << next->caller->info->line << "), ";
+              *dump_os << next->caller->info->line << ", " <<
+                          next->caller->info->assemblyLine << "), ";
               ++next;
             }
           }
@@ -221,10 +223,10 @@ void Executor::processTimers(ExecutionState *current,
     if (!timers.empty()) {
       auto time = time::getWallTime();
 
-      for (std::vector<TimerInfo*>::iterator it = timers.begin(), 
+      for (std::vector<TimerInfo*>::iterator it = timers.begin(),
              ie = timers.end(); it != ie; ++it) {
         TimerInfo *ti = *it;
-        
+
         if (time >= ti->nextFireTime) {
           ti->timer->run();
           ti->nextFireTime = time + ti->rate;
@@ -236,4 +238,3 @@ void Executor::processTimers(ExecutionState *current,
     callsWithoutCheck = 0;
   }
 }
-

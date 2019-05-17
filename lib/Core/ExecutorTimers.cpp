@@ -178,6 +178,8 @@ void Executor::processTimers(ExecutionState *current,
             if (next == es->stack.end()) {
               *dump_os << es->prevPC->info->line << ", " <<
                           es->prevPC->info->assemblyLine << "), ";
+              *dump_os << es->pc->info->line << ", " <<
+                          es->pc->info->assemblyLine << ") ";
             } else {
               *dump_os << next->caller->info->line << ", " <<
                           next->caller->info->assemblyLine << "), ";

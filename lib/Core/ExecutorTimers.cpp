@@ -28,6 +28,7 @@
 #include <math.h>
 #include <signal.h>
 #include <string>
+#include <sstream>
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -213,7 +214,8 @@ void Executor::processTimers(ExecutionState *current,
     }
 
     if (change) {
-        llvm::raw_string_ostream buf;
+        std::stringstream buf;
+        std::string buf_str;
         ExecutionState *es = current;
         buf << "# Stack: [";
         auto next = es->stack.begin();
@@ -237,7 +239,8 @@ void Executor::processTimers(ExecutionState *current,
         buf << "# weight : " << es->weight << "\n";
         buf << "# queryCost : " << es->queryCost << "\n";
         buf << "\n\n";
-      solver->writeStackKQueries(buf);
+        buf_str = buf.str();
+        solver->writeStackKQueries(buf_str);
     }
 
     if (maxInstTime && current &&

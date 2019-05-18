@@ -17,6 +17,8 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <string>
+
 using namespace klee;
 
 /// This abstract class represents a solver that is capable of logging
@@ -74,7 +76,7 @@ public:
   char *getConstraintLog(const Query &);
   void setCoreSolverTimeout(time::Span timeout);
 
-  void writeStackKQueries(llvm::raw_string_ostream buf);
+  void writeStackKQueries(std::string& buf);
 };
 
 #endif /* KLEE_QUERYLOGGINGSOLVER_H */

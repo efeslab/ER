@@ -17,6 +17,8 @@
 
 #include "CoreStats.h"
 
+#include <string>
+
 using namespace klee;
 using namespace llvm;
 
@@ -130,6 +132,6 @@ TimingSolver::getRange(const ExecutionState& state, ref<Expr> expr) {
   return solver->getRange(Query(state.constraints, expr));
 }
 
-void TimingSolver::writeStackKQueries(llvm::raw_string_ostream buf){
+void TimingSolver::writeStackKQueries(std::string& buf){
   solver->writeStackKQueries(buf);
 };

@@ -17,6 +17,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <vector>
+#include <string>
 
 namespace klee {
   class ConstraintManager;
@@ -205,7 +206,7 @@ namespace klee {
     virtual char *getConstraintLog(const Query& query);
     virtual void setCoreSolverTimeout(time::Span timeout);
 
-    virtual void writeStackKQueries(llvm::raw_string_ostream buf) {};
+    virtual void writeStackKQueries(std::string &buf) {};
   };
 
   /* *** */

@@ -15,6 +15,7 @@
 #include "klee/Internal/System/Time.h"
 
 #include <vector>
+#include <string>
 
 namespace klee {
   class ExecutionState;
@@ -67,7 +68,7 @@ namespace klee {
     std::pair< ref<Expr>, ref<Expr> >
     getRange(const ExecutionState&, ref<Expr> query);
 
-    void writeStackKQueries(llvm::raw_string_ostream buf);
+    void writeStackKQueries(std::string& buf);
 
   };
 

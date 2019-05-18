@@ -15,6 +15,8 @@
 #include "klee/OptionCategories.h"
 #include "klee/Statistics.h"
 
+#include <string>
+
 namespace {
 llvm::cl::opt<bool> DumpPartialQueryiesEarly(
     "log-partial-queries-early", llvm::cl::init(false),
@@ -217,6 +219,6 @@ void QueryLoggingSolver::setCoreSolverTimeout(time::Span timeout) {
   solver->impl->setCoreSolverTimeout(timeout);
 }
 
-void QueryLoggingSolver::writeStackKQueries(llvm::raw_string_ostream buf) {
-  logBuffer << buf.str();
+void QueryLoggingSolver::writeStackKQueries(std::string& buf) {
+  logBuffer << buf;
 }

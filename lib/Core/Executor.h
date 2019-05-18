@@ -554,6 +554,8 @@ public:
 
   /// Returns the errno location in memory of the state
   int *getErrnoLocation(const ExecutionState &state) const;
+
+  void writeStackKQueries(llvm::raw_string_ostream buf);
 };
 
 } // End klee namespace

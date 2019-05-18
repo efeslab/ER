@@ -237,7 +237,6 @@ void Executor::processTimers(ExecutionState *current,
         buf << "# weight : " << es->weight << "\n";
         buf << "# queryCost : " << es->queryCost << "\n";
         buf << "\n\n";
-      }
       solver->writeStackKQueries(buf);
     }
 

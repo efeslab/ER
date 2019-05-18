@@ -37,8 +37,8 @@ llvm::cl::opt<std::string> Z3QueryDumpFile(
 
 llvm::cl::opt<bool> Z3QueryStats(
     "debug-z3-dump-queries-stats", llvm::cl::init(false),
-    llvm::cl::desc("Dump Z3's representation of the query to the specified path
-                    in debug-z3-dump-queries, add stats to the file"),
+    llvm::cl::desc("Dump Z3's representation of the query to the specified path"
+                    "in debug-z3-dump-queries, add stats to the file"),
     llvm::cl::cat(klee::SolvingCat));
 
 llvm::cl::opt<bool> Z3ValidateModels(

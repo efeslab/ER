@@ -130,6 +130,6 @@ TimingSolver::getRange(const ExecutionState& state, ref<Expr> expr) {
   return solver->getRange(Query(state.constraints, expr));
 }
 
-void TimingSolver::writeStackKQueries(ExecutionState *es){
-  solver->writeStackKQueries(ExecutionState *es);
+void TimingSolver::writeStackKQueries(llvm::raw_string_ostream buf){
+  solver->writeStackKQueries(buf);
 };

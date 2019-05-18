@@ -34,7 +34,7 @@ void Solver::setCoreSolverTimeout(time::Span timeout) {
 }
 
 void Solver::writeStackKQueries(std::string &buf) {
-    impl->setCoreSolverTimeout(timeout);
+    impl->writeStackKQueries(buf);
 };
 
 bool Solver::evaluate(const Query& query, Validity &result) {

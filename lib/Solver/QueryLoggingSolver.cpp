@@ -216,3 +216,7 @@ char *QueryLoggingSolver::getConstraintLog(const Query &query) {
 void QueryLoggingSolver::setCoreSolverTimeout(time::Span timeout) {
   solver->impl->setCoreSolverTimeout(timeout);
 }
+
+void QueryLoggingSolver::writeStackKQueries(llvm::raw_string_ostream buf) {
+  logBuffer << buf.str();
+}

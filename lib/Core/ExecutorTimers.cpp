@@ -21,10 +21,9 @@
 #include "klee/Internal/System/Time.h"
 #include "klee/OptionCategories.h"
 
-#include "QueryLoggingSolver.h"
-
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <math.h>
 #include <signal.h>
@@ -214,32 +213,32 @@ void Executor::processTimers(ExecutionState *current,
     }
 
     if (change) {
-      QueryLoggingSolver* qlSolver = dynamic_cast<QueryLoggingSolver*>(solver->solver->impl);
-      if (qlSolver) {
+        llvm::raw_string_ostream buf;
         ExecutionState *es = current;
-        *(qlSolver->os) << "# Stack: [";
+        buf << "# Stack: [";
         auto next = es->stack.begin();
         ++next;
         for (auto sfIt = es->stack.begin(), sf_ie = es->stack.end();
              sfIt != sf_ie; ++sfIt) {
-          *(qlSolver->os) << "('" << sfIt->kf->function->getName().str() << "',";
+          buf << "('" << sfIt->kf->function->getName().str() << "',";
           if (next == es->stack.end()) {
-            *(qlSolver->os)<< es->prevPC->info->line << ", " <<
+            buf << es->prevPC->info->line << ", " <<
                         es->prevPC->info->assemblyLine << ")";
           } else {
-            *(qlSolver->os) << next->caller->info->line << ", " <<
+            buf << next->caller->info->line << ", " <<
                         next->caller->info->assemblyLine << "), ";
             ++next;
           }
         }
-        *(qlSolver->os) << "]\n";
+        buf << "]\n";
 
-        *(qlSolver->os) << "# Instr : " << getInstructionStr(es->prevPC) << "\n";
-        *(qlSolver->os) << "# depth : " << es->depth << "\n";
-        *(qlSolver->os) << "# weight : " << es->weight << "\n";
-        *(qlSolver->os) << "# queryCost : " << es->queryCost << "\n";
-        *(qlSolver->os) << "\n\n";
+        buf << "# Instr : " << getInstructionStr(es->prevPC) << "\n";
+        buf << "# depth : " << es->depth << "\n";
+        buf << "# weight : " << es->weight << "\n";
+        buf << "# queryCost : " << es->queryCost << "\n";
+        buf << "\n\n";
       }
+      solver->writeStackKQueries(buf);
     }
 
     if (maxInstTime && current &&

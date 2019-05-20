@@ -24,6 +24,8 @@
 #include "klee/util/ArrayCache.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "../Solver/QueryLoggingSolver.h"
+
 #include "llvm/ADT/Twine.h"
 
 #include "../Expr/ArrayExprOptimizer.h"
@@ -118,8 +120,6 @@ public:
     Unhandled
   };
 
-Solver* qlSolver = nullptr;
-
 private:
   static const char *TerminateReasonNames[];
 
@@ -131,7 +131,7 @@ private:
   std::unique_ptr<KModule> kmodule;
   InterpreterHandler *interpreterHandler;
   Searcher *searcher;
-
+  Solver* qlSolver = nullptr;
   ExternalDispatcher *externalDispatcher;
   TimingSolver *solver;
   MemoryManager *memory;

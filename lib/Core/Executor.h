@@ -118,6 +118,8 @@ public:
     Unhandled
   };
 
+QueryLoggingSolver* qlSolver = nullptr;
+
 private:
   static const char *TerminateReasonNames[];
 
@@ -486,7 +488,6 @@ private:
   void doDumpStates();
 
 public:
-  QueryLoggingSolver* qlSolver = nullptr;
 
   Executor(llvm::LLVMContext &ctx, const InterpreterOptions &opts,
       InterpreterHandler *ie);

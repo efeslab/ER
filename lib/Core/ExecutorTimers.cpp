@@ -217,7 +217,6 @@ void Executor::processTimers(ExecutionState *current,
 
     if (change) {
         ExecutionState *es = current;
-        Q
         *(qlSolver->os) << "# Stack: [";
         auto next = es->stack.begin();
         ++next;

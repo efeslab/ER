@@ -464,7 +464,7 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
       temp);
 
   if (temp) {
-    this->qlSolver = dynamic_cast<QueryLoggingSolver* >(temp);
+    this->qlSolver = dynamic_cast<QueryLoggingSolver* >(temp->impl);
     assert(this->qlSolver && "fail dynamic cast");
   }
 

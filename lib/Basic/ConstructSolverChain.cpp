@@ -23,7 +23,7 @@ Solver *constructSolverChain(Solver *coreSolver,
                              std::string baseSolverQuerySMT2LogPath,
                              std::string queryKQueryLogPath,
                              std::string baseSolverQueryKQueryLogPath,
-                             (QueryLoggingSolver *)& temp) {
+                             QueryLoggingSolver& temp) {
   Solver *solver = coreSolver;
   const time::Span minQueryTimeToLog(MinQueryTimeToLog);
 

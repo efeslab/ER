@@ -453,7 +453,7 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
   if (!coreSolver) {
     klee_error("Failed to create core solver\n");
   }
-  QueryLoggingSolver* temp;
+  QueryLoggingSolver temp;
   Solver *solver = constructSolverChain(
       coreSolver,
       interpreterHandler->getOutputFilename(ALL_QUERIES_SMT2_FILE_NAME),
@@ -463,7 +463,7 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
       temp);
 
   if (temp) {
-    qlSolver = temp;
+    qlSolver = &temp;
   }
 
   this->solver = new TimingSolver(solver, EqualitySubstitution);

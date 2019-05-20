@@ -24,13 +24,13 @@ Solver *constructSolverChain(Solver *coreSolver,
                              std::string baseSolverQuerySMT2LogPath,
                              std::string queryKQueryLogPath,
                              std::string baseSolverQueryKQueryLogPath,
-                             QueryLoggingSolver& temp) {
+                             Executor* ex) {
   Solver *solver = coreSolver;
   const time::Span minQueryTimeToLog(MinQueryTimeToLog);
 
   if (QueryLoggingOptions.isSet(SOLVER_KQUERY)) {
     solver = createKQueryLoggingSolver(solver, baseSolverQueryKQueryLogPath, minQueryTimeToLog, LogTimedOutQueries);
-    temp = dynamic_cast<QueryLoggingSolver* >(solver->impl);
+    ex->qlSolver = dynamic_cast<QueryLoggingSolver* >(solver->impl);
     klee_message("Logging queries that reach solver in .kquery format to %s\n",
                  baseSolverQueryKQueryLogPath.c_str());
   }

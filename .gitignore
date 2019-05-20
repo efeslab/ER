@@ -37,3 +37,5 @@ examples
 
 # ctag file for atom
 .tags*
+
+/.vscode

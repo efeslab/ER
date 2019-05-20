@@ -132,6 +132,7 @@ private:
 
   ExternalDispatcher *externalDispatcher;
   TimingSolver *solver;
+  QueryLoggingSolver* qlSolver = nullptr;
   MemoryManager *memory;
   std::set<ExecutionState*> states;
   StatsTracker *statsTracker;

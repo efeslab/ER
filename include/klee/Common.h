@@ -26,10 +26,10 @@ namespace klee {
                                  std::string querySMT2LogPath,
                                  std::string baseSolverQuerySMT2LogPath,
                                  std::string queryKQueryLogPath,
-                                 std::string baseSolverQueryKQueryLogPath);
+                                 std::string baseSolverQueryKQueryLogPath,
+                                 Solver *&ql);
 }
 
 
 
 #endif /* KLEE_COMMON_H */
-

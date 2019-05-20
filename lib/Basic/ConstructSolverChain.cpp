@@ -15,8 +15,6 @@
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Internal/System/Time.h"
 #include "llvm/Support/raw_ostream.h"
-#include "../Solver/QueryLoggingSolver.h"
-#include "../Core/Executor.h"
 
 
 namespace klee {
@@ -25,13 +23,13 @@ Solver *constructSolverChain(Solver *coreSolver,
                              std::string baseSolverQuerySMT2LogPath,
                              std::string queryKQueryLogPath,
                              std::string baseSolverQueryKQueryLogPath,
-                             Executor* ex) {
+                             Solver *&ql) {
   Solver *solver = coreSolver;
   const time::Span minQueryTimeToLog(MinQueryTimeToLog);
 
   if (QueryLoggingOptions.isSet(SOLVER_KQUERY)) {
     solver = createKQueryLoggingSolver(solver, baseSolverQueryKQueryLogPath, minQueryTimeToLog, LogTimedOutQueries);
-    ex->qlSolver = dynamic_cast<QueryLoggingSolver* >(solver->impl);
+    ql = solver;
     klee_message("Logging queries that reach solver in .kquery format to %s\n",
                  baseSolverQueryKQueryLogPath.c_str());
   }

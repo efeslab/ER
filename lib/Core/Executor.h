@@ -120,6 +120,8 @@ public:
     Unhandled
   };
 
+  QueryLoggingSolver* qlSolver = nullptr;
+  
 private:
   static const char *TerminateReasonNames[];
 
@@ -131,7 +133,7 @@ private:
   std::unique_ptr<KModule> kmodule;
   InterpreterHandler *interpreterHandler;
   Searcher *searcher;
-  Solver* qlSolver = nullptr;
+
   ExternalDispatcher *externalDispatcher;
   TimingSolver *solver;
   MemoryManager *memory;

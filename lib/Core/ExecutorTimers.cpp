@@ -217,29 +217,29 @@ void Executor::processTimers(ExecutionState *current,
 
     if (change) {
         ExecutionState *es = current;
-        QueryLoggingSolver* ql = dynamic_cast<QueryLoggingSolver* >(qlSolver->impl);
-        *(ql->os) << "# Stack: [";
+        Q
+        *(qlSolver->os) << "# Stack: [";
         auto next = es->stack.begin();
         ++next;
         for (auto sfIt = es->stack.begin(), sf_ie = es->stack.end();
              sfIt != sf_ie; ++sfIt) {
-          *(ql->os) << "('" << sfIt->kf->function->getName().str() << "',";
+          *(qlSolver->os) << "('" << sfIt->kf->function->getName().str() << "',";
           if (next == es->stack.end()) {
-            *(ql->os) << es->prevPC->info->line << ", " <<
+            *(qlSolver->os) << es->prevPC->info->line << ", " <<
                         es->prevPC->info->assemblyLine << ")";
           } else {
-            *(ql->os) << next->caller->info->line << ", " <<
+            *(qlSolver->os) << next->caller->info->line << ", " <<
                         next->caller->info->assemblyLine << "), ";
             ++next;
           }
         }
-        *(ql->os) << "]\n";
+        *(qlSolver->os) << "]\n";
 
-        *(ql->os) << "# Instr : " << getInstructionStr(es->prevPC) << "\n";
-        *(ql->os) << "# depth : " << es->depth << "\n";
-        *(ql->os) << "# weight : " << es->weight << "\n";
-        *(ql->os) << "# queryCost : " << es->queryCost << "\n";
-        *(ql->os) << "\n\n";
+        *(qlSolver->os) << "# Instr : " << getInstructionStr(es->prevPC) << "\n";
+        *(qlSolver->os) << "# depth : " << es->depth << "\n";
+        *(qlSolver->os) << "# weight : " << es->weight << "\n";
+        *(qlSolver->os) << "# queryCost : " << es->queryCost << "\n";
+        *(qlSolver->os) << "\n\n";
         // buf_str = buf.str();
         // writeStackKQueries(buf_str);
     }

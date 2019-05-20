@@ -118,7 +118,7 @@ public:
     Unhandled
   };
 
-QueryLoggingSolver* qlSolver = nullptr;
+Solver* qlSolver = nullptr;
 
 private:
   static const char *TerminateReasonNames[];

@@ -15,6 +15,7 @@
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Internal/System/Time.h"
 #include "llvm/Support/raw_ostream.h"
+#include "../Solver/QueryLoggingSolver.h"
 
 
 namespace klee {

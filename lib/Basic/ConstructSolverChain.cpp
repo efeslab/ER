@@ -30,7 +30,7 @@ Solver *constructSolverChain(Solver *coreSolver,
 
   if (QueryLoggingOptions.isSet(SOLVER_KQUERY)) {
     solver = createKQueryLoggingSolver(solver, baseSolverQueryKQueryLogPath, minQueryTimeToLog, LogTimedOutQueries);
-    temp = dynamic_cast<QueryLoggingSolver* >solver->impl;
+    temp = dynamic_cast<QueryLoggingSolver* >(solver->impl);
     klee_message("Logging queries that reach solver in .kquery format to %s\n",
                  baseSolverQueryKQueryLogPath.c_str());
   }

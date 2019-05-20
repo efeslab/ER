@@ -10,7 +10,7 @@
 #include "klee/Solver.h"
 #include "klee/SolverImpl.h"
 #include "klee/Constraints.h"
-#include "klee/QueryLoggingSolver.h"
+#include "QueryLoggingSolver.h"
 
 using namespace klee;
 
@@ -34,11 +34,13 @@ void Solver::setCoreSolverTimeout(time::Span timeout) {
     impl->setCoreSolverTimeout(timeout);
 }
 
+/*
 void Solver::writeStackKQueries(std::string &buf) {
     QueryLoggingSolver* qlSolver = dynamic_cast<QueryLoggingSolver* >(impl);
     if (qlSolver)
       qlSolver->writeStackKQueries(buf);
 };
+*/
 
 bool Solver::evaluate(const Query& query, Validity &result) {
   assert(query.expr->getWidth() == Expr::Bool && "Invalid expression type!");

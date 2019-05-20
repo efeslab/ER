@@ -206,7 +206,7 @@ namespace klee {
     virtual char *getConstraintLog(const Query& query);
     virtual void setCoreSolverTimeout(time::Span timeout);
 
-    void writeStackKQueries(std::string &buf);
+    //void writeStackKQueries(std::string &buf);
   };
 
   /* *** */

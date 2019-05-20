@@ -240,7 +240,7 @@ void Executor::processTimers(ExecutionState *current,
         buf << "# queryCost : " << es->queryCost << "\n";
         buf << "\n\n";
         buf_str = buf.str();
-        writeStackKQueries(buf_str);
+        // writeStackKQueries(buf_str);
     }
 
     if (maxInstTime && current &&

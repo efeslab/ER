@@ -68,7 +68,7 @@ namespace klee {
     std::pair< ref<Expr>, ref<Expr> >
     getRange(const ExecutionState&, ref<Expr> query);
 
-    void writeStackKQueries(std::string& buf);
+    // void writeStackKQueries(std::string& buf);
 
   };
 

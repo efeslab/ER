@@ -4138,6 +4138,8 @@ Interpreter *Interpreter::create(LLVMContext &ctx, const InterpreterOptions &opt
   return new Executor(ctx, opts, ih);
 }
 
+/*
 void Executor::writeStackKQueries(std::string& buf) {
   solver->writeStackKQueries(buf);
 };
+*/

@@ -76,7 +76,7 @@ public:
   char *getConstraintLog(const Query &);
   void setCoreSolverTimeout(time::Span timeout);
 
-  void writeStackKQueries(std::string& buf);
+  // void writeStackKQueries(std::string& buf);
 };
 
 #endif /* KLEE_QUERYLOGGINGSOLVER_H */

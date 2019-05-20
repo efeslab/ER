@@ -219,6 +219,8 @@ void QueryLoggingSolver::setCoreSolverTimeout(time::Span timeout) {
   solver->impl->setCoreSolverTimeout(timeout);
 }
 
+/*
 void QueryLoggingSolver::writeStackKQueries(std::string& buf) {
   logBuffer << buf;
 }
+*/

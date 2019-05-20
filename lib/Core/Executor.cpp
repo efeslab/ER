@@ -3016,7 +3016,7 @@ void Executor::run(ExecutionState &initialState) {
     if (change && i->getOpcode() == Instruction::Br) {
       BranchInst *bi = cast<BranchInst>(i);
       if (bi->isUnconditional()) {
-        dump = false;
+        change = false;
       }
     }
 

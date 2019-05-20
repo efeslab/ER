@@ -214,32 +214,30 @@ void Executor::processTimers(ExecutionState *current,
     }
 
     if (change) {
-        std::stringstream buf;
-        std::string buf_str;
         ExecutionState *es = current;
-        buf << "# Stack: [";
+        *(qlSolver->os) << "# Stack: [";
         auto next = es->stack.begin();
         ++next;
         for (auto sfIt = es->stack.begin(), sf_ie = es->stack.end();
              sfIt != sf_ie; ++sfIt) {
-          buf << "('" << sfIt->kf->function->getName().str() << "',";
+          *(qlSolver->os) << "('" << sfIt->kf->function->getName().str() << "',";
           if (next == es->stack.end()) {
-            buf << es->prevPC->info->line << ", " <<
+            *(qlSolver->os) << es->prevPC->info->line << ", " <<
                         es->prevPC->info->assemblyLine << ")";
           } else {
-            buf << next->caller->info->line << ", " <<
+            *(qlSolver->os) << next->caller->info->line << ", " <<
                         next->caller->info->assemblyLine << "), ";
             ++next;
           }
         }
-        buf << "]\n";
+        *(qlSolver->os) << "]\n";
 
-        buf << "# Instr : " << getInstructionStr(es->prevPC) << "\n";
-        buf << "# depth : " << es->depth << "\n";
-        buf << "# weight : " << es->weight << "\n";
-        buf << "# queryCost : " << es->queryCost << "\n";
-        buf << "\n\n";
-        buf_str = buf.str();
+        *(qlSolver->os) << "# Instr : " << getInstructionStr(es->prevPC) << "\n";
+        *(qlSolver->os) << "# depth : " << es->depth << "\n";
+        *(qlSolver->os) << "# weight : " << es->weight << "\n";
+        *(qlSolver->os) << "# queryCost : " << es->queryCost << "\n";
+        *(qlSolver->os) << "\n\n";
+        // buf_str = buf.str();
         // writeStackKQueries(buf_str);
     }
 

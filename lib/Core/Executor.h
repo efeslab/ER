@@ -132,7 +132,6 @@ private:
 
   ExternalDispatcher *externalDispatcher;
   TimingSolver *solver;
-  QueryLoggingSolver* qlSolver = nullptr;
   MemoryManager *memory;
   std::set<ExecutionState*> states;
   StatsTracker *statsTracker;
@@ -487,6 +486,8 @@ private:
   void doDumpStates();
 
 public:
+  QueryLoggingSolver* qlSolver = nullptr;
+
   Executor(llvm::LLVMContext &ctx, const InterpreterOptions &opts,
       InterpreterHandler *ie);
   virtual ~Executor();

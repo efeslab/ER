@@ -1046,7 +1046,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   if (res==Solver::True) {
     if (!isInternal) {
       if (pathWriter) {
-        current.pathOS << "1";
+        current.pathOS << '1';
       }
     }
 
@@ -1054,7 +1054,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   } else if (res==Solver::False) {
     if (!isInternal) {
       if (pathWriter) {
-        current.pathOS << "0";
+        current.pathOS << '0';
       }
     }
 
@@ -1113,15 +1113,15 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       // is used for both falseState and trueState.
       falseState->pathOS = pathWriter->open(current.pathOS);
       if (!isInternal) {
-        trueState->pathOS << "1";
-        falseState->pathOS << "0";
+        trueState->pathOS << '1';
+        falseState->pathOS << '0';
       }
     }
     if (symPathWriter) {
       falseState->symPathOS = symPathWriter->open(current.symPathOS);
       if (!isInternal) {
-        trueState->symPathOS << "1";
-        falseState->symPathOS << "0";
+        trueState->symPathOS << '1';
+        falseState->symPathOS << '0';
       }
     }
 

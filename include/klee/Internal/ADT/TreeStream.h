@@ -12,6 +12,8 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
+#include <cassert>
 
 namespace klee {
 
@@ -19,20 +21,46 @@ namespace klee {
   class TreeOStream;
 
   class TreeStreamWriter {
-    static const unsigned bufferSize = 4*4096;
 
     friend class TreeOStream;
 
   private:
-    char buffer[bufferSize];
-    unsigned lastID, bufferCount;
+    unsigned lastID, lastLen;
+    std::iostream::pos_type lastLen_off;
+    bool isWritten, lastLen_dirty;
 
     std::string path;
     std::ofstream *output;
     unsigned ids;
 
-    void write(TreeOStream &os, const char *s, unsigned size);
-    void flushBuffer();
+    static void serialize(std::ostream &os, const char &c) {
+      os.put(c);
+    }
+    static void deserialize(std::istream &is, char &c) {
+      is.get(c);
+    }
+    static void serialize(std::ostream &os, const std::string &str) {
+      std::string::size_type size = str.size();
+      os.write(reinterpret_cast<const char*>(&size), sizeof(size));
+      os.write(reinterpret_cast<const char*>(str.c_str()), str.size());
+    }
+    static void deserialize(std::istream &is, std::string &str) {
+      std::string::size_type size;
+      is.read(reinterpret_cast<char*>(&size), sizeof(size));
+      str.resize(size);
+      is.read(&str[0], size);
+    }
+    static void skip(std::istream &is, char&) {
+      is.seekg(1, std::ios::cur);
+    }
+    static void skip(std::istream &is, std::string&) {
+      std::string::size_type size;
+      is.read(reinterpret_cast<char*>(&size), sizeof(size));
+      is.seekg(size, std::ios::cur);
+    }
+    template<typename T> void write(TreeOStream &os, const T &entry);
+    void write_metadata(TreeOStream &os);
+    void flush_lastLen();
 
   public:
     TreeStreamWriter(const std::string &_path);
@@ -46,8 +74,9 @@ namespace klee {
     void flush();
 
     // hack, to be replace by proper stream capabilities
+    template <typename T>
     void readStream(TreeStreamID id,
-                    std::vector<unsigned char> &out);
+                    std::vector<T> &out);
   };
 
   class TreeOStream {
@@ -65,9 +94,11 @@ namespace klee {
 
     unsigned getID() const;
 
-    void write(const char *buffer, unsigned size);
-
-    TreeOStream &operator<<(const std::string &s);
+    template<typename T> TreeOStream &operator<<(const T &entry) {
+      assert(writer);
+      writer->write(*this, entry);
+      return *this;
+    }
 
     void flush();
   };

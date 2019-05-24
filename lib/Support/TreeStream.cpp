@@ -14,6 +14,7 @@
 
 #include <cassert>
 #include <iomanip>
+#include <iostream>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -27,7 +28,10 @@ using namespace klee;
 
 TreeStreamWriter::TreeStreamWriter(const std::string &_path) 
   : lastID(0),
-    bufferCount(0),
+    lastLen(0),
+    lastLen_off(std::iostream::pos_type(0)),
+    isWritten(false),
+    lastLen_dirty(false),
     path(_path),
     output(new std::ofstream(path.c_str(), 
                              std::ios::out | std::ios::binary)),
@@ -53,7 +57,8 @@ TreeOStream TreeStreamWriter::open() {
 
 TreeOStream TreeStreamWriter::open(const TreeOStream &os) {
   assert(output && os.writer==this);
-  flushBuffer();
+  flush_lastLen();
+  isWritten = false;
   unsigned id = ids++;
   output->write(reinterpret_cast<const char*>(&os.id), 4);
   unsigned tag = id | (1<<31);
@@ -61,40 +66,46 @@ TreeOStream TreeStreamWriter::open(const TreeOStream &os) {
   return TreeOStream(*this, id);
 }
 
-void TreeStreamWriter::write(TreeOStream &os, const char *s, unsigned size) {
-  if (bufferCount && 
-      (os.id!=lastID || size+bufferCount>bufferSize))
-    flushBuffer();
-  if (bufferCount) { // (os.id==lastID && size+bufferCount<=bufferSize)
-    memcpy(&buffer[bufferCount], s, size);
-    bufferCount += size;
-  } else if (size<bufferSize) {
-    lastID = os.id;
-    memcpy(buffer, s, size);
-    bufferCount = size;
-  } else {
-    output->write(reinterpret_cast<const char*>(&os.id), 4);
-    output->write(reinterpret_cast<const char*>(&size), 4);
-    output->write(s, size);
+void TreeStreamWriter::flush_lastLen() {
+  if (lastLen_dirty) {
+    std::iostream::pos_type save_pos = output->tellp();
+    output->seekp(lastLen_off);
+    output->write(reinterpret_cast<const char*>(&lastLen), sizeof(lastLen));
+    output->seekp(save_pos);
+    lastLen_dirty = false;
   }
 }
-
-void TreeStreamWriter::flushBuffer() {
-  if (bufferCount) {    
-    output->write(reinterpret_cast<const char*>(&lastID), 4);
-    output->write(reinterpret_cast<const char*>(&bufferCount), 4);
-    output->write(buffer, bufferCount);
-    bufferCount = 0;
+void TreeStreamWriter::write_metadata(TreeOStream &os) {
+  if (isWritten) {
+    flush_lastLen();
   }
+  output->write(reinterpret_cast<const char*>(&os.id), sizeof(os.id));
+  lastLen_off = output->tellp();
+  lastLen = 0;
+  lastID = os.id;
+  output->write(reinterpret_cast<const char*>(&lastLen), sizeof(lastLen));
+  isWritten = true;
+}
+
+template<typename T>
+void TreeStreamWriter::write(TreeOStream &os, const T &entry) {
+  if (!isWritten || 
+     (isWritten && os.id != lastID)) {
+    write_metadata(os);
+  }
+  serialize(*output, entry);
+  ++lastLen;
+  lastLen_dirty = true;
 }
 
 void TreeStreamWriter::flush() {
-  flushBuffer();
+  flush_lastLen();
   output->flush();
 }
 
+template <typename T>
 void TreeStreamWriter::readStream(TreeStreamID streamID,
-                                  std::vector<unsigned char> &out) {
+                                  std::vector<T> &out) {
   assert(streamID>0 && streamID<ids);
   flush();
   
@@ -109,8 +120,8 @@ void TreeStreamWriter::readStream(TreeStreamID streamID,
     assert(is.good());
     unsigned id;
     unsigned tag;
-    is.read(reinterpret_cast<char*>(&id), 4);
-    is.read(reinterpret_cast<char*>(&tag), 4);
+    is.read(reinterpret_cast<char*>(&id), sizeof(id));
+    is.read(reinterpret_cast<char*>(&tag), sizeof(tag));
     if (tag&(1<<31)) { // fork
       unsigned child = tag ^ (1<<31);
 
@@ -127,8 +138,12 @@ void TreeStreamWriter::readStream(TreeStreamID streamID,
         parents.insert(std::make_pair(child,id));
       }
     } else {
-      unsigned size = tag;
-      while (size--) is.get();
+      unsigned len = tag;
+      for (unsigned i=0; i < len; ++i) {
+        //FIXME char doesn't store size
+        T dummy_overload_hint;
+        skip(is, dummy_overload_hint);
+      }
     }
   }
   KLEE_DEBUG({
@@ -150,16 +165,25 @@ void TreeStreamWriter::readStream(TreeStreamID streamID,
       if (id==roots.back() && roots.size()>1 && child==roots[roots.size()-2])
         roots.pop_back();
     } else {
-      unsigned size = tag;
-      if (id==roots.back()) {
-        while (size--) out.push_back(is.get());
-      } else {
-        while (size--) is.get();
+      unsigned len = tag;
+      T entry;
+      for (unsigned i=0; i < len; ++i) {
+        if (id==roots.back()) {
+          deserialize(is, entry);
+          out.push_back(std::move(entry));
+        } else {
+          skip(is, entry);
+        }
       }
     }
-  }  
+  }
 }
 
+// template function installation
+template void TreeStreamWriter::write(TreeOStream &os, const char &entry);
+template void TreeStreamWriter::write(TreeOStream &os, const std::string &entry);
+template void TreeStreamWriter::readStream(TreeStreamID streamID, std::vector<char> &out);
+template void TreeStreamWriter::readStream(TreeStreamID streamID, std::vector<std::string> &out);
 ///
 
 TreeOStream::TreeOStream()
@@ -180,19 +204,7 @@ unsigned TreeOStream::getID() const {
   return id;
 }
 
-void TreeOStream::write(const char *buffer, unsigned size) {
-  assert(writer);
-  writer->write(*this, buffer, size);
-}
-
-TreeOStream &TreeOStream::operator<<(const std::string &s) {
-  assert(writer);
-  write(s.c_str(), s.size());
-  return *this;
-}
-
 void TreeOStream::flush() {
   assert(writer);
   writer->flush();
 }
-

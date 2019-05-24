@@ -959,12 +959,20 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
             auto f = interpreterHandler->openOutputFile("debugKQuery");
             if (f)
                 *f << constraints;
-            klee_message("replay: %d res: 1 branch: %d\n", replayPosition-1, branch);
+            klee_message("replay: %d/%lu res: 1 branch: %d, stack:\n", replayPosition, replayPath->size(), branch);
+            current.dumpStack(llvm::errs());
         }
         assert(branch && "hit invalid branch in replay path mode");
       } else if (res==Solver::False) {
-          if (branch)
-            klee_message("replay: %d res: 0 branch: %d\n", replayPosition-1, branch);
+          if (branch) {
+            std::string constraints;
+            getConstraintLog(current, constraints,Interpreter::KQUERY);
+            auto f = interpreterHandler->openOutputFile("debugKQuery");
+            if (f)
+                *f << constraints;
+            klee_message("replay: %d/%lu res: 0 branch: %d, stack:\n", replayPosition, replayPath->size(), branch);
+            current.dumpStack(llvm::errs());
+          }
         assert(!branch && "hit invalid branch in replay path mode");
       } else {
         // add constraints

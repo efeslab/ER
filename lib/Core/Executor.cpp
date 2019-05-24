@@ -1055,6 +1055,8 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     if (!isInternal) {
       if (pathWriter) {
         current.pathOS << '1';
+      }
+      if (stackPathWriter) {
         current.dumpStackPathOS();
       }
     }
@@ -1064,6 +1066,8 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     if (!isInternal) {
       if (pathWriter) {
         current.pathOS << '0';
+      }
+      if (stackPathWriter) {
         current.dumpStackPathOS();
       }
     }

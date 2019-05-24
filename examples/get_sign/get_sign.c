@@ -15,7 +15,11 @@ int get_sign(int x) {
 } 
 
 int main() {
+#ifdef KLEE_SYMBOLIC
   int a;
   klee_make_symbolic(&a, sizeof(a), "a");
+#else
+  int a=2;
+#endif
   return get_sign(a);
 } 

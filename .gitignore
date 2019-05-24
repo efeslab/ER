@@ -39,3 +39,6 @@ examples
 .tags*
 
 /.vscode
+.DS*
+._.DS*
+.fuse*

@@ -23,6 +23,7 @@
 #include <map>
 #include <set>
 #include <vector>
+#include <string>
 
 namespace klee {
 class Array;
@@ -126,6 +127,10 @@ public:
   /// @brief History of symbolic path: represents symbolic branches
   /// taken to reach/create this state
   TreeOStream symPathOS;
+  
+  /// @brief History of stats for each branch decision
+  //  when each brach decision (both concrete and symbolic) is made
+  TreeOStream statsPathOS;
 
   /// @brief Counts how many instructions were executed since the last new
   /// instruction was covered.
@@ -186,6 +191,8 @@ public:
   bool merge(const ExecutionState &b);
   void dumpStack(llvm::raw_ostream &out) const;
   void dumpStackPathOS();
+  void dumpStatsPathOS();
+  std::string getInstructionStr(KInstruction *ki);
 };
 }
 

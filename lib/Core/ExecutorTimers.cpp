@@ -108,42 +108,6 @@ void Executor::addTimer(Timer *timer, time::Span rate) {
   timers.push_back(new TimerInfo(timer, rate));
 }
 
-std::string getInstructionStr(KInstruction *ki) {
-  Instruction *i = ki->inst;
-  switch (i->getOpcode()) {
-    // Control flow
-    case Instruction::Ret: {
-      return "Ret";
-    }
-    case Instruction::Br: {
-      return "Br";
-    }
-    case Instruction::IndirectBr: {
-      return "IndirectBr";
-    }
-    case Instruction::Switch: {
-      return "Switch";
-    }
-    case Instruction::Unreachable: {
-      return "Unreachable";
-    }
-    case Instruction::Invoke:
-    case Instruction::Call: {
-      return "Invoke / Call";
-    }
-    case Instruction::PHI: {
-      return "PHI";
-    }
-    case Instruction::Select: {
-      return "Select";
-    }
-    case Instruction::VAArg: {
-      return "VAArg";
-    }
-    default:
-      return "Other";
- }
-}
 
 void Executor::processTimers(ExecutionState *current,
                              time::Span maxInstTime, bool dump, bool change) {
@@ -198,7 +162,7 @@ void Executor::processTimers(ExecutionState *current,
           uint64_t cpicnt = sf.callPathNode->statistics.getValue(stats::instructions);
 
           *dump_os << "{";
-          *dump_os << "'Instr' : '" << getInstructionStr(es->prevPC) << "', ";
+          *dump_os << "'Instr' : '" << es->getInstructionStr(es->prevPC) << "', ";
           *dump_os << "'depth' : " << es->depth << ", ";
           *dump_os << "'weight' : " << es->weight << ", ";
           *dump_os << "'queryCost' : " << es->queryCost << ", ";
@@ -234,7 +198,7 @@ void Executor::processTimers(ExecutionState *current,
         }
         *(qlSolver->os) << "]\n";
 
-        *(qlSolver->os) << "# Instr : " << getInstructionStr(es->prevPC) << "\n";
+        *(qlSolver->os) << "# Instr : " << es->getInstructionStr(es->prevPC) << "\n";
         *(qlSolver->os) << "# depth : " << es->depth << "\n";
         *(qlSolver->os) << "# weight : " << es->weight << "\n";
         *(qlSolver->os) << "# queryCost : " << es->queryCost << "\n";

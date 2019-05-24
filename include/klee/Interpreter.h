@@ -123,6 +123,10 @@ public:
   // supply a tree stream writer which the interpreter will use
   // to record the cosntraint path (as a stream of string, each contains a full text-version constraint)
   virtual void setConsPathWriter(TreeStreamWriter *tsw) = 0;
+  
+  // supply a tree stream writer which the interpreter will use
+  // to record the statics path
+  virtual void setStatsPathWriter(TreeStreamWriter *tsw) = 0;
 
   // supply a test case to replay from. this can be used to drive the
   // interpretation down a user specified path. use null to reset.
@@ -159,6 +163,8 @@ public:
   virtual unsigned getStackPathStreamID(const ExecutionState &state) = 0;
   
   virtual unsigned getConsPathStreamID(const ExecutionState &state) = 0;
+  
+  virtual unsigned getStatsPathStreamID(const ExecutionState &state) = 0;
 
   virtual void getConstraintLog(const ExecutionState &state,
                                 std::string &res,

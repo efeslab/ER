@@ -435,8 +435,8 @@ const char *Executor::TerminateReasonNames[] = {
 Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
                    InterpreterHandler *ih)
     : Interpreter(opts), interpreterHandler(ih), searcher(0),
-      externalDispatcher(new ExternalDispatcher(ctx)), statsTracker(0),
-      pathWriter(0), symPathWriter(0), stackPathWriter(0), consPathWriter(0), 
+      externalDispatcher(new ExternalDispatcher(ctx)), statsTracker(0), pathWriter(0),
+      symPathWriter(0), stackPathWriter(0), consPathWriter(0), statsPathWriter(0),
       specialFunctionHandler(0), processTree(0), replayKTest(0), replayPath(0), 
       usingSeeds(0), atMemoryLimit(false), inhibitForking(false), haltExecution(false),
       ivcEnabled(false), debugLogBuffer(debugBufferString) {
@@ -1065,6 +1065,9 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         condition.get()->print(ExprWriter);
         current.consPathOS << ExprWriter.str();
       }
+      if (statsPathWriter)  {
+        current.dumpStatsPathOS();
+      }
     }
     return StatePair(&current, 0);
   } else if (res==Solver::False) {
@@ -1080,6 +1083,9 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         llvm::raw_string_ostream ExprWriter(BufferString);
         Expr::createIsZero(condition).get()->print(ExprWriter);
         current.consPathOS << ExprWriter.str();
+      }
+      if (statsPathWriter)  {
+        current.dumpStatsPathOS();
       }
     }
 
@@ -1166,6 +1172,13 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         
         Expr::createIsZero(condition).get()->print(ExprWriter);
         falseState->consPathOS << ExprWriter.str();
+      }
+    }
+    if (statsPathWriter) {
+      falseState->statsPathOS = statsPathWriter->open(current.statsPathOS);
+      if (!isInternal) {
+        trueState->dumpStatsPathOS();
+        falseState->dumpStatsPathOS();
       }
     }
 
@@ -3913,6 +3926,8 @@ void Executor::runFunctionAsMain(Function *f,
     state->stackPathOS = stackPathWriter->open();
   if (consPathWriter)
     state->consPathOS = consPathWriter->open();
+  if (statsPathWriter)
+    state->statsPathOS = statsPathWriter->open();
 
   if (statsTracker)
     statsTracker->framePushed(*state, 0);
@@ -3984,6 +3999,11 @@ unsigned Executor::getStackPathStreamID(const ExecutionState &state) {
 unsigned Executor::getConsPathStreamID(const ExecutionState &state) {
 	  assert(consPathWriter);
 	  return state.consPathOS.getID();
+}
+
+unsigned Executor::getStatsPathStreamID(const ExecutionState &state) {
+	  assert(statsPathWriter);
+	  return state.statsPathOS.getID();
 }
 
 void Executor::getConstraintLog(const ExecutionState &state, std::string &res,

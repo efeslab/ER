@@ -364,6 +364,71 @@ void ExecutionState::dumpStackPathOS() {
   stackPathOS << sos.str();
 }
 
+std::string ExecutionState::getInstructionStr(KInstruction *ki) {
+  Instruction *i = ki->inst;
+  switch (i->getOpcode()) {
+    // Control flow
+    case Instruction::Ret: {
+      return "Ret";
+    }
+    case Instruction::Br: {
+      return "Br";
+    }
+    case Instruction::IndirectBr: {
+      return "IndirectBr";
+    }
+    case Instruction::Switch: {
+      return "Switch";
+    }
+    case Instruction::Unreachable: {
+      return "Unreachable";
+    }
+    case Instruction::Invoke:
+    case Instruction::Call: {
+      return "Invoke / Call";
+    }
+    case Instruction::PHI: {
+      return "PHI";
+    }
+    case Instruction::Select: {
+      return "Select";
+    }
+    case Instruction::VAArg: {
+      return "VAArg";
+    }
+    default:
+      return "Other";
+ }
+}
+
+void ExecutionState::dumpStatsPathOS() {
+  std::string string_buf;
+  llvm::raw_string_ostream sos(string_buf);
+  sos << "# Stack: [";
+  auto next = this->stack.begin();
+  ++next;
+  for (auto sfIt = this->stack.begin(), sf_ie = this->stack.end();
+       sfIt != sf_ie; ++sfIt) {
+    sos << "('" << sfIt->kf->function->getName().str() << "',";
+    if (next == this->stack.end()) {
+      sos << this->prevPC->info->line << ", " <<
+                  this->prevPC->info->assemblyLine << ")";
+    } else {
+      sos << next->caller->info->line << ", " <<
+                  next->caller->info->assemblyLine << "), ";
+      ++next;
+    }
+  }
+  sos << "]\n";
+
+  sos << "# Instr : " << getInstructionStr(this->prevPC) << "\n";
+  sos << "# depth : " << this->depth << "\n";
+  sos << "# weight : " << this->weight << "\n";
+  sos << "# queryCost : " << this->queryCost << "\n";
+  sos << "\n\n";
+  statsPathOS << sos.str();
+}
+
 void ExecutionState::dumpStack(llvm::raw_ostream &out) const {
   unsigned idx = 0;
   const KInstruction *target = prevPC;

@@ -138,7 +138,13 @@ namespace {
   WriteConsPaths("write-cons-paths",
                 cl::init(false),
                 cl::desc("Write .cons.path files for each test case (default=false)"),
-                cl::cat(TestCaseCat));              
+                cl::cat(TestCaseCat));
+                
+  cl::opt<bool>
+  WriteStatsPaths("write-stats-paths",
+                cl::init(false),
+                cl::desc("Write .stats.path files for each test case (default=false)"),
+                cl::cat(TestCaseCat));                
 
   /*** Startup options ***/
 
@@ -320,7 +326,7 @@ class KleeHandler : public InterpreterHandler {
 private:
   Interpreter *m_interpreter;
   TreeStreamWriter *m_pathWriter, *m_symPathWriter;
-  TreeStreamWriter *m_stackPathWriter, *m_consPathWriter;
+  TreeStreamWriter *m_stackPathWriter, *m_consPathWriter, *m_statsPathWriter;
   std::unique_ptr<llvm::raw_ostream> m_infoFile;
   
   SmallString<128> m_outputDirectory;
@@ -365,7 +371,8 @@ public:
 };
 
 KleeHandler::KleeHandler(int argc, char **argv)
-    : m_interpreter(0), m_pathWriter(0), m_symPathWriter(0), m_stackPathWriter(0),
+    : m_interpreter(0), m_pathWriter(0), m_symPathWriter(0),
+      m_stackPathWriter(0), m_consPathWriter(0), m_statsPathWriter(0),
       m_outputDirectory(), m_numTotalTests(0), m_numGeneratedTests(0),
       m_pathsExplored(0), m_argc(argc), m_argv(argv) {
 
@@ -466,6 +473,12 @@ void KleeHandler::setInterpreter(Interpreter *i) {
     m_consPathWriter = new TreeStreamWriter(getOutputFilename("consPaths.ts"));
     assert(m_consPathWriter->good());
     m_interpreter->setConsPathWriter(m_consPathWriter);
+  }
+  
+  if (WriteStatsPaths) {
+    m_statsPathWriter = new TreeStreamWriter(getOutputFilename("statsPaths.ts"));
+    assert(m_statsPathWriter->good());
+    m_interpreter->setStatsPathWriter(m_statsPathWriter);
   }
 }
 
@@ -622,7 +635,20 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       if (f) {
         unsigned int i = 0;
         for (const auto c : consPaths) {
-          *f << i++ << c << '\n';
+          *f << i++ << "\t" << c << '\n';
+        }
+      }
+    }
+    
+    if (m_statsPathWriter) {
+      std::vector<std::string> statsPaths;
+      m_statsPathWriter->readStream(m_interpreter->getStatsPathStreamID(state), 
+                                    statsPaths);
+      auto f = openTestFile("stats.path", id);
+      if (f) {
+        unsigned int i = 0;
+        for (const auto c : statsPaths) {
+          *f << i++ << "\t" << c << '\n';
         }
       }
     }
@@ -1617,3 +1643,4 @@ int main(int argc, char **argv, char **envp) {
 
   return 0;
 }
+                                                                                                                                                                                                                                                                                                                 

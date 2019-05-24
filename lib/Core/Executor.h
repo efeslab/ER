@@ -139,7 +139,8 @@ private:
   MemoryManager *memory;
   std::set<ExecutionState*> states;
   StatsTracker *statsTracker;
-  TreeStreamWriter *pathWriter, *symPathWriter, *stackPathWriter;
+  TreeStreamWriter *pathWriter, *symPathWriter;
+  TreeStreamWriter *stackPathWriter, *consPathWriter;
   SpecialFunctionHandler *specialFunctionHandler;
   std::vector<TimerInfo*> timers;
   PTree *processTree;
@@ -506,6 +507,10 @@ public:
   void setSymbolicPathWriter(TreeStreamWriter *tsw) override {
     symPathWriter = tsw;
   }
+  
+  void setConsPathWriter(TreeStreamWriter *tsw) override { 
+    consPathWriter = tsw; 
+  }
 
   void setReplayKTest(const struct KTest *out) override {
     assert(!replayPath && "cannot replay both buffer and path");
@@ -544,6 +549,8 @@ public:
   unsigned getSymbolicPathStreamID(const ExecutionState &state) override;
 
   unsigned getStackPathStreamID(const ExecutionState &state) override;
+  
+  unsigned getConsPathStreamID(const ExecutionState &state) override;
 
   void getConstraintLog(const ExecutionState &state, std::string &res,
                         Interpreter::LogType logFormat =

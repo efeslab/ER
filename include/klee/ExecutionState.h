@@ -118,6 +118,10 @@ public:
   /// @brief History of stack for each branch decision: recording entire stack
   //  when each brach decision (both concrete and symbolic) is made
   TreeOStream stackPathOS;
+  
+  /// @brief History of constriant for each branch decision
+  //  when each brach decision (both concrete and symbolic) is made
+  TreeOStream consPathOS;
 
   /// @brief History of symbolic path: represents symbolic branches
   /// taken to reach/create this state

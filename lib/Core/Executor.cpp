@@ -436,9 +436,9 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
                    InterpreterHandler *ih)
     : Interpreter(opts), interpreterHandler(ih), searcher(0),
       externalDispatcher(new ExternalDispatcher(ctx)), statsTracker(0),
-      pathWriter(0), symPathWriter(0), stackPathWriter(0), specialFunctionHandler(0),
-      processTree(0), replayKTest(0), replayPath(0), usingSeeds(0),
-      atMemoryLimit(false), inhibitForking(false), haltExecution(false),
+      pathWriter(0), symPathWriter(0), stackPathWriter(0), consPathWriter(0), 
+      specialFunctionHandler(0), processTree(0), replayKTest(0), replayPath(0), 
+      usingSeeds(0), atMemoryLimit(false), inhibitForking(false), haltExecution(false),
       ivcEnabled(false), debugLogBuffer(debugBufferString) {
 
 
@@ -1055,16 +1055,31 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     if (!isInternal) {
       if (pathWriter) {
         current.pathOS << '1';
+      }
+      if (stackPathWriter) {
         current.dumpStackPathOS();
       }
+      if (consPathWriter)  {
+        std::string BufferString;
+        llvm::raw_string_ostream ExprWriter(BufferString);
+        condition.get()->print(ExprWriter);
+        current.consPathOS << ExprWriter.str();
+      }
     }
-
     return StatePair(&current, 0);
   } else if (res==Solver::False) {
     if (!isInternal) {
       if (pathWriter) {
         current.pathOS << '0';
+      }
+      if (stackPathWriter) {
         current.dumpStackPathOS();
+      }
+      if (consPathWriter)  {
+        std::string BufferString;
+        llvm::raw_string_ostream ExprWriter(BufferString);
+        Expr::createIsZero(condition).get()->print(ExprWriter);
+        current.consPathOS << ExprWriter.str();
       }
     }
 
@@ -1139,6 +1154,18 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       if (!isInternal) {
         trueState->dumpStackPathOS();
         falseState->dumpStackPathOS();
+      }
+    }
+    if (consPathWriter) {
+      falseState->consPathOS = consPathWriter->open(current.consPathOS);
+      if (!isInternal) {
+        std::string BufferString;
+        llvm::raw_string_ostream ExprWriter(BufferString);
+        condition.get()->print(ExprWriter);
+        trueState->consPathOS << ExprWriter.str();
+        
+        Expr::createIsZero(condition).get()->print(ExprWriter);
+        falseState->consPathOS << ExprWriter.str();
       }
     }
 
@@ -3884,7 +3911,8 @@ void Executor::runFunctionAsMain(Function *f,
     state->symPathOS = symPathWriter->open();
   if (stackPathWriter)
     state->stackPathOS = stackPathWriter->open();
-
+  if (consPathWriter)
+    state->consPathOS = consPathWriter->open();
 
   if (statsTracker)
     statsTracker->framePushed(*state, 0);
@@ -3951,6 +3979,11 @@ unsigned Executor::getSymbolicPathStreamID(const ExecutionState &state) {
 unsigned Executor::getStackPathStreamID(const ExecutionState &state) {
   assert(stackPathWriter);
   return state.stackPathOS.getID();
+}
+
+unsigned Executor::getConsPathStreamID(const ExecutionState &state) {
+	  assert(consPathWriter);
+	  return state.consPathOS.getID();
 }
 
 void Executor::getConstraintLog(const ExecutionState &state, std::string &res,

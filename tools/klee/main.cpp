@@ -125,6 +125,12 @@ namespace {
   WriteStackPaths("write-stack-paths",
                 cl::desc("Write .stack.path files for each test case (default=false)"),
                 cl::cat(TestCaseCat));
+                
+  cl::opt<bool>
+  WriteConsPaths("write-cons-paths",
+                cl::init(false),
+                cl::desc("Write .cons.path files for each test case (default=false)"),
+                cl::cat(TestCaseCat));              
 
   /*** Startup options ***/
 
@@ -304,7 +310,8 @@ extern cl::opt<std::string> MaxTime;
 class KleeHandler : public InterpreterHandler {
 private:
   Interpreter *m_interpreter;
-  TreeStreamWriter *m_pathWriter, *m_symPathWriter, *m_stackPathWriter;
+  TreeStreamWriter *m_pathWriter, *m_symPathWriter;
+  TreeStreamWriter *m_stackPathWriter, *m_consPathWriter;
   std::unique_ptr<llvm::raw_ostream> m_infoFile;
   
   SmallString<128> m_outputDirectory;
@@ -445,6 +452,12 @@ void KleeHandler::setInterpreter(Interpreter *i) {
     assert(m_stackPathWriter->good());
     m_interpreter->setStackPathWriter(m_stackPathWriter);
   }
+  
+  if (WriteConsPaths) {
+    m_consPathWriter = new TreeStreamWriter(getOutputFilename("consPaths.ts"));
+    assert(m_consPathWriter->good());
+    m_interpreter->setConsPathWriter(m_consPathWriter);
+  }
 }
 
 std::string KleeHandler::getOutputFilename(const std::string &filename) {
@@ -579,6 +592,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
         }
       }
     }
+    
     if (m_stackPathWriter) {
       std::vector<std::string> stackPaths;
       m_stackPathWriter->readStream(m_interpreter->getStackPathStreamID(state), stackPaths);
@@ -587,6 +601,19 @@ void KleeHandler::processTestCase(const ExecutionState &state,
         unsigned i = 0;
         for (const auto s : stackPaths) {
           *f << i++ << s << '\n';
+        }
+      }
+    }
+    
+    if (m_consPathWriter) {
+      std::vector<std::string> consPaths;
+      m_consPathWriter->readStream(m_interpreter->getStackPathStreamID(state), 
+                                    consPaths);
+      auto f = openTestFile("cons.path", id);
+      if (f) {
+        unsigned int i = 0;
+        for (const auto c : consPaths) {
+          *f << i++ << c << '\n';
         }
       }
     }

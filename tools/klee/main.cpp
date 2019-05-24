@@ -629,7 +629,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
     
     if (m_consPathWriter) {
       std::vector<std::string> consPaths;
-      m_consPathWriter->readStream(m_interpreter->getStackPathStreamID(state), 
+      m_consPathWriter->readStream(m_interpreter->getConsPathStreamID(state), 
                                     consPaths);
       auto f = openTestFile("cons.path", id);
       if (f) {

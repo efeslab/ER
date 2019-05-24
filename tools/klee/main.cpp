@@ -89,41 +89,49 @@ namespace {
   cl::opt<bool>
   WriteCVCs("write-cvcs",
             cl::desc("Write .cvc files for each test case (default=false)"),
+            cl::init(false),
             cl::cat(TestCaseCat));
 
   cl::opt<bool>
   WriteKQueries("write-kqueries",
                 cl::desc("Write .kquery files for each test case (default=false)"),
+                cl::init(false),
                 cl::cat(TestCaseCat));
 
   cl::opt<bool>
   WriteSMT2s("write-smt2s",
              cl::desc("Write .smt2 (SMT-LIBv2) files for each test case (default=false)"),
+             cl::init(false),
              cl::cat(TestCaseCat));
 
   cl::opt<bool>
   WriteCov("write-cov",
            cl::desc("Write coverage information for each test case (default=false)"),
+           cl::init(false),
            cl::cat(TestCaseCat));
 
   cl::opt<bool>
   WriteTestInfo("write-test-info",
                 cl::desc("Write additional test case information (default=false)"),
+                cl::init(false),
                 cl::cat(TestCaseCat));
 
   cl::opt<bool>
   WritePaths("write-paths",
              cl::desc("Write .path files for each test case (default=false)"),
+             cl::init(false),
              cl::cat(TestCaseCat));
 
   cl::opt<bool>
   WriteSymPaths("write-sym-paths",
                 cl::desc("Write .sym.path files for each test case (default=false)"),
+                cl::init(false),
                 cl::cat(TestCaseCat));
 
   cl::opt<bool>
   WriteStackPaths("write-stack-paths",
                 cl::desc("Write .stack.path files for each test case (default=false)"),
+                cl::init(false),
                 cl::cat(TestCaseCat));
                 
   cl::opt<bool>
@@ -168,6 +176,7 @@ namespace {
   cl::opt<bool>
   WarnAllExternals("warn-all-external-symbols",
                    cl::desc("Issue a warning on startup for all external symbols (default=false)."),
+                   cl::init(false),
                    cl::cat(StartCat));
   
 
@@ -356,7 +365,7 @@ public:
 };
 
 KleeHandler::KleeHandler(int argc, char **argv)
-    : m_interpreter(0), m_pathWriter(0), m_symPathWriter(0),
+    : m_interpreter(0), m_pathWriter(0), m_symPathWriter(0), m_stackPathWriter(0),
       m_outputDirectory(), m_numTotalTests(0), m_numGeneratedTests(0),
       m_pathsExplored(0), m_argc(argc), m_argv(argv) {
 

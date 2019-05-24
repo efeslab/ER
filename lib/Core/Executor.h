@@ -139,7 +139,7 @@ private:
   MemoryManager *memory;
   std::set<ExecutionState*> states;
   StatsTracker *statsTracker;
-  TreeStreamWriter *pathWriter, *symPathWriter;
+  TreeStreamWriter *pathWriter, *symPathWriter, *stackPathWriter;
   SpecialFunctionHandler *specialFunctionHandler;
   std::vector<TimerInfo*> timers;
   PTree *processTree;
@@ -501,6 +501,8 @@ public:
 
   void setPathWriter(TreeStreamWriter *tsw) override { pathWriter = tsw; }
 
+  void setStackPathWriter(TreeStreamWriter *tsw) override { stackPathWriter = tsw; }
+
   void setSymbolicPathWriter(TreeStreamWriter *tsw) override {
     symPathWriter = tsw;
   }
@@ -540,6 +542,8 @@ public:
   unsigned getPathStreamID(const ExecutionState &state) override;
 
   unsigned getSymbolicPathStreamID(const ExecutionState &state) override;
+
+  unsigned getStackPathStreamID(const ExecutionState &state) override;
 
   void getConstraintLog(const ExecutionState &state, std::string &res,
                         Interpreter::LogType logFormat =

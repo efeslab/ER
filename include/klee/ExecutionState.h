@@ -115,6 +115,10 @@ public:
   /// reach/create this state (both concrete and symbolic)
   TreeOStream pathOS;
 
+  /// @brief History of stack for each branch decision: recording entire stack
+  //  when each brach decision (both concrete and symbolic) is made
+  TreeOStream stackPathOS;
+
   /// @brief History of symbolic path: represents symbolic branches
   /// taken to reach/create this state
   TreeOStream symPathOS;
@@ -177,6 +181,7 @@ public:
 
   bool merge(const ExecutionState &b);
   void dumpStack(llvm::raw_ostream &out) const;
+  void dumpStackPathOS();
 };
 }
 

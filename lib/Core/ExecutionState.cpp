@@ -357,6 +357,13 @@ bool ExecutionState::merge(const ExecutionState &b) {
   return true;
 }
 
+void ExecutionState::dumpStackPathOS() {
+  std::string string_buf;
+  llvm::raw_string_ostream sos(string_buf);
+  dumpStack(sos);
+  stackPathOS << sos.str();
+}
+
 void ExecutionState::dumpStack(llvm::raw_ostream &out) const {
   unsigned idx = 0;
   const KInstruction *target = prevPC;

@@ -436,7 +436,7 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
                    InterpreterHandler *ih)
     : Interpreter(opts), interpreterHandler(ih), searcher(0),
       externalDispatcher(new ExternalDispatcher(ctx)), statsTracker(0),
-      pathWriter(0), symPathWriter(0), specialFunctionHandler(0),
+      pathWriter(0), symPathWriter(0), stackPathWriter(0), specialFunctionHandler(0),
       processTree(0), replayKTest(0), replayPath(0), usingSeeds(0),
       atMemoryLimit(false), inhibitForking(false), haltExecution(false),
       ivcEnabled(false), debugLogBuffer(debugBufferString) {
@@ -1047,6 +1047,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     if (!isInternal) {
       if (pathWriter) {
         current.pathOS << '1';
+        current.dumpStackPathOS();
       }
     }
 
@@ -1055,6 +1056,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     if (!isInternal) {
       if (pathWriter) {
         current.pathOS << '0';
+        current.dumpStackPathOS();
       }
     }
 
@@ -1122,6 +1124,13 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       if (!isInternal) {
         trueState->symPathOS << '1';
         falseState->symPathOS << '0';
+      }
+    }
+    if (stackPathWriter) {
+      falseState->stackPathOS = stackPathWriter->open(current.stackPathOS);
+      if (!isInternal) {
+        trueState->dumpStackPathOS();
+        falseState->dumpStackPathOS();
       }
     }
 
@@ -3865,6 +3874,8 @@ void Executor::runFunctionAsMain(Function *f,
     state->pathOS = pathWriter->open();
   if (symPathWriter)
     state->symPathOS = symPathWriter->open();
+  if (stackPathWriter)
+    state->stackPathOS = stackPathWriter->open();
 
 
   if (statsTracker)
@@ -3927,6 +3938,11 @@ unsigned Executor::getPathStreamID(const ExecutionState &state) {
 unsigned Executor::getSymbolicPathStreamID(const ExecutionState &state) {
   assert(symPathWriter);
   return state.symPathOS.getID();
+}
+
+unsigned Executor::getStackPathStreamID(const ExecutionState &state) {
+  assert(stackPathWriter);
+  return state.stackPathOS.getID();
 }
 
 void Executor::getConstraintLog(const ExecutionState &state, std::string &res,

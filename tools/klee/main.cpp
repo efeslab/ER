@@ -121,6 +121,10 @@ namespace {
                 cl::desc("Write .sym.path files for each test case (default=false)"),
                 cl::cat(TestCaseCat));
 
+  cl::opt<bool>
+  WriteStackPaths("write-stack-paths",
+                cl::desc("Write .stack.path files for each test case (default=false)"),
+                cl::cat(TestCaseCat));
 
   /*** Startup options ***/
 
@@ -300,7 +304,7 @@ extern cl::opt<std::string> MaxTime;
 class KleeHandler : public InterpreterHandler {
 private:
   Interpreter *m_interpreter;
-  TreeStreamWriter *m_pathWriter, *m_symPathWriter;
+  TreeStreamWriter *m_pathWriter, *m_symPathWriter, *m_stackPathWriter;
   std::unique_ptr<llvm::raw_ostream> m_infoFile;
   
   SmallString<128> m_outputDirectory;
@@ -435,6 +439,12 @@ void KleeHandler::setInterpreter(Interpreter *i) {
     assert(m_symPathWriter->good());
     m_interpreter->setSymbolicPathWriter(m_symPathWriter);
   }
+
+  if (WriteStackPaths) {
+    m_stackPathWriter = new TreeStreamWriter(getOutputFilename("stackPaths.ts"));
+    assert(m_stackPathWriter->good());
+    m_interpreter->setStackPathWriter(m_stackPathWriter);
+  }
 }
 
 std::string KleeHandler::getOutputFilename(const std::string &filename) {
@@ -521,7 +531,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
     }
 
     if (m_pathWriter) {
-      std::vector<unsigned char> concreteBranches;
+      std::vector<char> concreteBranches;
       m_pathWriter->readStream(m_interpreter->getPathStreamID(state),
                                concreteBranches);
       auto f = openTestFile("path", id);
@@ -559,13 +569,24 @@ void KleeHandler::processTestCase(const ExecutionState &state,
     }
 
     if (m_symPathWriter) {
-      std::vector<unsigned char> symbolicBranches;
+      std::vector<char> symbolicBranches;
       m_symPathWriter->readStream(m_interpreter->getSymbolicPathStreamID(state),
                                   symbolicBranches);
       auto f = openTestFile("sym.path", id);
       if (f) {
         for (const auto &branch : symbolicBranches) {
           *f << branch << '\n';
+        }
+      }
+    }
+    if (m_stackPathWriter) {
+      std::vector<std::string> stackPaths;
+      m_stackPathWriter->readStream(m_interpreter->getStackPathStreamID(state), stackPaths);
+      auto f = openTestFile("stack.path", id);
+      if (f) {
+        unsigned i = 0;
+        for (const auto s : stackPaths) {
+          *f << i++ << s << '\n';
         }
       }
     }

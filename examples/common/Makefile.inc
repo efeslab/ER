@@ -9,7 +9,9 @@ KLEE_CMD= klee -solver-backend=z3 \
 		--posix-runtime \
 		-use-query-log=solver:kquery \
 		-write-query-stats \
-		-write-query-change
+		-write-query-change \
+		-write-cons-paths \
+		-write-stats-paths
 		#-debug-z3-log-api-interaction=z3-api
 
 .PHONY: record_exec record replay clean
@@ -27,6 +29,6 @@ replay: record_symlink klee.bc
 clean:
 	-rm -rf klee-out-* klee-last klee.bc noklee.bc ${BYTECODE} record_symlink
 help:
-	@echo `make` by default generates klee.bc and noklee.bc depending on the MACRO KLEE_SYMBOLIC
-	@echo use `make record` to run klee with noklee.bc to get path of concrete execution
-	@echo use `make replay` to run klee with klee.bc to replay concrete path during symbolic execution
+	@echo "make" by default generates klee.bc and noklee.bc depending on the MACRO KLEE_SYMBOLIC
+	@echo use "make record" to run klee with noklee.bc to get path of concrete execution
+	@echo use "make replay" to run klee with klee.bc to replay concrete path during symbolic execution

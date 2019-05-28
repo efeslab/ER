@@ -1,7 +1,5 @@
 default: klee.bc noklee.bc
 KLEE_CMD= klee -solver-backend=z3 \
-		-debug-z3-dump-queries=z3queries \
-		-debug-z3-dump-queries-stats \
 		-write-kqueries \
 		-write-paths \
 		-write-sym-paths \
@@ -12,6 +10,8 @@ KLEE_CMD= klee -solver-backend=z3 \
 		-write-query-change \
 		-write-cons-paths \
 		-write-stats-paths
+		#-debug-z3-dump-queries=z3queries \
+		#-debug-z3-dump-queries-stats \
 		#-debug-z3-log-api-interaction=z3-api
 
 .PHONY: record_exec record replay clean

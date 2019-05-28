@@ -519,6 +519,7 @@ KleeHandler::openTestFile(const std::string &suffix, unsigned id) {
 void KleeHandler::processTestCase(const ExecutionState &state,
                                   const char *errorMessage,
                                   const char *errorSuffix) {
+  uint64_t total_queryCost_us = state.queryCost.toMicroseconds();
   if (!WriteNone) {
     std::vector< std::pair<std::string, std::vector<unsigned char> > > out;
     bool success = m_interpreter->getSymbolicSolution(state, out);
@@ -641,14 +642,20 @@ void KleeHandler::processTestCase(const ExecutionState &state,
     }
     
     if (m_statsPathWriter) {
-      std::vector<std::string> statsPaths;
+      std::vector<struct ExecutionStats> statsPaths;
       m_statsPathWriter->readStream(m_interpreter->getStatsPathStreamID(state), 
                                     statsPaths);
       auto f = openTestFile("stats.path", id);
       if (f) {
-        unsigned int i = 0;
-        for (const auto c : statsPaths) {
-          *f << i++ << "\t" << c << '\n';
+        sort(statsPaths.begin(), statsPaths.end(), [](auto a, auto b){return a.queryCost_us < b.queryCost_us;});
+        for (const auto exs : statsPaths) {
+          double queryCost_percent = ((double)(exs.queryCost_us)/total_queryCost_us)*100;
+          *f << "\t Instr " << exs.instructions_cnt << '\n'
+             << "llvm_ir: " << exs.llvm_inst_str << '\n'
+             << "file_loc: " << exs.file_loc << '\n'
+             << "Branches: True(" << exs.trueBranches << "), False(" << exs.falseBranches << ")\n"
+             << "queryCost: " << exs.queryCost_us<< " / " << state.queryCost.toMicroseconds()
+             << " (" << queryCost_percent << ")\n\n";
         }
       }
     }
@@ -1643,4 +1650,3 @@ int main(int argc, char **argv, char **envp) {
 
   return 0;
 }
-                                                                                                                                                                                                                                                                                                                 

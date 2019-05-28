@@ -17,6 +17,7 @@
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 #include "klee/OptionCategories.h"
+#include "CoreStats.h"
 
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
@@ -402,31 +403,22 @@ std::string ExecutionState::getInstructionStr(KInstruction *ki) {
 }
 
 void ExecutionState::dumpStatsPathOS() {
-  std::string string_buf;
-  llvm::raw_string_ostream sos(string_buf);
-  sos << "# Stack: [";
-  auto next = this->stack.begin();
-  ++next;
-  for (auto sfIt = this->stack.begin(), sf_ie = this->stack.end();
-       sfIt != sf_ie; ++sfIt) {
-    sos << "('" << sfIt->kf->function->getName().str() << "',";
-    if (next == this->stack.end()) {
-      sos << this->prevPC->info->line << ", " <<
-                  this->prevPC->info->assemblyLine << ")";
-    } else {
-      sos << next->caller->info->line << ", " <<
-                  next->caller->info->assemblyLine << "), ";
-      ++next;
-    }
+  struct ExecutionStats exstats;
+  static time::Span previous_queryCost;
+  static time::Span zero_queryCost;
+  time::Span current_cost = this->queryCost - previous_queryCost;
+  previous_queryCost = this->queryCost;
+  const InstructionInfo *iinfo = this->prevPC->info;
+  if (current_cost > zero_queryCost) {
+    exstats.instructions_cnt = stats::instructions;
+    llvm::raw_string_ostream sos(exstats.llvm_inst_str);
+    this->prevPC->inst->print(sos);
+    exstats.file_loc = iinfo->file + ":" + std::to_string(iinfo->line);
+    exstats.trueBranches = stats::trueBranches;
+    exstats.falseBranches = stats::falseBranches;
+    exstats.queryCost_us = current_cost.toMicroseconds();
+    statsPathOS << exstats;
   }
-  sos << "]\n";
-
-  sos << "# Instr : " << getInstructionStr(this->prevPC) << "\n";
-  sos << "# depth : " << this->depth << "\n";
-  sos << "# weight : " << this->weight << "\n";
-  sos << "# queryCost : " << this->queryCost << "\n";
-  sos << "\n\n";
-  statsPathOS << sos.str();
 }
 
 void ExecutionState::dumpStack(llvm::raw_ostream &out) const {

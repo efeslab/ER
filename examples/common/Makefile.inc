@@ -19,7 +19,7 @@ record_exec: noklee.bc
 	cp noklee.bc ${BYTECODE}
 	${KLEE_CMD} ${BYTECODE} ${ARGS}
 record_symlink: klee-last
-	ln -sf $(realpath klee-last) record_symlink
+	ln -sfT $(realpath klee-last) record_symlink
 record: record_exec record_symlink
 	@echo Record done!
 

@@ -1062,6 +1062,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       if (consPathWriter)  {
         std::string BufferString;
         llvm::raw_string_ostream ExprWriter(BufferString);
+        ExprWriter << "(" << stats::instructions << ") ";
         condition.get()->print(ExprWriter);
         current.consPathOS << ExprWriter.str();
       }
@@ -1081,6 +1082,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       if (consPathWriter)  {
         std::string BufferString;
         llvm::raw_string_ostream ExprWriter(BufferString);
+        ExprWriter << "(" << stats::instructions << ") ";
         Expr::createIsZero(condition).get()->print(ExprWriter);
         current.consPathOS << ExprWriter.str();
       }
@@ -1168,6 +1170,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         std::string BufferString;
         llvm::raw_string_ostream ExprWriter(BufferString);
         condition.get()->print(ExprWriter);
+        ExprWriter << "(" << stats::instructions << ") ";
         trueState->consPathOS << ExprWriter.str();
         
         Expr::createIsZero(condition).get()->print(ExprWriter);

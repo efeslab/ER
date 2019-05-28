@@ -163,8 +163,6 @@ void Executor::processTimers(ExecutionState *current,
 
           *dump_os << "{";
           *dump_os << "'Instr' : '" << es->getInstructionStr(es->prevPC) << "', ";
-          *dump_os << "'depth' : " << es->depth << ", ";
-          *dump_os << "'weight' : " << es->weight << ", ";
           *dump_os << "'queryCost' : " << es->queryCost << ", ";
           *dump_os << "'coveredNew' : " << es->coveredNew << ", ";
           *dump_os << "'instsSinceCovNew' : " << es->instsSinceCovNew << ", ";
@@ -198,7 +196,9 @@ void Executor::processTimers(ExecutionState *current,
         }
         *(qlSolver->os) << "]\n";
 
-        *(qlSolver->os) << "# Instr : " << es->getInstructionStr(es->prevPC) << "\n";
+        *(qlSolver->os) << "# Instr (" << es->getInstructionStr(es->prevPC) << "): ";
+        es->prevPC->inst->print(*(qlSolver->os));
+        *(qlSolver->os) << '\n';
         *(qlSolver->os) << "# depth : " << es->depth << "\n";
         *(qlSolver->os) << "# weight : " << es->weight << "\n";
         *(qlSolver->os) << "# queryCost : " << es->queryCost << "\n";

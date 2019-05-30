@@ -646,16 +646,23 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       m_statsPathWriter->readStream(m_interpreter->getStatsPathStreamID(state), 
                                     statsPaths);
       auto f = openTestFile("stats.path", id);
+      auto cdf_f = openTestFile("cdf", id);
       if (f) {
-        sort(statsPaths.begin(), statsPaths.end(), [](auto a, auto b){return a.queryCost_us < b.queryCost_us;});
+        sort(statsPaths.begin(), statsPaths.end(), [](auto a, auto b){return a.queryCost_us > b.queryCost_us;});
+        double queryCost_acc = 0.0;
+        char double2char_buf[64];
         for (const auto exs : statsPaths) {
-          double queryCost_percent = ((double)(exs.queryCost_us)/total_queryCost_us)*100;
-          *f << "\t Instr " << exs.instructions_cnt << '\n'
+          double queryCost_percent = ((double)(exs.queryCost_us)/total_queryCost_us);
+          std::snprintf(double2char_buf, sizeof(double2char_buf), "%0.2f%%", queryCost_percent*100);
+          *f << "Instr " << exs.instructions_cnt << '\n'
              << "llvm_ir: " << exs.llvm_inst_str << '\n'
              << "file_loc: " << exs.file_loc << '\n'
              << "Branches: True(" << exs.trueBranches << "), False(" << exs.falseBranches << ")\n"
              << "queryCost: " << exs.queryCost_us<< " / " << state.queryCost.toMicroseconds()
-             << " (" << queryCost_percent << ")\n\n";
+             << " (" << double2char_buf << ")\n\n";
+          queryCost_acc += queryCost_percent;
+          std::snprintf(double2char_buf, sizeof(double2char_buf), "%0.2f", queryCost_acc);
+          *cdf_f << double2char_buf << '\n';
         }
       }
     }

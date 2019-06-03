@@ -1169,10 +1169,12 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       if (!isInternal) {
         std::string BufferString;
         llvm::raw_string_ostream ExprWriter(BufferString);
-        condition.get()->print(ExprWriter);
         ExprWriter << "(" << stats::instructions << ") ";
+        condition.get()->print(ExprWriter);
         trueState->consPathOS << ExprWriter.str();
         
+        BufferString = "";
+        ExprWriter << "(" << stats::instructions << ") ";
         Expr::createIsZero(condition).get()->print(ExprWriter);
         falseState->consPathOS << ExprWriter.str();
       }
@@ -2006,8 +2008,14 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     std::vector< ref<Expr> > arguments;
     arguments.reserve(numArgs);
 
-    for (unsigned j=0; j<numArgs; ++j)
+    for (unsigned j=0; j<numArgs; ++j) {
       arguments.push_back(eval(ki, j+1, state).value);
+      /*
+      std::string BufferString;
+      llvm::raw_string_ostream ExprWriter(BufferString);
+      arguments[j].get()->dump();
+      */
+    }
 
     if (f) {
       const FunctionType *fType =
@@ -3833,11 +3841,11 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
               ((!(AllowSeedExtension || ZeroSeedExtension)
                 && obj->numBytes < mo->size) ||
                (!AllowSeedTruncation && obj->numBytes > mo->size))) {
-	    std::stringstream msg;
-	    msg << "replace size mismatch: "
-		<< mo->name << "[" << mo->size << "]"
-		<< " vs " << obj->name << "[" << obj->numBytes << "]"
-		<< " in test\n";
+        	    std::stringstream msg;
+        	    msg << "replace size mismatch: "
+        		<< mo->name << "[" << mo->size << "]"
+        		<< " vs " << obj->name << "[" << obj->numBytes << "]"
+        		<< " in test\n";
 
             terminateStateOnError(state, msg.str(), User);
             break;

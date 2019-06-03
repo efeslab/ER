@@ -132,8 +132,7 @@ namespace klee {
           } else {
               unsigned len = tag;
               for (unsigned i=0; i < len; ++i) {
-                  T dummy_overload_hint;
-                  skip(is, dummy_overload_hint);
+                  skip(is, T());
               }
           }
       }

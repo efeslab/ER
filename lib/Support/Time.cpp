@@ -156,8 +156,8 @@ time::Span::operator timeval() const {
   return tv;
 }
 
-std::uint64_t time::Span::toMicroseconds() const {
-  return (std::uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+std::int64_t time::Span::toMicroseconds() const {
+  return (std::int64_t)std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
 }
 
 double time::Span::toSeconds() const {

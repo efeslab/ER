@@ -42,12 +42,21 @@ namespace klee {
   inline static void skip(std::istream &is, const uint64_t &uit) {
     is.seekg(sizeof(uit), std::ios::cur);
   }
+  inline static void serialize(std::ostream &os, const int64_t uit) {
+    os.write(reinterpret_cast<const char*>(&uit), sizeof(uit));
+  }
+  inline static void deserialize(std::istream &is, int64_t &uit) {
+    is.read(reinterpret_cast<char*>(&uit), sizeof(uit));
+  }
+  inline static void skip(std::istream &is, const int64_t &uit) {
+    is.seekg(sizeof(uit), std::ios::cur);
+  }
 
   struct ExecutionStats {
     std::string llvm_inst_str;
     std::string file_loc;
     uint64_t instructions_cnt;
-    uint64_t queryCost_us;
+    int64_t queryCost_us;
     uint64_t trueBranches, falseBranches;
   };
   inline static void serialize(std::ostream &os, const struct ExecutionStats &exstats) {

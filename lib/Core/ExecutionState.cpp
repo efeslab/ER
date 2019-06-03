@@ -113,6 +113,7 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     constraints(state.constraints),
 
     queryCost(state.queryCost),
+    previous_queryCost(state.previous_queryCost),
     weight(state.weight),
     depth(state.depth),
 
@@ -404,12 +405,10 @@ std::string ExecutionState::getInstructionStr(KInstruction *ki) {
 
 void ExecutionState::dumpStatsPathOS() {
   struct ExecutionStats exstats;
-  static time::Span previous_queryCost;
-  static time::Span zero_queryCost;
-  time::Span current_cost = this->queryCost - previous_queryCost;
-  previous_queryCost = this->queryCost;
+  time::Span current_cost = queryCost - previous_queryCost;
+  previous_queryCost = queryCost;
   const InstructionInfo *iinfo = this->prevPC->info;
-  if (current_cost > zero_queryCost) {
+  if (current_cost.toMicroseconds() > 0) {
     exstats.instructions_cnt = stats::instructions;
     llvm::raw_string_ostream sos(exstats.llvm_inst_str);
     this->prevPC->inst->print(sos);

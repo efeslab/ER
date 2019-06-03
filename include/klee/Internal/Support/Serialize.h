@@ -12,7 +12,7 @@ namespace klee {
   inline static void deserialize(std::istream &is, char &c) {
     is.get(c);
   }
-  inline static void skip(std::istream &is, char &c) {
+  inline static void skip(std::istream &is, const char &c) {
     is.seekg(sizeof(c), std::ios::cur);
   }
   // std::string serializer
@@ -27,7 +27,7 @@ namespace klee {
     str.resize(size);
     is.read(&str[0], size);
   }
-  inline static void skip(std::istream &is, std::string&) {
+  inline static void skip(std::istream &is, const std::string&) {
     std::string::size_type size;
     is.read(reinterpret_cast<char*>(&size), sizeof(size));
     is.seekg(size, std::ios::cur);
@@ -39,7 +39,7 @@ namespace klee {
   inline static void deserialize(std::istream &is, uint64_t &uit) {
     is.read(reinterpret_cast<char*>(&uit), sizeof(uit));
   }
-  inline static void skip(std::istream &is, uint64_t &uit) {
+  inline static void skip(std::istream &is, const uint64_t &uit) {
     is.seekg(sizeof(uit), std::ios::cur);
   }
 
@@ -66,7 +66,7 @@ namespace klee {
     deserialize(is, exstats.trueBranches);
     deserialize(is, exstats.falseBranches);
   }
-  inline static void skip(std::istream &is, struct ExecutionStats &exstats) {
+  inline static void skip(std::istream &is, const struct ExecutionStats &exstats) {
     skip(is, exstats.llvm_inst_str);
     skip(is, exstats.file_loc);
     skip(is, exstats.instructions_cnt);

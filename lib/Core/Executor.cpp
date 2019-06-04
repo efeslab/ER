@@ -1059,15 +1059,17 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       if (stackPathWriter) {
         current.dumpStackPathOS();
       }
+      
+      std::string BufferString;
+      llvm::raw_string_ostream ExprWriter(BufferString);
+      ExprWriter << "(" << stats::instructions << ") ";
+      condition.get()->print(ExprWriter);
+      
       if (consPathWriter)  {
-        std::string BufferString;
-        llvm::raw_string_ostream ExprWriter(BufferString);
-        ExprWriter << "(" << stats::instructions << ") ";
-        condition.get()->print(ExprWriter);
         current.consPathOS << ExprWriter.str();
       }
       if (statsPathWriter)  {
-        current.dumpStatsPathOS();
+        current.dumpStatsPathOS(BufferString);
       }
     }
     return StatePair(&current, 0);
@@ -1079,15 +1081,17 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       if (stackPathWriter) {
         current.dumpStackPathOS();
       }
+      
+      std::string BufferString;
+      llvm::raw_string_ostream ExprWriter(BufferString);
+      ExprWriter << "(" << stats::instructions << ") ";
+      Expr::createIsZero(condition).get()->print(ExprWriter);
+      
       if (consPathWriter)  {
-        std::string BufferString;
-        llvm::raw_string_ostream ExprWriter(BufferString);
-        ExprWriter << "(" << stats::instructions << ") ";
-        Expr::createIsZero(condition).get()->print(ExprWriter);
         current.consPathOS << ExprWriter.str();
       }
       if (statsPathWriter)  {
-        current.dumpStatsPathOS();
+        current.dumpStatsPathOS(BufferString);
       }
     }
 
@@ -1164,26 +1168,28 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         falseState->dumpStackPathOS();
       }
     }
+    std::string BufferStringTrue;
+    llvm::raw_string_ostream ExprWriterTrue(BufferStringTrue);
+    ExprWriterTrue << "(" << stats::instructions << ") ";
+    condition.get()->print(ExprWriterTrue);
+    
+    std::string BufferStringFalse;
+    llvm::raw_string_ostream ExprWriterFalse(BufferStringFalse);
+    ExprWriterFalse << "(" << stats::instructions << ") ";
+    Expr::createIsZero(condition).get()->print(ExprWriterFalse);
+    
     if (consPathWriter) {
       falseState->consPathOS = consPathWriter->open(current.consPathOS);
       if (!isInternal) {
-        std::string BufferString;
-        llvm::raw_string_ostream ExprWriter(BufferString);
-        ExprWriter << "(" << stats::instructions << ") ";
-        condition.get()->print(ExprWriter);
-        trueState->consPathOS << ExprWriter.str();
-        
-        BufferString = "";
-        ExprWriter << "(" << stats::instructions << ") ";
-        Expr::createIsZero(condition).get()->print(ExprWriter);
-        falseState->consPathOS << ExprWriter.str();
+        trueState->consPathOS << ExprWriterTrue.str();
+        falseState->consPathOS << ExprWriterFalse.str();
       }
     }
     if (statsPathWriter) {
       falseState->statsPathOS = statsPathWriter->open(current.statsPathOS);
       if (!isInternal) {
-        trueState->dumpStatsPathOS();
-        falseState->dumpStatsPathOS();
+        trueState->dumpStatsPathOS(BufferStringTrue);
+        falseState->dumpStatsPathOS(BufferStringFalse);
       }
     }
 

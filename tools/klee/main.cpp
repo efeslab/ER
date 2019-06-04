@@ -651,18 +651,27 @@ void KleeHandler::processTestCase(const ExecutionState &state,
         sort(statsPaths.begin(), statsPaths.end(), [](auto a, auto b){return a.queryCost_us > b.queryCost_us;});
         double queryCost_acc = 0.0;
         char double2char_buf[64];
+        char double2char_increment_buf[64];
         for (const auto exs : statsPaths) {
           double queryCost_percent = ((double)(exs.queryCost_us)/total_queryCost_us);
+          double queryCost_increment_percent = ((double)(exs.queryCost_increment_us)/total_queryCost_us);
           std::snprintf(double2char_buf, sizeof(double2char_buf), "%0.2f%%", queryCost_percent*100);
+          std::snprintf(double2char_increment_buf, sizeof(double2char_increment_buf), 
+                        "%0.2f%%", queryCost_increment_percent*100);
           *f << "Instr " << exs.instructions_cnt << '\n'
              << "llvm_ir: " << exs.llvm_inst_str << '\n'
              << "file_loc: " << exs.file_loc << '\n'
              << "Branches: True(" << exs.trueBranches << "), False(" << exs.falseBranches << ")\n"
+             << "Constraints: " << exs.constraint << "\n"
+             << "Query: " << exs.constraint_increment << "\n"
              << "queryCost: " << exs.queryCost_us<< " / " << state.queryCost.toMicroseconds()
-             << " (" << double2char_buf << ")\n\n";
+             << " (" << double2char_buf << ")\n"
+             << "queryCostIncrement: " << exs.queryCost_increment_us<< " / " << state.queryCost.toMicroseconds()
+             << " (" << double2char_increment_buf << ")\n\n";
           queryCost_acc += queryCost_percent;
           std::snprintf(double2char_buf, sizeof(double2char_buf), "%0.2f", queryCost_acc);
-          *cdf_f << double2char_buf << '\n';
+          std::snprintf(double2char_increment_buf, sizeof(double2char_increment_buf), "%0.2f", queryCost_increment_percent);
+          *cdf_f << double2char_buf << " " << double2char_increment_buf << '\n';
         }
       }
     }

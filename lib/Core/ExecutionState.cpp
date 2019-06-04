@@ -403,9 +403,10 @@ std::string ExecutionState::getInstructionStr(KInstruction *ki) {
  }
 }
 
-void ExecutionState::dumpStatsPathOS() {
+void ExecutionState::dumpStatsPathOS(std::string &con) {
   struct ExecutionStats exstats;
   time::Span current_cost = queryCost - previous_queryCost;
+  time::Span current_cost_increment = current_cost - previous_queryCost;
   previous_queryCost = queryCost;
   const InstructionInfo *iinfo = this->prevPC->info;
   if (current_cost.toMicroseconds() > 0) {
@@ -413,9 +414,19 @@ void ExecutionState::dumpStatsPathOS() {
     llvm::raw_string_ostream sos(exstats.llvm_inst_str);
     this->prevPC->inst->print(sos);
     exstats.file_loc = iinfo->file + ":" + std::to_string(iinfo->line);
+    llvm::raw_string_ostream ExprWriter(exstats.constraint);
+    for (ConstraintManager::const_iterator i = constraints.begin();
+        i != constraints.end(); i++) {
+        (*i)->dump();
+        (*i)->print(ExprWriter);
+    }
+    // exstats.constraint = BufferString;
+    exstats.constraint_increment = con;
+    exstats.queryCost_us = current_cost.toMicroseconds();
+    exstats.queryCost_increment_us = current_cost_increment.toMicroseconds();
+    
     exstats.trueBranches = stats::trueBranches;
     exstats.falseBranches = stats::falseBranches;
-    exstats.queryCost_us = current_cost.toMicroseconds();
     statsPathOS << exstats;
   }
 }

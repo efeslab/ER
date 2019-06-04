@@ -417,8 +417,8 @@ void ExecutionState::dumpStatsPathOS(std::string &con) {
     llvm::raw_string_ostream ExprWriter(exstats.constraint);
     for (ConstraintManager::const_iterator i = constraints.begin();
         i != constraints.end(); i++) {
-        (*i)->dump();
         (*i)->print(ExprWriter);
+        ExprWriter.flush();
     }
     // exstats.constraint = BufferString;
     exstats.constraint_increment = con;

@@ -329,6 +329,11 @@ void Expr::dump() const {
   errs() << "\n";
 }
 
+void Expr::dump(llvm::raw_ostream &os) const {
+  this->print(os);
+  os << "lalala\n";
+}
+
 /***/
 
 ref<Expr> ConstantExpr::fromMemory(void *address, Width width) {

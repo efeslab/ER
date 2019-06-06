@@ -217,8 +217,6 @@ public:
 
   /// dump - Print the expression to stderr.
   void dump() const;
-  
-  void dump(llvm::raw_ostream &os) const;
 
   /// Returns the pre-computed hash of the current expression
   virtual unsigned hash() const { return hashValue; }

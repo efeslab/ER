@@ -5,16 +5,16 @@ KLEE_CMD= klee -solver-backend=z3 \
 		-write-sym-paths \
 		--libc=uclibc \
 		--posix-runtime \
-		-use-query-log=solver:kquery \
 		-write-query-stats \
 		-write-query-change \
 		-write-cons-paths \
 		-write-stats-paths
+		# -use-query-log=solver:kquery \
 		#-debug-z3-dump-queries=z3queries \
 		#-debug-z3-dump-queries-stats \
 		#-debug-z3-log-api-interaction=z3-api
 
-.PHONY: record_exec record replay clean
+.PHONY: record_exec record replay clean fullsym
 record_exec: noklee.bc
 	cp noklee.bc ${BYTECODE}
 	${KLEE_CMD} ${BYTECODE} ${ARGS}
@@ -26,6 +26,10 @@ record: record_exec record_symlink
 replay: record_symlink klee.bc
 	cp klee.bc ${BYTECODE}
 	${KLEE_CMD} --replay-path=record_symlink/test000001.path ${BYTECODE} ${ARGS}
+
+fullsym: klee.bc
+	cp klee.bc ${BYTECODE}
+	${KLEE_CMD} ${BYTECODE} ${ARGS}
 clean:
 	-rm -rf klee-out-* klee-last klee.bc noklee.bc ${BYTECODE} record_symlink
 help:

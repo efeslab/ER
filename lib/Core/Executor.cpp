@@ -906,6 +906,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     seedMap.find(&current);
   bool isSeeding = it != seedMap.end();
 
+  // When (!isSeeding), the condition is non-constant, and states already forked
+  // exceed configured threshold (forked too many || solver costs too many time, etc.):
+  // the following code will pick one possible value (assignment) for the condition,
+  // and add that assignment as a constraint to current state.
   if (!isSeeding && !isa<ConstantExpr>(condition) &&
       (MaxStaticForkPct!=1. || MaxStaticSolvePct != 1. ||
        MaxStaticCPForkPct!=1. || MaxStaticCPSolvePct != 1.) &&
@@ -945,6 +949,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     return StatePair(0, 0);
   }
 
+  bool isAddingNewConstraint = false;
   if (!isSeeding) {
     if (replayPath && !isInternal) {
       assert(replayPosition<replayPath->size() &&
@@ -978,10 +983,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         // add constraints
         if(branch) {
           res = Solver::True;
-          addConstraint(current, condition);
+          isAddingNewConstraint = true;
         } else  {
           res = Solver::False;
-          addConstraint(current, Expr::createIsZero(condition));
+          isAddingNewConstraint = true;
         }
       }
     } else if (res==Solver::Unknown) {
@@ -991,30 +996,33 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
           current.forkDisabled ||
           inhibitForking ||
           (MaxForks!=~0u && stats::forks >= MaxForks)) {
-
-	if (MaxMemoryInhibit && atMemoryLimit)
-	  klee_warning_once(0, "skipping fork (memory cap exceeded)");
-	else if (current.forkDisabled)
-	  klee_warning_once(0, "skipping fork (fork disabled on current path)");
-	else if (inhibitForking)
-	  klee_warning_once(0, "skipping fork (fork disabled globally)");
-	else
-	  klee_warning_once(0, "skipping fork (max-forks reached)");
+        // When (!isSeeding):
+        // Do not fork later, randomly choose a bool value for this unknown fork here.
+        if (MaxMemoryInhibit && atMemoryLimit)
+          klee_warning_once(0, "skipping fork (memory cap exceeded)");
+        else if (current.forkDisabled)
+          klee_warning_once(0, "skipping fork (fork disabled on current path)");
+        else if (inhibitForking)
+          klee_warning_once(0, "skipping fork (fork disabled globally)");
+        else
+          klee_warning_once(0, "skipping fork (max-forks reached)");
 
         TimerStatIncrementer timer(stats::forkTime);
         if (theRNG.getBool()) {
-          addConstraint(current, condition);
           res = Solver::True;
         } else {
-          addConstraint(current, Expr::createIsZero(condition));
           res = Solver::False;
         }
+        isAddingNewConstraint = true;
       }
     }
   }
 
   // Fix branch in only-replay-seed mode, if we don't have both true
   // and false seeds.
+  //
+  // When (isSeeding), do not fork later if current state's SeedInfo will not
+  // cover both true branch and false branch.
   if (isSeeding &&
       (current.forkDisabled || OnlyReplaySeeds) &&
       res == Solver::Unknown) {
@@ -1024,7 +1032,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
            siie = it->second.end(); siit != siie; ++siit) {
       ref<ConstantExpr> res;
       bool success =
-        solver->getValue(current, siit->assignment.evaluate(condition), res);
+        solver->getValue(current, siit->assignment.evaluate(static_cast<const ref<Expr>>(condition)), res);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (res->isTrue()) {
@@ -1039,7 +1047,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       assert(trueSeed || falseSeed);
 
       res = trueSeed ? Solver::True : Solver::False;
-      addConstraint(current, trueSeed ? condition : Expr::createIsZero(condition));
+      isAddingNewConstraint = true;
     }
   }
 
@@ -1051,52 +1059,24 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   // the value it has been fixed at, we should take this as a nice
   // hint to just use the single constraint instead of all the binary
   // search ones. If that makes sense.
-  if (res==Solver::True) {
+  if (res == Solver::True || res == Solver::False) {
+    ref<Expr> new_constraint = (res == Solver::True)?(condition):(Expr::createIsZero(condition));
     if (!isInternal) {
-      if (pathWriter) {
-        current.pathOS << '1';
-      }
-      if (stackPathWriter) {
-        current.dumpStackPathOS();
-      }
-      
-      std::string BufferString;
-      llvm::raw_string_ostream ExprWriter(BufferString);
-      ExprWriter << "(" << stats::instructions << ") ";
-      condition.get()->print(ExprWriter);
-      
-      if (consPathWriter)  {
-        current.consPathOS << ExprWriter.str();
-      }
-      if (statsPathWriter)  {
-        current.dumpStatsPathOS(BufferString);
-      }
+      dumpStateAtFork(current, new_constraint, res);
     }
-    return StatePair(&current, 0);
-  } else if (res==Solver::False) {
-    if (!isInternal) {
-      if (pathWriter) {
-        current.pathOS << '0';
-      }
-      if (stackPathWriter) {
-        current.dumpStackPathOS();
-      }
-      
-      std::string BufferString;
-      llvm::raw_string_ostream ExprWriter(BufferString);
-      ExprWriter << "(" << stats::instructions << ") ";
-      Expr::createIsZero(condition).get()->print(ExprWriter);
-      
-      if (consPathWriter)  {
-        current.consPathOS << ExprWriter.str();
-      }
-      if (statsPathWriter)  {
-        current.dumpStatsPathOS(BufferString);
-      }
+    // dump first, then add new constraint
+    if (isAddingNewConstraint) {
+      addConstraint(current, new_constraint);
     }
-
-    return StatePair(0, &current);
+    if (res == Solver::True) {
+      return StatePair(&current, 0);
+    }
+    else {
+      return StatePair(0, &current);
+    }
   } else {
+    // res is still Solver::Unknown in this branch, which means current state
+    // should fork here.
     TimerStatIncrementer timer(stats::forkTime);
     ExecutionState *falseState, *trueState = &current;
 
@@ -1114,7 +1094,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
              siie = seeds.end(); siit != siie; ++siit) {
         ref<ConstantExpr> res;
         bool success =
-          solver->getValue(current, siit->assignment.evaluate(condition), res);
+          solver->getValue(current, siit->assignment.evaluate(static_cast<const ref<Expr>>(condition)), res);
         assert(success && "FIXME: Unhandled solver failure");
         (void) success;
         if (res->isTrue()) {
@@ -1144,16 +1124,28 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       processTree->split(current.ptreeNode, falseState, trueState);
     falseState->ptreeNode = res.first;
     trueState->ptreeNode = res.second;
+    ref<Expr> true_constraint = condition;
+    ref<Expr> false_constraint = Expr::createIsZero(condition);
 
     if (pathWriter) {
       // Need to update the pathOS.id field of falseState, otherwise the same id
       // is used for both falseState and trueState.
       falseState->pathOS = pathWriter->open(current.pathOS);
-      if (!isInternal) {
-        trueState->pathOS << '1';
-        falseState->pathOS << '0';
-      }
     }
+    if (stackPathWriter) {
+      falseState->stackPathOS = stackPathWriter->open(current.stackPathOS);
+    }
+    if (consPathWriter) {
+      falseState->consPathOS = consPathWriter->open(current.consPathOS);
+    }
+    if (statsPathWriter) {
+      falseState->statsPathOS = statsPathWriter->open(current.statsPathOS);
+    }
+    if (!isInternal) {
+      dumpStateAtFork(*trueState, true_constraint, Solver::True);
+      dumpStateAtFork(*falseState, false_constraint, Solver::False);
+    }
+
     if (symPathWriter) {
       falseState->symPathOS = symPathWriter->open(current.symPathOS);
       if (!isInternal) {
@@ -1161,40 +1153,12 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         falseState->symPathOS << '0';
       }
     }
-    if (stackPathWriter) {
-      falseState->stackPathOS = stackPathWriter->open(current.stackPathOS);
-      if (!isInternal) {
-        trueState->dumpStackPathOS();
-        falseState->dumpStackPathOS();
-      }
-    }
-    std::string BufferStringTrue;
-    llvm::raw_string_ostream ExprWriterTrue(BufferStringTrue);
-    ExprWriterTrue << "(" << stats::instructions << ") ";
-    condition.get()->print(ExprWriterTrue);
-    
-    std::string BufferStringFalse;
-    llvm::raw_string_ostream ExprWriterFalse(BufferStringFalse);
-    ExprWriterFalse << "(" << stats::instructions << ") ";
-    Expr::createIsZero(condition).get()->print(ExprWriterFalse);
-    
-    if (consPathWriter) {
-      falseState->consPathOS = consPathWriter->open(current.consPathOS);
-      if (!isInternal) {
-        trueState->consPathOS << ExprWriterTrue.str();
-        falseState->consPathOS << ExprWriterFalse.str();
-      }
-    }
-    if (statsPathWriter) {
-      falseState->statsPathOS = statsPathWriter->open(current.statsPathOS);
-      if (!isInternal) {
-        trueState->dumpStatsPathOS(BufferStringTrue);
-        falseState->dumpStatsPathOS(BufferStringFalse);
-      }
-    }
 
-    addConstraint(*trueState, condition);
-    addConstraint(*falseState, Expr::createIsZero(condition));
+
+    // when current state forks, all dump is done before actually adding constraint
+    // Such behaviour should be consistent with no-fork situation.
+    addConstraint(*trueState, true_constraint);
+    addConstraint(*falseState, false_constraint);
 
     // Kinda gross, do we even really still want this option?
     if (MaxDepth && MaxDepth<=trueState->depth) {
@@ -4237,6 +4201,26 @@ int *Executor::getErrnoLocation(const ExecutionState &state) const {
 #else
   return __error();
 #endif
+}
+
+void Executor::dumpStateAtFork(ExecutionState &current, ref<Expr> new_constraint, Solver::Validity solvalid) {
+  assert((solvalid == Solver::True || solvalid == Solver::False) && "Don't support dumping Unknown fork");
+  if (pathWriter) {
+    current.pathOS << (solvalid == Solver::True? '1' : '0');
+  }
+  if (stackPathWriter) {
+    current.dumpStackPathOS();
+  }
+  std::string BufferString;
+  llvm::raw_string_ostream ExprWriter(BufferString);
+  ExprWriter << "(" << stats::instructions << ") ";
+  new_constraint.get()->print(ExprWriter);
+  if (consPathWriter) {
+    current.consPathOS << ExprWriter.str();
+  }
+  if (statsPathWriter) {
+    current.dumpStatsPathOS(ExprWriter.str());
+  }
 }
 
 ///

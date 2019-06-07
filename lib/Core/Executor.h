@@ -489,6 +489,7 @@ private:
   void checkMemoryUsage();
   void printDebugInstructions(ExecutionState &state);
   void doDumpStates();
+  void dumpStateAtFork(ExecutionState &current, ref<Expr> condition, Solver::Validity solvalid);
 
 public:
 

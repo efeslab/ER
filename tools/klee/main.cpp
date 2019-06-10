@@ -61,6 +61,7 @@
 #include <iomanip>
 #include <iterator>
 #include <sstream>
+#include <cstdarg>
 
 
 using namespace llvm;
@@ -514,6 +515,19 @@ KleeHandler::openTestFile(const std::string &suffix, unsigned id) {
   return openOutputFile(getTestFilename(suffix, id));
 }
 
+#define FMT_BUF_SIZE 512
+static const char *get_fmt_buf(const char *fmt, ...) {
+  static char buf[FMT_BUF_SIZE];
+  va_list args;
+  va_start(args, fmt);
+  std::vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  return buf;
+}
+// input 0.1 return null terminated char array: "10%"
+static inline const char *double2percent(double f) {
+  return get_fmt_buf("%0.2f%%", f*100);
+}
 
 /* Outputs all files (.ktest, .kquery, .cov etc.) describing a test case */
 void KleeHandler::processTestCase(const ExecutionState &state,
@@ -640,38 +654,39 @@ void KleeHandler::processTestCase(const ExecutionState &state,
         }
       }
     }
-    
+
+    // summary file
+    auto summary_f = openTestFile("summary", id);
+    int64_t fork_queryCost_us = state.fork_queryCost.toMicroseconds();
+    *summary_f << "Fork/Total queryCost: " << get_fmt_buf("%d/%d (%0.2f%%)\n", fork_queryCost_us, total_queryCost_us, (double)(fork_queryCost_us)/total_queryCost_us*100);
+
     if (m_statsPathWriter) {
       std::vector<struct ExecutionStats> statsPaths;
       m_statsPathWriter->readStream(m_interpreter->getStatsPathStreamID(state), 
                                     statsPaths);
       auto f = openTestFile("stats.path", id);
       auto cdf_f = openTestFile("cdf", id);
+      *cdf_f << "# query_increment accumulated to 1.00\n";
       if (f) {
-        sort(statsPaths.begin(), statsPaths.end(), [](auto a, auto b){return a.queryCost_us > b.queryCost_us;});
+        auto last_inst_iter = max_element(statsPaths.begin(), statsPaths.end(), [](auto a, auto b){return a.instructions_cnt < b.instructions_cnt;});
+        int64_t final_queryCost = last_inst_iter->queryCost_us;
+        sort(statsPaths.begin(), statsPaths.end(), [](auto a, auto b){return a.queryCost_increment_us > b.queryCost_increment_us;});
         double queryCost_acc = 0.0;
-        char double2char_buf[64];
-        char double2char_increment_buf[64];
         for (const auto exs : statsPaths) {
           double queryCost_percent = ((double)(exs.queryCost_us)/total_queryCost_us);
-          double queryCost_increment_percent = ((double)(exs.queryCost_increment_us)/total_queryCost_us);
-          std::snprintf(double2char_buf, sizeof(double2char_buf), "%0.2f%%", queryCost_percent*100);
-          std::snprintf(double2char_increment_buf, sizeof(double2char_increment_buf), 
-                        "%0.2f%%", queryCost_increment_percent*100);
+          double queryCost_increment_percent = ((double)(exs.queryCost_increment_us)/final_queryCost);
           *f << "Instr " << exs.instructions_cnt << '\n'
              << "llvm_ir: " << exs.llvm_inst_str << '\n'
              << "file_loc: " << exs.file_loc << '\n'
              << "Branches: True(" << exs.trueBranches << "), False(" << exs.falseBranches << ")\n"
              << "Constraints: " << exs.constraint << "\n"
              << "Query: " << exs.constraint_increment << "\n"
-             << "queryCost: " << exs.queryCost_us<< " / " << state.queryCost.toMicroseconds()
-             << " (" << double2char_buf << ")\n"
-             << "queryCostIncrement: " << exs.queryCost_increment_us<< " / " << state.queryCost.toMicroseconds()
-             << " (" << double2char_increment_buf << ")\n\n";
-          queryCost_acc += queryCost_percent;
-          std::snprintf(double2char_buf, sizeof(double2char_buf), "%0.2f", queryCost_acc);
-          std::snprintf(double2char_increment_buf, sizeof(double2char_increment_buf), "%0.2f", queryCost_increment_percent);
-          *cdf_f << double2char_buf << " " << double2char_increment_buf << '\n';
+             << "queryCost: " << exs.queryCost_us<< " / " << total_queryCost_us
+             << " (" << double2percent(queryCost_percent) << ")\n"
+             << "queryCostIncrement: " << exs.queryCost_increment_us<< " / " << final_queryCost
+             << " (" << double2percent(queryCost_increment_percent) << ")\n\n";
+          queryCost_acc += queryCost_increment_percent;
+          *cdf_f << get_fmt_buf("%f", queryCost_acc) << '\n';
         }
       }
     }

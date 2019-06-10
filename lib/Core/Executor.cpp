@@ -938,11 +938,13 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   }
 
   time::Span timeout = coreSolverTimeout;
+  time::Span fork_queryCost_begin = current.queryCost;
   if (isSeeding)
     timeout *= static_cast<unsigned>(it->second.size());
   solver->setTimeout(timeout);
   bool success = solver->evaluate(current, condition, res);
   solver->setTimeout(time::Span());
+  current.fork_queryCost += current.queryCost - fork_queryCost_begin;
   if (!success) {
     current.pc = current.prevPC;
     terminateStateEarly(current, "Query timed out (fork).");

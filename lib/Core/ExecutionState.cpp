@@ -113,8 +113,9 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     constraints(state.constraints),
 
     queryCost(state.queryCost),
-    previous_queryCost(state.previous_queryCost),
-    previous_queryCost_single(state.previous_queryCost_single),
+    fork_queryCost(state.fork_queryCost),
+    prev_fork_queryCost(state.prev_fork_queryCost),
+    prev_fork_queryCost_single(state.prev_fork_queryCost_single),
     weight(state.weight),
     depth(state.depth),
 
@@ -406,12 +407,12 @@ std::string ExecutionState::getInstructionStr(KInstruction *ki) {
 
 void ExecutionState::dumpStatsPathOS(std::string &con) {
   struct ExecutionStats exstats;
-  time::Span current_cost = queryCost - previous_queryCost;
-  time::Span current_cost_increment = current_cost - previous_queryCost_single;
-  previous_queryCost = queryCost;
+  time::Span current_cost = fork_queryCost - prev_fork_queryCost;
+  time::Span current_cost_increment = current_cost - prev_fork_queryCost_single;
+  prev_fork_queryCost = fork_queryCost;
   const InstructionInfo *iinfo = this->prevPC->info;
   if (current_cost.toMicroseconds() > 0) {
-    previous_queryCost_single = current_cost;
+    prev_fork_queryCost_single = current_cost;
     exstats.instructions_cnt = stats::instructions;
     llvm::raw_string_ostream sos(exstats.llvm_inst_str);
     this->prevPC->inst->print(sos);
@@ -422,7 +423,6 @@ void ExecutionState::dumpStatsPathOS(std::string &con) {
         (*i)->print(ExprWriter);
         ExprWriter.flush();
     }
-    // exstats.constraint = BufferString;
     exstats.constraint_increment = con;
     exstats.queryCost_us = current_cost.toMicroseconds();
     exstats.queryCost_increment_us = current_cost_increment.toMicroseconds();

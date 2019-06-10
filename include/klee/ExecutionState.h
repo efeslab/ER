@@ -104,8 +104,9 @@ public:
 
   /// @brief Costs for all queries issued for this state, in seconds
   mutable time::Span queryCost;
-  mutable time::Span previous_queryCost;
-  mutable time::Span previous_queryCost_single;
+  mutable time::Span fork_queryCost;
+  mutable time::Span prev_fork_queryCost;
+  mutable time::Span prev_fork_queryCost_single;
 
   /// @brief Weight assigned for importance of this state.  Can be
   /// used for searchers to decide what paths to explore

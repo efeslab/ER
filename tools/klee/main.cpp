@@ -533,7 +533,7 @@ static inline const char *double2percent(double f) {
 void KleeHandler::processTestCase(const ExecutionState &state,
                                   const char *errorMessage,
                                   const char *errorSuffix) {
-  uint64_t total_queryCost_us = state.queryCost.toMicroseconds();
+  int64_t total_queryCost_us = state.queryCost.toMicroseconds();
   if (!WriteNone) {
     std::vector< std::pair<std::string, std::vector<unsigned char> > > out;
     bool success = m_interpreter->getSymbolicSolution(state, out);
@@ -669,7 +669,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       *cdf_f << "# query_increment accumulated to 1.00\n";
       if (f) {
         auto last_inst_iter = max_element(statsPaths.begin(), statsPaths.end(), [](auto a, auto b){return a.instructions_cnt < b.instructions_cnt;});
-        int64_t final_queryCost = last_inst_iter->queryCost_us;
+        int64_t final_queryCost = (last_inst_iter == statsPaths.end())? 0 : last_inst_iter->queryCost_us;
         sort(statsPaths.begin(), statsPaths.end(), [](auto a, auto b){return a.queryCost_increment_us > b.queryCost_increment_us;});
         double queryCost_acc = 0.0;
         for (const auto exs : statsPaths) {

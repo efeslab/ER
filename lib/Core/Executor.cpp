@@ -402,11 +402,6 @@ cl::opt<bool> DebugCheckForImpliedValues(
     cl::cat(DebugCat));
 
 /*** HASE options ***/
-cl::opt<std::string> PathRecordingEntryPoint(
-    "pathrec-entry-point", cl::init(""),
-    cl::desc("Path will be recorded after this entry point is called (record all path by default)"),
-    cl::cat(HASECat));
-
 cl::opt<bool>
 WriteQueryStats("write-query-stats",
     cl::init(false),
@@ -966,21 +961,25 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     if (replayPath && !isInternal) {
       assert(replayPosition<replayPath->size() &&
              "ran out of branches in replay path mode");
-      bool branch = (*replayPath)[replayPosition++];
 
       if (res==Solver::True) {
-        // get the constraint and the replayPosition when the assertion fail
-        if (!branch) {
-            std::string constraints;
-            getConstraintLog(current, constraints,Interpreter::KQUERY);
-            auto f = interpreterHandler->openOutputFile("debugKQuery");
-            if (f)
-                *f << constraints;
-            klee_message("replay: %d/%lu res: 1 branch: %d, stack:\n", replayPosition, replayPath->size(), branch);
-            current.dumpStack(llvm::errs());
+        if (current.isInUserMain) {
+          bool branch = (*replayPath)[replayPosition++];
+          // get the constraint and the replayPosition when the assertion fail
+          if (!branch) {
+              std::string constraints;
+              getConstraintLog(current, constraints,Interpreter::KQUERY);
+              auto f = interpreterHandler->openOutputFile("debugKQuery");
+              if (f)
+                  *f << constraints;
+              klee_message("replay: %d/%lu res: 1 branch: %d, stack:\n", replayPosition, replayPath->size(), branch);
+              current.dumpStack(llvm::errs());
+          }
+          assert(branch && "hit invalid branch in replay path mode");
         }
-        assert(branch && "hit invalid branch in replay path mode");
       } else if (res==Solver::False) {
+        if (current.isInUserMain) {
+          bool branch = (*replayPath)[replayPosition++];
           if (branch) {
             std::string constraints;
             getConstraintLog(current, constraints,Interpreter::KQUERY);
@@ -990,10 +989,13 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
             klee_message("replay: %d/%lu res: 0 branch: %d, stack:\n", replayPosition, replayPath->size(), branch);
             current.dumpStack(llvm::errs());
           }
-        assert(!branch && "hit invalid branch in replay path mode");
+          assert(!branch && "hit invalid branch in replay path mode");
+        }
       } else {
         // in replay mode, the branch condition is undecidable
         // add constraints according to recorded replayPath
+        assert(current.isInUserMain && "We assumed that during replay, uClibc doesn't need recorded path, wrong!");
+        bool branch = (*replayPath)[replayPosition++];
         if(branch) {
           res = Solver::True;
           isAddingNewConstraint = true;
@@ -1074,7 +1076,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   // search ones. If that makes sense.
   if (res == Solver::True || res == Solver::False) {
     ref<Expr> new_constraint = (res == Solver::True)?(condition):(Expr::createIsZero(condition));
-    if (!isInternal) {
+    if (!isInternal && current.isInUserMain) {
       dumpStateAtFork(current, new_constraint, res);
     }
     // dump first, then add new constraint
@@ -1155,6 +1157,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       falseState->statsPathOS = statsPathWriter->open(current.statsPathOS);
     }
     if (!isInternal) {
+      assert(current.isInUserMain && "We assumed state fork won't happen in uClibc, wrong!");
       dumpStateAtFork(*trueState, true_constraint, Solver::True);
       dumpStateAtFork(*falseState, false_constraint, Solver::False);
     }

@@ -12,6 +12,7 @@
 #include "klee/ExecutionState.h"
 
 #include "klee/Expr.h"
+#include "klee/OptionCategories.h"
 #include "klee/Internal/Module/Cell.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
@@ -38,6 +39,12 @@ cl::opt<bool> DebugLogStateMerge(
     "debug-log-state-merge", cl::init(false),
     cl::desc("Debug information for underlying state merging (default=false)"),
     cl::cat(MergeCat));
+
+/*** HASE options ***/
+cl::opt<std::string> PathRecordingEntryPoint(
+    "pathrec-entry-point", cl::init(""),
+    cl::desc("Path will be recorded after this entry point is called (record all path by default)"),
+    cl::cat(HASECat));
 }
 
 /***/
@@ -69,7 +76,7 @@ StackFrame::~StackFrame() {
 ExecutionState::ExecutionState(KFunction *kf) :
     pc(kf->instructions),
     prevPC(pc),
-
+    isInUserMain(false),
     weight(1),
     depth(0),
 
@@ -79,6 +86,9 @@ ExecutionState::ExecutionState(KFunction *kf) :
     ptreeNode(0),
     steppedInstructions(0){
   pushFrame(0, kf);
+  if (PathRecordingEntryPoint.empty()) {
+    isInUserMain = true;
+  }
 }
 
 ExecutionState::ExecutionState(const std::vector<ref<Expr> > &assumptions)
@@ -116,6 +126,7 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     fork_queryCost(state.fork_queryCost),
     prev_fork_queryCost(state.prev_fork_queryCost),
     prev_fork_queryCost_single(state.prev_fork_queryCost_single),
+    isInUserMain(state.isInUserMain),
     weight(state.weight),
     depth(state.depth),
 
@@ -154,6 +165,9 @@ ExecutionState *ExecutionState::branch() {
 
 void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
   stack.push_back(StackFrame(caller,kf));
+  if (!isInUserMain && (kf->function->getName() == PathRecordingEntryPoint)) {
+    isInUserMain = true;
+  }
 }
 
 void ExecutionState::popFrame() {
@@ -161,6 +175,9 @@ void ExecutionState::popFrame() {
   for (std::vector<const MemoryObject*>::iterator it = sf.allocas.begin(), 
          ie = sf.allocas.end(); it != ie; ++it)
     addressSpace.unbindObject(*it);
+  if (isInUserMain && (sf.kf->function->getName() == PathRecordingEntryPoint)) {
+    isInUserMain = false;
+  }
   stack.pop_back();
 }
 

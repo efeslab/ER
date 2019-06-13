@@ -108,6 +108,10 @@ public:
   mutable time::Span prev_fork_queryCost;
   mutable time::Span prev_fork_queryCost_single;
 
+  /// Whether Executor executes into __user_main
+  /// It influences whether we should record/replay execution path
+  bool isInUserMain;
+
   /// @brief Weight assigned for importance of this state.  Can be
   /// used for searchers to decide what paths to explore
   double weight;

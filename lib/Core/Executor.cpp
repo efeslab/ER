@@ -4237,6 +4237,7 @@ void debugDumpLLVMIR(llvm::Instruction *llvmir) {
     llvmir->print(llvm::errs());
     llvm::errs() << '\n';
 }
+static llvm::raw_ostream &debugLLVMErrs = llvm::errs();
 
 /*
 void Executor::writeStackKQueries(std::string& buf) {

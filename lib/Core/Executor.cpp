@@ -816,6 +816,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
 void Executor::branch(ExecutionState &state,
                       const std::vector< ref<Expr> > &conditions,
                       std::vector<ExecutionState*> &result) {
+  assert(0 && "Currently we assume there will be no (indirectBr/Switch) since their path is not recorded");
   TimerStatIncrementer timer(stats::forkTime);
   unsigned N = conditions.size();
   assert(N);
@@ -982,7 +983,8 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
           }
         assert(!branch && "hit invalid branch in replay path mode");
       } else {
-        // add constraints
+        // in replay mode, the branch condition is undecidable
+        // add constraints according to recorded replayPath
         if(branch) {
           res = Solver::True;
           isAddingNewConstraint = true;

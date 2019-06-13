@@ -237,7 +237,9 @@ usage: (klee_init_env) [options] [program arguments]\n\
  * and is renamed during POSIX setup */
 int __klee_posix_wrapped_main(int argc, char **argv);
 
-/* This wrapper gets called instead of main if POSIX setup is used */
+/* This wrapper gets called instead of main if POSIX setup is used
+ * And it will be renamed to `__user_main` during POSIX setup
+ */
 int __klee_posix_wrapper(int argcPtr, char **argvPtr) {
   klee_init_env(&argcPtr, &argvPtr);
   return __klee_posix_wrapped_main(argcPtr, argvPtr);

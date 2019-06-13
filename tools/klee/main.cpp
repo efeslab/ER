@@ -1202,6 +1202,9 @@ createLibCWrapper(std::vector<std::unique_ptr<llvm::Module>> &modules,
   std::vector<Type *> fArgs;
   fArgs.push_back(ft->getParamType(1)); // argc
   fArgs.push_back(ft->getParamType(2)); // argv
+  // Here LibC creates another wrapper named "main" to call
+  // original user main function (renamed to "__user_main" above), or
+  // the POSIX wrapper ("__klee_posix_wrapper", renamed to "__user_main" as well before setting up uClibc)
   Function *stub =
       Function::Create(FunctionType::get(Type::getInt32Ty(ctx), fArgs, false),
                        GlobalVariable::ExternalLinkage, intendedFunction,
@@ -1210,6 +1213,9 @@ createLibCWrapper(std::vector<std::unique_ptr<llvm::Module>> &modules,
   llvm::IRBuilder<> Builder(bb);
 
   std::vector<llvm::Value*> args;
+  // Here in the newly created wrapper main function (stub),
+  // explicitly create a function call to libcMainFn.
+  // The first two (and the only two) arguments (argc and argv) of the wrapper are directly passed to libcMainFn
   args.push_back(
       llvm::ConstantExpr::getBitCast(inModuleRefernce, ft->getParamType(0)));
   args.push_back(&*(stub->arg_begin())); // argc

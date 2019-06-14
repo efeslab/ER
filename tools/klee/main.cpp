@@ -533,7 +533,7 @@ static inline const char *double2percent(double f) {
 void KleeHandler::processTestCase(const ExecutionState &state,
                                   const char *errorMessage,
                                   const char *errorSuffix) {
-  uint64_t total_queryCost_us = state.queryCost.toMicroseconds();
+  int64_t total_queryCost_us = state.queryCost.toMicroseconds();
   if (!WriteNone) {
     std::vector< std::pair<std::string, std::vector<unsigned char> > > out;
     bool success = m_interpreter->getSymbolicSolution(state, out);
@@ -669,7 +669,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       *cdf_f << "# query_increment accumulated to 1.00\n";
       if (f) {
         auto last_inst_iter = max_element(statsPaths.begin(), statsPaths.end(), [](auto a, auto b){return a.instructions_cnt < b.instructions_cnt;});
-        int64_t final_queryCost = last_inst_iter->queryCost_us;
+        int64_t final_queryCost = (last_inst_iter == statsPaths.end())? 0 : last_inst_iter->queryCost_us;
         sort(statsPaths.begin(), statsPaths.end(), [](auto a, auto b){return a.queryCost_increment_us > b.queryCost_increment_us;});
         double queryCost_acc = 0.0;
         for (const auto exs : statsPaths) {
@@ -1202,6 +1202,9 @@ createLibCWrapper(std::vector<std::unique_ptr<llvm::Module>> &modules,
   std::vector<Type *> fArgs;
   fArgs.push_back(ft->getParamType(1)); // argc
   fArgs.push_back(ft->getParamType(2)); // argv
+  // Here LibC creates another wrapper named "main" to call
+  // original user main function (renamed to "__user_main" above), or
+  // the POSIX wrapper ("__klee_posix_wrapper", renamed to "__user_main" as well before setting up uClibc)
   Function *stub =
       Function::Create(FunctionType::get(Type::getInt32Ty(ctx), fArgs, false),
                        GlobalVariable::ExternalLinkage, intendedFunction,
@@ -1210,6 +1213,9 @@ createLibCWrapper(std::vector<std::unique_ptr<llvm::Module>> &modules,
   llvm::IRBuilder<> Builder(bb);
 
   std::vector<llvm::Value*> args;
+  // Here in the newly created wrapper main function (stub),
+  // explicitly create a function call to libcMainFn.
+  // The first two (and the only two) arguments (argc and argv) of the wrapper are directly passed to libcMainFn
   args.push_back(
       llvm::ConstantExpr::getBitCast(inModuleRefernce, ft->getParamType(0)));
   args.push_back(&*(stub->arg_begin())); // argc

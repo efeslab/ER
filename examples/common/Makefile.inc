@@ -13,7 +13,8 @@ KLEE_CMD= klee -solver-backend=z3 \
 		#-debug-z3-dump-queries=z3queries \
 		#-debug-z3-dump-queries-stats \
 		#-debug-z3-log-api-interaction=z3-api
-
+KLEE_REPLAY?=000001
+KLEE_OUT_DIR?=record_symlink
 .PHONY: record_exec record replay clean fullsym
 record_exec: noklee.bc
 	cp noklee.bc ${BYTECODE}
@@ -25,7 +26,7 @@ record: record_exec record_symlink
 
 replay: record_symlink klee.bc
 	cp klee.bc ${BYTECODE}
-	${KLEE_CMD} --replay-path=record_symlink/test000001.path ${BYTECODE} ${ARGS}
+	${KLEE_CMD} --replay-path=${KLEE_OUT_DIR}/test${KLEE_REPLAY}.path ${BYTECODE} ${ARGS}
 
 fullsym: klee.bc
 	cp klee.bc ${BYTECODE}

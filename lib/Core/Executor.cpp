@@ -959,8 +959,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   bool isAddingNewConstraint = false;
   if (!isSeeding) {
     if (replayPath && !isInternal) {
-      assert(replayPosition<replayPath->size() &&
-             "ran out of branches in replay path mode");
+      if (replayPosition >= replayPath->size()) {
+        terminateStateEarly(current, "Run out of recorded path");
+        return StatePair(0, 0);
+      }
 
       if (res==Solver::True) {
         if (current.isInUserMain) {

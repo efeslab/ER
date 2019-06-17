@@ -104,6 +104,9 @@ cl::OptionCategory
 
 cl::OptionCategory TestGenCat("Test generation options",
                               "These options impact test generation.");
+
+cl::OptionCategory HASECat("HASE additional options",
+                              "These are additional options related to extended features for HASE");
 } // namespace klee
 
 namespace {
@@ -126,18 +129,6 @@ cl::opt<bool> EmitAllErrors(
     "emit-all-errors", cl::init(false),
     cl::desc("Generate tests cases for all errors "
              "(default=false, i.e. one per (error,instruction) pair)"),
-    cl::cat(TestGenCat));
-
-cl::opt<bool>
-WriteQueryStats("write-query-stats",
-    cl::init(false),
-    cl::desc("Write query states for each instruction (default=false)"),
-    cl::cat(TestGenCat));
-
-cl::opt<bool>
-WriteQueryChange("write-query-change",
-    cl::init(false),
-    cl::desc("Write the stats for query only if there is an change (default=false)"),
     cl::cat(TestGenCat));
 
 /* Constraint solving options */
@@ -409,6 +400,24 @@ cl::opt<bool> DebugCheckForImpliedValues(
     "debug-check-for-implied-values", cl::init(false),
     cl::desc("Debug the implied value optimization"),
     cl::cat(DebugCat));
+
+/*** HASE options ***/
+cl::opt<std::string> PathRecordingEntryPoint(
+    "pathrec-entry-point", cl::init(""),
+    cl::desc("Path will be recorded after this entry point is called (record all path by default)"),
+    cl::cat(HASECat));
+
+cl::opt<bool>
+WriteQueryStats("write-query-stats",
+    cl::init(false),
+    cl::desc("Write query states for each instruction (default=false)"),
+    cl::cat(HASECat));
+
+cl::opt<bool>
+WriteQueryChange("write-query-change",
+    cl::init(false),
+    cl::desc("Write the stats for query only if there is an change (default=false)"),
+    cl::cat(HASECat));
 
 } // namespace
 

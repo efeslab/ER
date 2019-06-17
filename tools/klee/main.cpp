@@ -129,24 +129,6 @@ namespace {
                 cl::init(false),
                 cl::cat(TestCaseCat));
 
-  cl::opt<bool>
-  WriteStackPaths("write-stack-paths",
-                cl::desc("Write .stack.path files for each test case (default=false)"),
-                cl::init(false),
-                cl::cat(TestCaseCat));
-                
-  cl::opt<bool>
-  WriteConsPaths("write-cons-paths",
-                cl::init(false),
-                cl::desc("Write .cons.path files for each test case (default=false)"),
-                cl::cat(TestCaseCat));
-                
-  cl::opt<bool>
-  WriteStatsPaths("write-stats-paths",
-                cl::init(false),
-                cl::desc("Write .stats.path files for each test case (default=false)"),
-                cl::cat(TestCaseCat));                
-
   /*** Startup options ***/
 
   cl::OptionCategory StartCat("Startup options",
@@ -315,6 +297,25 @@ namespace {
            cl::desc("Link the llvm libc++ library into the bitcode (default=false)"),
            cl::init(false),
            cl::cat(LinkCat));
+
+  /*** HASE options ***/
+  cl::opt<bool>
+  WriteStackPaths("write-stack-paths",
+                cl::desc("Write .stack.path files for each test case (default=false)"),
+                cl::init(false),
+                cl::cat(HASECat));
+
+  cl::opt<bool>
+  WriteConsPaths("write-cons-paths",
+                cl::init(false),
+                cl::desc("Write .cons.path files for each test case (default=false)"),
+                cl::cat(HASECat));
+
+  cl::opt<bool>
+  WriteStatsPaths("write-stats-paths",
+                cl::init(false),
+                cl::desc("Write .stats.path files for each test case (default=false)"),
+                cl::cat(HASECat));
 }
 
 namespace klee {

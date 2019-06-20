@@ -112,6 +112,14 @@ public:
   /// It influences whether we should record/replay execution path
   bool isInUserMain;
 
+  /// When IgnorePOSIXPath is set, isInPOSIX will be true if the latest frame in current call stack is a function of POSIX runtime.
+  /// isInPOSIX will be clear to false when frames of POSIX runtime function are poped out.
+  /// When IgnorePOSIXPath is not set, isInPOSIX will be always false even if POSIX runtime function is on the stack.
+  /// It influences whether we should record/replay path trace
+  /// It is designed to filter out all recording happened inside POSIX runtime
+  bool isInPOSIX;
+  unsigned POSIXDepth;
+
   /// @brief Weight assigned for importance of this state.  Can be
   /// used for searchers to decide what paths to explore
   double weight;

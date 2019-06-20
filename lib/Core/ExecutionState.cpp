@@ -45,6 +45,10 @@ cl::opt<std::string> PathRecordingEntryPoint(
     "pathrec-entry-point", cl::init(""),
     cl::desc("Path will be recorded after this entry point is called (record all path by default)"),
     cl::cat(HASECat));
+cl::opt<bool> IgnorePOSIXPath(
+    "ignore-posix-path", cl::init(false),
+    cl::desc("Ignore (not recording or using) path traces inside POSIX runtime (default=false"),
+    cl::cat(HASECat));
 }
 
 /***/
@@ -77,6 +81,8 @@ ExecutionState::ExecutionState(KFunction *kf) :
     pc(kf->instructions),
     prevPC(pc),
     isInUserMain(false),
+    isInPOSIX(false),
+    POSIXDepth(0),
     weight(1),
     depth(0),
 
@@ -127,6 +133,8 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     prev_fork_queryCost(state.prev_fork_queryCost),
     prev_fork_queryCost_single(state.prev_fork_queryCost_single),
     isInUserMain(state.isInUserMain),
+    isInPOSIX(state.isInPOSIX),
+    POSIXDepth(state.POSIXDepth),
     weight(state.weight),
     depth(state.depth),
 
@@ -168,6 +176,12 @@ void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
   if (!isInUserMain && (kf->function->getName() == PathRecordingEntryPoint)) {
     isInUserMain = true;
   }
+  if (isInUserMain && IgnorePOSIXPath && kf->function->hasFnAttribute("InPOSIX")) {
+    if(POSIXDepth == 0) {
+      isInPOSIX=true;
+    }
+    ++POSIXDepth;
+  }
 }
 
 void ExecutionState::popFrame() {
@@ -177,6 +191,12 @@ void ExecutionState::popFrame() {
     addressSpace.unbindObject(*it);
   if (isInUserMain && (sf.kf->function->getName() == PathRecordingEntryPoint)) {
     isInUserMain = false;
+  }
+  if (isInUserMain && IgnorePOSIXPath && sf.kf->function->hasFnAttribute("InPOSIX")) {
+    --POSIXDepth;
+    if (POSIXDepth == 0) {
+      isInPOSIX = false;
+    }
   }
   stack.pop_back();
 }

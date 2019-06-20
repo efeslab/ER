@@ -8,15 +8,25 @@ KLEE_CMD= klee -solver-backend=z3 \
 		-write-query-stats \
 		-write-query-change \
 		-write-cons-paths \
-		-write-stats-paths
+		-write-stats-paths \
+		-env-file=env_file \
+		-output-source=false
 		# -use-query-log=solver:kquery \
 		#-debug-z3-dump-queries=z3queries \
 		#-debug-z3-dump-queries-stats \
 		#-debug-z3-log-api-interaction=z3-api
+ifneq ($(KLEE_PATHREC),)
+	KLEE_CMD += -pathrec-entry-point $(KLEE_PATHREC)
+endif
+ifneq ($(KLEE_IGNORE_POSIX),)
+	KLEE_CMD += -ignore-posix-path=true
+endif
 KLEE_REPLAY?=000001
 KLEE_OUT_DIR?=record_symlink
 .PHONY: record_exec record replay clean fullsym
-record_exec: noklee.bc
+env_file:
+	set > env_file
+record_exec: noklee.bc env_file
 	cp noklee.bc ${BYTECODE}
 	${KLEE_CMD} ${BYTECODE} ${ARGS}
 record_symlink: klee-last
@@ -24,7 +34,7 @@ record_symlink: klee-last
 record: record_exec record_symlink
 	@echo Record done!
 
-replay: record_symlink klee.bc
+replay: record_symlink klee.bc env_file
 	cp klee.bc ${BYTECODE}
 	${KLEE_CMD} --replay-path=${KLEE_OUT_DIR}/test${KLEE_REPLAY}.path ${BYTECODE} ${ARGS}
 

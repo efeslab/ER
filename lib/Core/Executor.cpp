@@ -965,7 +965,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       }
 
       if (res==Solver::True) {
-        if (current.isInUserMain) {
+        if (current.isInUserMain && !current.isInPOSIX) {
           bool branch = (*replayPath)[replayPosition++];
           // get the constraint and the replayPosition when the assertion fail
           if (!branch) {
@@ -980,7 +980,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
           assert(branch && "hit invalid branch in replay path mode");
         }
       } else if (res==Solver::False) {
-        if (current.isInUserMain) {
+        if (current.isInUserMain && !current.isInPOSIX) {
           bool branch = (*replayPath)[replayPosition++];
           if (branch) {
             std::string constraints;
@@ -998,6 +998,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         // add constraints according to recorded replayPath
         assert(current.isInUserMain && "We assumed that during replay, uClibc doesn't need recorded path, wrong!");
         bool branch = (*replayPath)[replayPosition++];
+        assert(!current.isInPOSIX && "We assumed that no constraints will be added inside POSIX runtime, wrong!");
         if(branch) {
           res = Solver::True;
           isAddingNewConstraint = true;
@@ -1067,7 +1068,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       isAddingNewConstraint = true;
     }
   }
-
+  if (isAddingNewConstraint && current.isInPOSIX) {
+    klee_error("Adding new constraint within POSIX runtime");
+    current.dumpStack();
+  }
 
   // XXX - even if the constraint is provable one way or the other we
   // can probably benefit by adding this constraint and allowing it to
@@ -1078,7 +1082,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   // search ones. If that makes sense.
   if (res == Solver::True || res == Solver::False) {
     ref<Expr> new_constraint = (res == Solver::True)?(condition):(Expr::createIsZero(condition));
-    if (!isInternal && current.isInUserMain) {
+    if (!isInternal && current.isInUserMain && !current.isInPOSIX) {
       dumpStateAtFork(current, new_constraint, res);
     }
     // dump first, then add new constraint
@@ -1158,7 +1162,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     if (statsPathWriter) {
       falseState->statsPathOS = statsPathWriter->open(current.statsPathOS);
     }
-    if (!isInternal) {
+    if (!isInternal && !current.isInPOSIX) {
       assert(current.isInUserMain && "We assumed state fork won't happen in uClibc, wrong!");
       dumpStateAtFork(*trueState, true_constraint, Solver::True);
       dumpStateAtFork(*falseState, false_constraint, Solver::False);

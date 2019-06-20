@@ -1375,7 +1375,13 @@ int main(int argc, char **argv, char **envp) {
                         errorMsg))
       klee_error("error loading POSIX support '%s': %s", Path.c_str(),
                  errorMsg.c_str());
-
+    for (auto &pM:loadedModules) {
+      if (pM.get() != mainModule) {
+        for (auto &f:*pM) {
+          f.addFnAttr("InPOSIX", "AddFnAttr!");
+        }
+      }
+    }
     std::string libcPrefix = (Libc == LibcType::UcLibc ? "__user_" : "");
     preparePOSIX(loadedModules, libcPrefix);
   }

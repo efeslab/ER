@@ -966,7 +966,9 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 
       if (res==Solver::True) {
         if (current.isInUserMain && !current.isInPOSIX) {
-          bool branch = (*replayPath)[replayPosition++];
+          PathEntry pe = (*replayPath)[replayPosition++];
+          assert(pe.t == PathEntry::FORK);
+          bool branch = pe.body.br;
           // get the constraint and the replayPosition when the assertion fail
           if (!branch) {
               std::string constraints;
@@ -981,7 +983,9 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         }
       } else if (res==Solver::False) {
         if (current.isInUserMain && !current.isInPOSIX) {
-          bool branch = (*replayPath)[replayPosition++];
+          PathEntry pe = (*replayPath)[replayPosition++];
+          assert(pe.t == PathEntry::FORK);
+          bool branch = pe.body.br;
           if (branch) {
             std::string constraints;
             getConstraintLog(current, constraints,Interpreter::KQUERY);
@@ -997,8 +1001,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         // in replay mode, the branch condition is undecidable
         // add constraints according to recorded replayPath
         assert(current.isInUserMain && "We assumed that during replay, uClibc doesn't need recorded path, wrong!");
-        bool branch = (*replayPath)[replayPosition++];
         assert(!current.isInPOSIX && "We assumed that no constraints will be added inside POSIX runtime, wrong!");
+        PathEntry pe = (*replayPath)[replayPosition++];
+        assert(pe.t == PathEntry::FORK);
+        bool branch = pe.body.br;
         if(branch) {
           res = Solver::True;
           isAddingNewConstraint = true;
@@ -4228,7 +4234,11 @@ int *Executor::getErrnoLocation(const ExecutionState &state) const {
 void Executor::dumpStateAtFork(ExecutionState &current, ref<Expr> new_constraint, Solver::Validity solvalid) {
   assert((solvalid == Solver::True || solvalid == Solver::False) && "Don't support dumping Unknown fork");
   if (pathWriter) {
-    current.pathOS << (solvalid == Solver::True? '1' : '0');
+    PathEntry pe = {
+      .t = PathEntry::FORK,
+      .body = {.br = ((solvalid == Solver::True)? true: false)}
+    };
+    current.pathOS << pe;
   }
   if (stackPathWriter) {
     current.dumpStackPathOS();

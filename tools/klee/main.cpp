@@ -364,7 +364,7 @@ public:
 
   // load a .path file
   static void loadPathFile(std::string name,
-                           std::vector<bool> &buffer);
+                           std::vector<PathEntry> &buffer);
 
   static void getKTestFilesInDir(std::string directoryPath,
                                  std::vector<std::string> &results);
@@ -582,13 +582,13 @@ void KleeHandler::processTestCase(const ExecutionState &state,
     }
 
     if (m_pathWriter) {
-      std::vector<char> concreteBranches;
+      std::vector<PathEntry> concreteBranches;
       m_pathWriter->readStream(m_interpreter->getPathStreamID(state),
                                concreteBranches);
       auto f = openTestFile("path", id);
       if (f) {
-        for (const auto &branch : concreteBranches) {
-          *f << branch << '\n';
+        for (const auto &pe : concreteBranches) {
+          serialize(*f, pe);
         }
       }
     }
@@ -724,17 +724,16 @@ void KleeHandler::processTestCase(const ExecutionState &state,
 
   // load a .path file
 void KleeHandler::loadPathFile(std::string name,
-                                     std::vector<bool> &buffer) {
+                                     std::vector<PathEntry> &buffer) {
   std::ifstream f(name.c_str(), std::ios::in | std::ios::binary);
 
   if (!f.good())
     assert(0 && "unable to open path file");
 
   while (f.good()) {
-    unsigned value;
-    f >> value;
-    buffer.push_back(!!value);
-    f.get();
+    PathEntry pe;
+    deserialize(f, pe);
+    buffer.push_back(pe);
   }
 }
 
@@ -1471,7 +1470,7 @@ int main(int argc, char **argv, char **envp) {
     pArgv[i] = pArg;
   }
 
-  std::vector<bool> replayPath;
+  std::vector<PathEntry> replayPath;
 
   if (ReplayPathFile != "") {
     KleeHandler::loadPathFile(ReplayPathFile, replayPath);

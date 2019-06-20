@@ -198,7 +198,7 @@ private:
   const struct KTest *replayKTest;
 
   /// When non-null a list of branch decisions to be used for replay.
-  const std::vector<bool> *replayPath;
+  const std::vector<PathEntry> *replayPath;
 
   /// The index into the current \ref replayKTest or \ref replayPath
   /// object.
@@ -523,7 +523,7 @@ public:
     replayPosition = 0;
   }
 
-  void setReplayPath(const std::vector<bool> *path) override {
+  void setReplayPath(const std::vector<PathEntry> *path) override {
     assert(!replayKTest && "cannot replay both buffer and path");
     replayPath = path;
     replayPosition = 0;

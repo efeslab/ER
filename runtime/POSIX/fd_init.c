@@ -108,7 +108,8 @@ static unsigned __sym_uint32(const char *name) {
 			 (file offset is always incremented)
    max_failures: maximum number of system call failures */
 void klee_init_fds(unsigned n_files, unsigned file_length,
-                   unsigned stdin_length, int sym_stdout_flag,
+                   unsigned stdin_length, int sym_file_stdin_flag,
+                   int sym_stdout_flag,
                    int save_all_writes_flag, unsigned max_failures) {
   unsigned k;
   char name[7] = "?-data";
@@ -128,6 +129,12 @@ void klee_init_fds(unsigned n_files, unsigned file_length,
     __exe_fs.sym_stdin = malloc(sizeof(*__exe_fs.sym_stdin));
     __create_new_dfile(__exe_fs.sym_stdin, stdin_length, "stdin", &s);
     __exe_env.fds[0].dfile = __exe_fs.sym_stdin;
+    if (sym_file_stdin_flag) {
+      klee_assume(!S_ISCHR(__exe_fs.sym_stdin->stat->st_mode));
+    }
+    else {
+      klee_assume(S_ISCHR(__exe_fs.sym_stdin->stat->st_mode));
+    }
   }
   else __exe_fs.sym_stdin = NULL;
 
@@ -151,6 +158,7 @@ void klee_init_fds(unsigned n_files, unsigned file_length,
     __exe_fs.sym_stdout = malloc(sizeof(*__exe_fs.sym_stdout));
     __create_new_dfile(__exe_fs.sym_stdout, 1024, "stdout", &s);
     __exe_env.fds[1].dfile = __exe_fs.sym_stdout;
+    klee_assume(S_ISCHR(__exe_fs.sym_stdout->stat->st_mode));
     __exe_fs.stdout_writes = 0;
   }
   else __exe_fs.sym_stdout = NULL;

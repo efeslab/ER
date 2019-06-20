@@ -91,6 +91,7 @@ void klee_init_env(int *argcPtr, char ***argvPtr) {
   unsigned max_len, min_argvs, max_argvs;
   unsigned sym_files = 0, sym_file_len = 0;
   unsigned sym_stdin_len = 0;
+  int sym_file_stdin_flag = 0;
   int sym_stdout_flag = 0;
   int save_all_writes_flag = 0;
   int fd_fail = 0;
@@ -111,6 +112,7 @@ usage: (klee_init_env) [options] [program arguments]\n\
   -sym-files <NUM> <N>      - Make NUM symbolic files ('A', 'B', 'C', etc.),\n\
                               each with size N\n\
   -sym-stdin <N>            - Make stdin symbolic with size N.\n\
+  -sym-file-stdin           - Make symbolic stdin behave like piped in from a file if set.\n\
   -sym-stdout               - Make stdout symbolic.\n\
   -save-all-writes          - Allow write operations to execute as expected\n\
                               even if they exceed the file size. If set to 0, all\n\
@@ -197,6 +199,10 @@ usage: (klee_init_env) [options] [program arguments]\n\
         __emit_error(msg);
 
       sym_stdin_len = __str_to_int(argv[k++], msg);
+    } else if (__streq(argv[k], "--sym-file-stdin") ||
+               __streq(argv[k], "-sym-file-stdin")) {
+      sym_file_stdin_flag = 1;
+      k++;
     } else if (__streq(argv[k], "--sym-stdout") ||
                __streq(argv[k], "-sym-stdout")) {
       sym_stdout_flag = 1;
@@ -221,6 +227,9 @@ usage: (klee_init_env) [options] [program arguments]\n\
     }
   }
 
+  if (!sym_stdin_len && sym_file_stdin_flag) {
+    __emit_error("--sym-file-stdin shouldn't be set along without --sym-stdin");
+  }
   final_argv = (char **)malloc((new_argc + 1) * sizeof(*final_argv));
   klee_mark_global(final_argv);
   memcpy(final_argv, new_argv, new_argc * sizeof(*final_argv));
@@ -229,7 +238,7 @@ usage: (klee_init_env) [options] [program arguments]\n\
   *argcPtr = new_argc;
   *argvPtr = final_argv;
 
-  klee_init_fds(sym_files, sym_file_len, sym_stdin_len, sym_stdout_flag,
+  klee_init_fds(sym_files, sym_file_len, sym_stdin_len, sym_file_stdin_flag, sym_stdout_flag,
                 save_all_writes_flag, fd_fail);
 }
 

@@ -1154,20 +1154,6 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     ref<Expr> true_constraint = condition;
     ref<Expr> false_constraint = Expr::createIsZero(condition);
 
-    if (pathWriter) {
-      // Need to update the pathOS.id field of falseState, otherwise the same id
-      // is used for both falseState and trueState.
-      falseState->pathOS = pathWriter->open(current.pathOS);
-    }
-    if (stackPathWriter) {
-      falseState->stackPathOS = stackPathWriter->open(current.stackPathOS);
-    }
-    if (consPathWriter) {
-      falseState->consPathOS = consPathWriter->open(current.consPathOS);
-    }
-    if (statsPathWriter) {
-      falseState->statsPathOS = statsPathWriter->open(current.statsPathOS);
-    }
     if (!isInternal && !current.isInPOSIX) {
       assert(current.isInUserMain && "We assumed state fork won't happen in uClibc, wrong!");
       dumpStateAtFork(*trueState, true_constraint, Solver::True);

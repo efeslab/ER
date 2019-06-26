@@ -168,6 +168,22 @@ ExecutionState *ExecutionState::branch() {
   weight *= .5;
   falseState->weight -= weight;
 
+  // initialize PathOS based on existence of existing PathOS field
+  if (pathOS.isValid()) {
+    // Need to update the pathOS.id field of falseState, otherwise the same id
+    // is used for both falseState and trueState.
+    falseState->pathOS = pathOS.branch();
+  }
+  if (stackPathOS.isValid()) {
+    falseState->stackPathOS = stackPathOS.branch();
+  }
+  if (consPathOS.isValid()) {
+    falseState->consPathOS = consPathOS.branch();
+  }
+  if (statsPathOS.isValid()) {
+    falseState->statsPathOS = statsPathOS.branch();
+  }
+
   return falseState;
 }
 

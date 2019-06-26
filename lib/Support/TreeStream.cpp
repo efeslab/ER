@@ -88,7 +88,7 @@ void TreeStreamWriter::flush() {
 }
 
 TreeOStream::TreeOStream()
-  : writer(0),
+  : writer(NULL),
     id(0) {
 }
 

@@ -47,7 +47,7 @@ namespace klee {
     unsigned numInstructions;
     KInstruction **instructions;
 
-    std::map<llvm::BasicBlock*, unsigned> basicBlockEntry;
+    std::map<const llvm::BasicBlock*, unsigned> basicBlockEntry;
 
     /// Whether instructions in this function should count as
     /// "coverable" for statistics and search heuristics.

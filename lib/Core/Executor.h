@@ -267,7 +267,7 @@ private:
 
   void stepInstruction(ExecutionState &state);
   void updateStates(ExecutionState *current);
-  void transferToBasicBlock(llvm::BasicBlock *dst,
+  void transferToBasicBlock(const llvm::BasicBlock *dst,
 			    llvm::BasicBlock *src,
 			    ExecutionState &state);
 
@@ -489,6 +489,7 @@ private:
   void checkMemoryUsage();
   void printDebugInstructions(ExecutionState &state);
   void doDumpStates();
+  void dumpStateAtBranch(ExecutionState &state, PathEntry pe, ref<Expr> new_constraint);
   void dumpStateAtFork(ExecutionState &current, ref<Expr> condition, Solver::Validity solvalid);
 
 public:

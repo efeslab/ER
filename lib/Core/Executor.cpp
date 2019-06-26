@@ -976,7 +976,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
               auto f = interpreterHandler->openOutputFile("debugKQuery");
               if (f)
                   *f << constraints;
-              klee_message("replay: %d/%lu res: 1 branch: %d, stack:\n", replayPosition, replayPath->size(), branch);
+              klee_message("replay: %d/%lu res: 1 branch: %d, stack:\n", replayPosition-1, replayPath->size(), branch);
               current.dumpStack(llvm::errs());
           }
           assert(branch && "hit invalid branch in replay path mode");
@@ -992,7 +992,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
             auto f = interpreterHandler->openOutputFile("debugKQuery");
             if (f)
                 *f << constraints;
-            klee_message("replay: %d/%lu res: 0 branch: %d, stack:\n", replayPosition, replayPath->size(), branch);
+            klee_message("replay: %d/%lu res: 0 branch: %d, stack:\n", replayPosition-1, replayPath->size(), branch);
             current.dumpStack(llvm::errs());
           }
           assert(!branch && "hit invalid branch in replay path mode");

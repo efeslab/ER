@@ -204,6 +204,8 @@ public:
   void addConstraint(ref<Expr> e) { constraints.addConstraint(e); }
 
   bool merge(const ExecutionState &b);
+  void dumpConstraints(llvm::raw_ostream &out) const;
+  void dumpConstraints() const;
   void dumpStack(llvm::raw_ostream &out) const;
   void dumpStack() const;
   void dumpStackPathOS();

@@ -455,11 +455,8 @@ void ExecutionState::dumpStatsPathOS(std::string &con) {
     this->prevPC->inst->print(sos);
     exstats.file_loc = iinfo->file + ":" + std::to_string(iinfo->line);
     llvm::raw_string_ostream ExprWriter(exstats.constraint);
-    for (ConstraintManager::const_iterator i = constraints.begin();
-        i != constraints.end(); i++) {
-        (*i)->print(ExprWriter);
-        ExprWriter.flush();
-    }
+    dumpConstraints(ExprWriter);
+    ExprWriter.flush();
     exstats.constraint_increment = con;
     exstats.queryCost_us = current_cost.toMicroseconds();
     exstats.queryCost_increment_us = current_cost_increment.toMicroseconds();
@@ -468,6 +465,16 @@ void ExecutionState::dumpStatsPathOS(std::string &con) {
     exstats.falseBranches = stats::falseBranches;
     statsPathOS << exstats;
   }
+}
+
+void ExecutionState::dumpConstraints(llvm::raw_ostream &out) const {
+  for (ConstraintManager::const_iterator i = constraints.begin();
+      i != constraints.end(); i++) {
+    (*i)->print(out);
+  }
+}
+void ExecutionState::dumpConstraints() const {
+  dumpConstraints(llvm::errs());
 }
 
 void ExecutionState::dumpStack(llvm::raw_ostream &out) const {

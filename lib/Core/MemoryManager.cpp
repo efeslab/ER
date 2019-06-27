@@ -19,6 +19,7 @@
 
 #include <inttypes.h>
 #include <sys/mman.h>
+#include <malloc.h>
 
 using namespace klee;
 
@@ -146,8 +147,12 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
     }
   }
 
-  if (!address)
+  if (!address) {
     return 0;
+  }
+  else {
+    size = malloc_usable_size((void*)(address));
+  }
 
   ++stats::allocations;
   MemoryObject *res = new MemoryObject(address, size, isLocal, isGlobal, false,

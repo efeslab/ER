@@ -819,10 +819,13 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
     } 
 
     // FIXME: Type coercion should be done consistently somewhere.
+    // Since some programs (e.g. sqlite) want to use `malloc_usable_size`,
+    // the size of allocated MemoryObjects is adjusted to "usable size", instead of user requested size.
+    // So we only assert Ule instead of Eq here.
     bool res;
     bool success __attribute__ ((unused)) =
       executor.solver->mustBeTrue(*s, 
-                                  EqExpr::create(ZExtExpr::create(arguments[1],
+                                  UleExpr::create(ZExtExpr::create(arguments[1],
                                                                   Context::get().getPointerWidth()),
                                                  mo->getSizeExpr()),
                                   res);

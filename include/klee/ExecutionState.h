@@ -157,6 +157,10 @@ public:
   /// @brief Disables forking for this state. Set by user code
   bool forkDisabled;
 
+  /// The index into the current \ref replayKTest or \ref replayPath
+  /// object.
+  unsigned replayPosition;
+
   /// @brief Set containing which lines in which files are covered by this state
   std::map<const std::string *, std::set<unsigned> > coveredLines;
 
@@ -182,7 +186,7 @@ public:
   std::uint64_t steppedInstructions;
 
 private:
-  ExecutionState() : ptreeNode(0) {}
+  ExecutionState() : replayPosition(0), ptreeNode(0) {}
 
 public:
   ExecutionState(KFunction *kf);

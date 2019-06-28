@@ -274,7 +274,9 @@ cl::list<Executor::TerminateReason> ExitOnErrorType(
                    "klee_report_error called"),
         clEnumValN(Executor::User, "User", "Wrong klee_* functions invocation"),
         clEnumValN(Executor::Unhandled, "Unhandled",
-                   "Unhandled instruction hit") KLEE_LLVM_CL_VAL_END),
+                   "Unhandled instruction hit"),
+         clEnumValN(Executor::ReplayPath, "ReplayPath",
+                    "Hit invalid branch in replay") KLEE_LLVM_CL_VAL_END),
     cl::ZeroOrMore,
     cl::cat(TerminationCat));
 
@@ -434,6 +436,7 @@ const char *Executor::TerminateReasonNames[] = {
   [ ReportError ] = "reporterror",
   [ User ] = "user",
   [ Unhandled ] = "xxx",
+  [ ReplayPath ] = "replaypath",
 };
 
 Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
@@ -962,15 +965,16 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 
   bool isAddingNewConstraint = false;
   if (!isSeeding) {
+    // klee_message("replay: %d, res: %d, isSeeding: %d, Internal: %d", replayPosition, res, isSeeding, isInternal);
     if (replayPath && !isInternal) {
-      if (replayPosition >= replayPath->size()) {
+      if (current.replayPosition >= replayPath->size()) {
         terminateStateEarly(current, "Run out of recorded path");
         return StatePair(0, 0);
       }
 
       if (res==Solver::True) {
         if (current.isInUserMain && !current.isInPOSIX) {
-          PathEntry pe = (*replayPath)[replayPosition++];
+          PathEntry pe = (*replayPath)[current.replayPosition++];
           assert(pe.t == PathEntry::FORK);
           bool branch = pe.body.br;
           // get the constraint and the replayPosition when the assertion fail
@@ -980,14 +984,15 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
               auto f = interpreterHandler->openOutputFile("debugKQuery");
               if (f)
                   *f << constraints;
-              klee_message("replay: %d/%lu res: 1 branch: %d, stack:\n", replayPosition-1, replayPath->size(), branch);
+              klee_message("replay: %d/%lu res: 1 branch: %d, stack:\n", current.replayPosition-1, replayPath->size(), branch);
               current.dumpStack(llvm::errs());
+			  terminateStateOnError(current, "hit invalid branch in replay path mode", ReplayPath);
           }
-          assert(branch && "hit invalid branch in replay path mode");
+          // assert(branch && "hit invalid branch in replay path mode");
         }
       } else if (res==Solver::False) {
         if (current.isInUserMain && !current.isInPOSIX) {
-          PathEntry pe = (*replayPath)[replayPosition++];
+          PathEntry pe = (*replayPath)[current.replayPosition++];
           assert(pe.t == PathEntry::FORK);
           bool branch = pe.body.br;
           if (branch) {
@@ -996,17 +1001,18 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
             auto f = interpreterHandler->openOutputFile("debugKQuery");
             if (f)
                 *f << constraints;
-            klee_message("replay: %d/%lu res: 0 branch: %d, stack:\n", replayPosition-1, replayPath->size(), branch);
+            klee_message("replay: %d/%lu res: 0 branch: %d, stack:\n", current.replayPosition-1, replayPath->size(), branch);
             current.dumpStack(llvm::errs());
+            terminateStateOnError(current, "hit invalid branch in replay path mode", ReplayPath);
           }
-          assert(!branch && "hit invalid branch in replay path mode");
+          // assert(!branch && "hit invalid branch in replay path mode");
         }
       } else {
         // in replay mode, the branch condition is undecidable
         // add constraints according to recorded replayPath
         assert(current.isInUserMain && "We assumed that during replay, uClibc doesn't need recorded path, wrong!");
         assert(!current.isInPOSIX && "We assumed that no constraints will be added inside POSIX runtime, wrong!");
-        PathEntry pe = (*replayPath)[replayPosition++];
+        PathEntry pe = (*replayPath)[current.replayPosition++];
         assert(pe.t == PathEntry::FORK);
         bool branch = pe.body.br;
         if(branch) {
@@ -1112,7 +1118,8 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     ExecutionState *falseState, *trueState = &current;
 
     ++stats::forks;
-
+    
+    // klee_message("***replay: %d, res: %d, isSeeding: %d", replayPosition, res, isSeeding);
     falseState = trueState->branch();
     addedStates.push_back(falseState);
 
@@ -1844,7 +1851,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         PathEntry pe;
         if (replayPath) {
           // replaying, check
-          pe = (*replayPath)[replayPosition++];
+          pe = (*replayPath)[state.replayPosition++];
           assert((pe.t == PathEntry::INDIRECTBR) &&
               "When replaying Instruction::IndirectBr concrete address, wrong PathEntry Type");
           assert((pe.body.indirectbrIndex == bbindex_find_it->second) &&
@@ -1864,7 +1871,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     std::vector<ExecutionState *> branches;
     if (state.isInUserMain && !state.isInPOSIX && replayPath) {
       PathEntry pe;
-      pe = (*replayPath)[replayPosition++];
+      pe = (*replayPath)[state.replayPosition++];
       assert((pe.t == PathEntry::INDIRECTBR) &&
           "When replaying Instruction::IndirectBr symbolic address, wrong PathEntry Type");
       PathEntry::indirectbrIndex_t index = pe.body.indirectbrIndex;
@@ -1982,7 +1989,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       if (state.isInUserMain && !state.isInPOSIX) { // need to consider record/replay
         PathEntry pe;
         if (replayPath) { // replaying
-          pe = (*replayPath)[replayPosition++];
+          pe = (*replayPath)[state.replayPosition++];
           assert((pe.t == PathEntry::SWITCH) && "When replaying Instruction::Switch concrete condition, wrong PathEntry Type");
           assert((pe.body.switchIndex == find_it->second) && "When replaying Instruction::Switch concrete condition, recorded index mismatch");
         }
@@ -2072,7 +2079,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       // Since the construction of bbOrder does not involve runtime info, the order of succeeding basicblocks should be fixed
       if (state.isInUserMain && !state.isInPOSIX && replayPath) {
         PathEntry pe;
-        pe = (*replayPath)[replayPosition++];
+        pe = (*replayPath)[state.replayPosition++];
         assert((pe.t == PathEntry::SWITCH) && "When replaying Instruction::Switch symbolic condition, wrong PathEntry type");
         PathEntry::switchIndex_t index = pe.body.switchIndex;
         assert(
@@ -3318,7 +3325,7 @@ void Executor::continueState(ExecutionState &state){
 }
 
 void Executor::terminateState(ExecutionState &state) {
-  if (replayKTest && replayPosition!=replayKTest->numObjects) {
+  if (replayKTest && state.replayPosition!=replayKTest->numObjects) {
     klee_warning_once(replayKTest,
                       "replay did not consume all objects in test input.");
   }
@@ -4005,10 +4012,10 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
     }
   } else {
     ObjectState *os = bindObjectInState(state, mo, false);
-    if (replayPosition >= replayKTest->numObjects) {
+    if (state.replayPosition >= replayKTest->numObjects) {
       terminateStateOnError(state, "replay count mismatch", User);
     } else {
-      KTestObject *obj = &replayKTest->objects[replayPosition++];
+      KTestObject *obj = &replayKTest->objects[state.replayPosition++];
       if (obj->numBytes != mo->size) {
         terminateStateOnError(state, "replay size mismatch", User);
       } else {
@@ -4173,7 +4180,25 @@ void Executor::getConstraintLog(const ExecutionState &state, std::string &res,
   case KQUERY: {
     std::string Str;
     llvm::raw_string_ostream info(Str);
-    ExprPPrinter::printConstraints(info, state.constraints);
+    
+    const ref<Expr>* evalExprsBegin = 0;
+    const ref<Expr>* evalExprsEnd = 0;
+
+    const Array* const *evalArraysBegin = 0;
+    const Array* const *evalArraysEnd = 0;
+    
+    std::vector<const Array*> objects;
+    for (unsigned i = 0; i != state.symbolics.size(); ++i)
+      objects.push_back(state.symbolics[i].second);
+
+    if (!objects.empty()) {
+        evalArraysBegin = &(objects[0]);
+        evalArraysEnd = &(objects[0]) + objects.size();
+    }
+    
+    ExprPPrinter::printQuery(info, state.constraints, ConstantExpr::alloc(false, Expr::Bool),
+                        evalExprsBegin, evalExprsEnd,
+                        evalArraysBegin, evalArraysEnd);
     res = info.str();
   } break;
 

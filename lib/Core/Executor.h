@@ -117,7 +117,8 @@ public:
     ReadOnly,
     ReportError,
     User,
-    Unhandled
+    Unhandled,
+    ReplayPath
   };
 
   QueryLoggingSolver* qlSolver = nullptr;
@@ -201,8 +202,8 @@ private:
   const std::vector<PathEntry> *replayPath;
 
   /// The index into the current \ref replayKTest or \ref replayPath
-  /// object.
-  unsigned replayPosition;
+  /// object. (moved inside ExecutionState, since we might replay multiple states at the same time)
+  /// unsigned replayPosition;
 
   /// When non-null a list of "seed" inputs which will be used to
   /// drive execution.
@@ -521,13 +522,11 @@ public:
   void setReplayKTest(const struct KTest *out) override {
     assert(!replayPath && "cannot replay both buffer and path");
     replayKTest = out;
-    replayPosition = 0;
   }
 
   void setReplayPath(const std::vector<PathEntry> *path) override {
     assert(!replayKTest && "cannot replay both buffer and path");
     replayPath = path;
-    replayPosition = 0;
   }
 
   llvm::Module *setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,

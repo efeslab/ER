@@ -89,6 +89,7 @@ ExecutionState::ExecutionState(KFunction *kf) :
     instsSinceCovNew(0),
     coveredNew(false),
     forkDisabled(false),
+    replayPosition(0),
     ptreeNode(0),
     steppedInstructions(0){
   pushFrame(0, kf);
@@ -98,7 +99,7 @@ ExecutionState::ExecutionState(KFunction *kf) :
 }
 
 ExecutionState::ExecutionState(const std::vector<ref<Expr> > &assumptions)
-    : constraints(assumptions), ptreeNode(0) {}
+    : constraints(assumptions), replayPosition(0), ptreeNode(0) {}
 
 ExecutionState::~ExecutionState() {
   for (unsigned int i=0; i<symbolics.size(); i++)
@@ -144,6 +145,9 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     instsSinceCovNew(state.instsSinceCovNew),
     coveredNew(state.coveredNew),
     forkDisabled(state.forkDisabled),
+
+    replayPosition(state.replayPosition),
+
     coveredLines(state.coveredLines),
     ptreeNode(state.ptreeNode),
     symbolics(state.symbolics),

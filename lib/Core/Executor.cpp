@@ -986,7 +986,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
                   *f << constraints;
               klee_message("replay: %d/%lu res: 1 branch: %d, stack:\n", current.replayPosition-1, replayPath->size(), branch);
               current.dumpStack(llvm::errs());
-			  terminateStateOnError(current, "hit invalid branch in replay path mode", ReplayPath);
+			        terminateStateOnError(current, "hit invalid branch in replay path mode", ReplayPath);
           }
           // assert(branch && "hit invalid branch in replay path mode");
         }
@@ -1119,7 +1119,6 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 
     ++stats::forks;
     
-    // klee_message("***replay: %d, res: %d, isSeeding: %d", replayPosition, res, isSeeding);
     falseState = trueState->branch();
     addedStates.push_back(falseState);
 

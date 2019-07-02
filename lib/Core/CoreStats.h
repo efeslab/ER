@@ -24,8 +24,23 @@ namespace stats {
   extern Statistic uncoveredInstructions;  
   extern Statistic trueBranches;
   extern Statistic falseBranches;
-  extern Statistic forkTime;
   extern Statistic solverTime;
+
+  // HASE related statistics
+  // ** internal function
+  extern Statistic dummy1;
+  extern Statistic forkTime;
+  extern Statistic branchTime;
+  extern Statistic executeAllocTime;
+  extern Statistic executeMemopTime;
+  // ** llvm ir instruction
+  extern Statistic dummy2;
+  extern Statistic switchTime;
+  extern Statistic indirectBrTime;
+  extern Statistic brTime;
+  extern Statistic callTime;
+  extern Statistic allocaTime;
+  extern Statistic dummy3;
 
   /// The number of process forks.
   extern Statistic forks;

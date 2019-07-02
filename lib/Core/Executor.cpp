@@ -810,7 +810,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
 void Executor::branch(ExecutionState &state,
                       const std::vector< ref<Expr> > &conditions,
                       std::vector<ExecutionState*> &result) {
-  TimerStatIncrementer timer(stats::forkTime);
+  TimerStatIncrementer timer(stats::branchTime);
   unsigned N = conditions.size();
   assert(N);
   std::map< ExecutionState*, std::vector<SeedInfo> >::iterator it =
@@ -900,6 +900,7 @@ void Executor::branch(ExecutionState &state,
 
 Executor::StatePair
 Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
+  TimerStatIncrementer timer(stats::forkTime);
   Solver::Validity res;
   std::map< ExecutionState*, std::vector<SeedInfo> >::iterator it =
     seedMap.find(&current);
@@ -1028,7 +1029,6 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         else
           klee_warning_once(0, "skipping fork (max-forks reached)");
 
-        TimerStatIncrementer timer(stats::forkTime);
         if (theRNG.getBool()) {
           res = Solver::True;
         } else {
@@ -1101,7 +1101,6 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   } else {
     // res is still Solver::Unknown in this branch, which means current state
     // should fork here.
-    TimerStatIncrementer timer(stats::forkTime);
     ExecutionState *falseState, *trueState = &current;
 
     ++stats::forks;
@@ -1742,6 +1741,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     break;
   }
   case Instruction::Br: {
+    TimerStatIncrementer timer(stats::brTime);
     BranchInst *bi = cast<BranchInst>(i);
     if (bi->isUnconditional()) {
       transferToBasicBlock(bi->getSuccessor(0), bi->getParent(), state);
@@ -1769,6 +1769,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     break;
   }
   case Instruction::IndirectBr: {
+    TimerStatIncrementer timer(stats::indirectBrTime);
     // implements indirect branch to a label within the current function
     const auto bi = cast<IndirectBrInst>(i);
     BasicBlock *parentbb = bi->getParent();
@@ -1918,6 +1919,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     break;
   }
   case Instruction::Switch: {
+    TimerStatIncrementer timer(stats::switchTime);
     SwitchInst *si = cast<SwitchInst>(i);
     ref<Expr> cond = eval(ki, 0, state).value;
     BasicBlock *parentbb = si->getParent();
@@ -2122,6 +2124,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
   case Instruction::Invoke:
   case Instruction::Call: {
+    TimerStatIncrementer time(stats::callTime);
     // Ignore debug intrinsic calls
     if (isa<DbgInfoIntrinsic>(i))
       break;
@@ -2455,6 +2458,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     // Memory instructions...
   case Instruction::Alloca: {
+    TimerStatIncrementer timer(stats::allocaTime);
     AllocaInst *ai = cast<AllocaInst>(i);
     unsigned elementSize =
       kmodule->targetData->getTypeStoreSize(ai->getAllocatedType());
@@ -3606,6 +3610,7 @@ void Executor::executeAlloc(ExecutionState &state,
                             bool zeroMemory,
                             const ObjectState *reallocFrom,
                             size_t allocationAlignment) {
+  TimerStatIncrementer timer(stats::executeAllocTime);
   size = toUnique(state, size);
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(size)) {
     const llvm::Value *allocSite = state.prevPC->inst;
@@ -3781,6 +3786,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
                                       KInstruction *target /* undef if write */) {
+  TimerStatIncrementer timer(stats::executeMemopTime);
   Expr::Width type = (isWrite ? value->getWidth() :
                      getWidthForLLVMType(target->inst->getType()));
   unsigned bytes = Expr::getMinBytesForWidth(type);

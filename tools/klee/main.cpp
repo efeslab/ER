@@ -530,6 +530,16 @@ static inline const char *double2percent(double f) {
   return get_fmt_buf("%0.2f%%", f*100);
 }
 
+static inline void dumpStatisticsToLLVMrawos(llvm::raw_ostream &os) {
+  for (size_t i = 0 ; i < theStatisticManager->getNumStatistics(); ++i) {
+    Statistic &stat = theStatisticManager->getStatistic(i);
+    std::ostringstream bufstr;
+    bufstr << std::setw(32) << stat.getName() << ": " << std::right << std::setw(24) << stat << '\n';
+    os << bufstr.str();
+  }
+}
+
+
 /* Outputs all files (.ktest, .kquery, .cov etc.) describing a test case */
 void KleeHandler::processTestCase(const ExecutionState &state,
                                   const char *errorMessage,
@@ -659,7 +669,9 @@ void KleeHandler::processTestCase(const ExecutionState &state,
     // summary file
     auto summary_f = openTestFile("summary", id);
     int64_t fork_queryCost_us = state.fork_queryCost.toMicroseconds();
-    *summary_f << "Fork/Total queryCost: " << get_fmt_buf("%d/%d (%0.2f%%)\n", fork_queryCost_us, total_queryCost_us, (double)(fork_queryCost_us)/total_queryCost_us*100);
+    *summary_f <<
+      "Fork/Total queryCost: " << get_fmt_buf("%d / %d (%0.2f%%)\n", fork_queryCost_us, total_queryCost_us, (double)(fork_queryCost_us)/total_queryCost_us*100);
+    dumpStatisticsToLLVMrawos(*summary_f);
 
     if (m_statsPathWriter) {
       std::vector<struct ExecutionStats> statsPaths;

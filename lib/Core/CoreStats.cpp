@@ -14,7 +14,6 @@ using namespace klee;
 Statistic stats::allocations("Allocations", "Alloc");
 Statistic stats::coveredInstructions("CoveredInstructions", "Icov");
 Statistic stats::falseBranches("FalseBranches", "Bf");
-Statistic stats::forkTime("ForkTime", "Ftime");
 Statistic stats::forks("Forks", "Forks");
 Statistic stats::instructionRealTime("InstructionRealTimes", "Ireal");
 Statistic stats::instructionTime("InstructionTimes", "Itime");
@@ -27,3 +26,19 @@ Statistic stats::solverTime("SolverTime", "Stime");
 Statistic stats::states("States", "States");
 Statistic stats::trueBranches("TrueBranches", "Bt");
 Statistic stats::uncoveredInstructions("UncoveredInstructions", "Iuncov");
+
+// HASE related statistics
+// ** internal function
+Statistic stats::dummy1("************************* internal function ***********************", "dummy1");
+Statistic stats::forkTime("internal_forkTime", "Ftime");
+Statistic stats::branchTime("internal_branchTime", "FBTime");
+Statistic stats::executeAllocTime("internal_executeAllocTime", "eATime");
+Statistic stats::executeMemopTime("internal_executeMemopTime", "memopTime");
+// ** llvm ir instruction
+Statistic stats::dummy2("************************* llvm ir instruction *********************", "dummy2");
+Statistic stats::switchTime("SwitchTime", "SwitchTime");
+Statistic stats::indirectBrTime("indirectBrTime", "indibrTime");
+Statistic stats::brTime("BrTime", "BrTime");
+Statistic stats::callTime("CallTime", "CTime");
+Statistic stats::allocaTime("allocTime", "allocTime");
+Statistic stats::dummy3("******************************** hase end *************************", "dummy3");

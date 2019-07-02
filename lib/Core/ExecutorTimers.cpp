@@ -110,7 +110,7 @@ void Executor::addTimer(Timer *timer, time::Span rate) {
 
 
 void Executor::processTimers(ExecutionState *current,
-                             time::Span maxInstTime, bool dump, bool change) {
+                             time::Span maxInstTime) {
   static unsigned callsWithoutCheck = 0;
   unsigned ticks = timerTicks;
 
@@ -119,7 +119,7 @@ void Executor::processTimers(ExecutionState *current,
     ticks = 1;
   }
 
-  if (ticks || dumpPTree || dumpStates || dump) {
+  if (ticks || dumpPTree || dumpStates) {
     if (dumpPTree) {
       char name[32];
       sprintf(name, "ptree%08d.dot", (int) stats::instructions);
@@ -131,53 +131,7 @@ void Executor::processTimers(ExecutionState *current,
       dumpPTree = 0;
     }
 
-    if (dumpStates || dump) {
-
-      if (dump_os) {
-        //for (ExecutionState *es : states) {
-          ExecutionState *es = current;
-          *dump_os << "(" << es << ",";
-          *dump_os << "[";
-          auto next = es->stack.begin();
-          ++next;
-          for (auto sfIt = es->stack.begin(), sf_ie = es->stack.end();
-               sfIt != sf_ie; ++sfIt) {
-            *dump_os << "('" << sfIt->kf->function->getName().str() << "',";
-            if (next == es->stack.end()) {
-              *dump_os << es->prevPC->info->line << ", " <<
-                          es->prevPC->info->assemblyLine << ")";
-            } else {
-              *dump_os << next->caller->info->line << ", " <<
-                          next->caller->info->assemblyLine << "), ";
-              ++next;
-            }
-          }
-          *dump_os << "], ";
-
-          StackFrame &sf = es->stack.back();
-          uint64_t md2u = computeMinDistToUncovered(es->pc,
-                                                    sf.minDistToUncoveredOnReturn);
-          uint64_t icnt = theStatisticManager->getIndexedValue(stats::instructions,
-                                                               es->pc->info->id);
-          uint64_t cpicnt = sf.callPathNode->statistics.getValue(stats::instructions);
-
-          *dump_os << "{";
-          *dump_os << "'Instr' : '" << es->getInstructionStr(es->prevPC) << "', ";
-          *dump_os << "'queryCost' : " << es->queryCost << ", ";
-          *dump_os << "'coveredNew' : " << es->coveredNew << ", ";
-          *dump_os << "'instsSinceCovNew' : " << es->instsSinceCovNew << ", ";
-          *dump_os << "'md2u' : " << md2u << ", ";
-          *dump_os << "'icnt' : " << icnt << ", ";
-          *dump_os << "'CPicnt' : " << cpicnt << ", ";
-          *dump_os << "}";
-          *dump_os << ")\n";
-        //}
-      }
-
-      dumpStates = 0;
-    }
-
-    if (change && qlSolver) {
+    if (qlSolver) {
         ExecutionState *es = current;
         *(qlSolver->os) << "# Stack: [";
         auto next = es->stack.begin();

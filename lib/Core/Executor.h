@@ -483,10 +483,7 @@ private:
 
   void initTimers();
 
-  //FIXME: ADD_BY_SYM
-  std::unique_ptr<llvm::raw_fd_ostream> dump_os = nullptr;
-  void processTimers(ExecutionState *current, time::Span maxInstTime,
-                      bool dump=false, bool change=false);
+  void processTimers(ExecutionState *current, time::Span maxInstTime);
   void checkMemoryUsage();
   void printDebugInstructions(ExecutionState &state);
   void doDumpStates();

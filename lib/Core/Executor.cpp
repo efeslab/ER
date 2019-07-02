@@ -403,19 +403,6 @@ cl::opt<bool> DebugCheckForImpliedValues(
     cl::desc("Debug the implied value optimization"),
     cl::cat(DebugCat));
 
-/*** HASE options ***/
-cl::opt<bool>
-WriteQueryStats("write-query-stats",
-    cl::init(false),
-    cl::desc("Write query states for each instruction (default=false)"),
-    cl::cat(HASECat));
-
-cl::opt<bool>
-WriteQueryChange("write-query-change",
-    cl::init(false),
-    cl::desc("Write the stats for query only if there is an change (default=false)"),
-    cl::cat(HASECat));
-
 } // namespace
 
 namespace klee {
@@ -3192,51 +3179,15 @@ void Executor::run(ExecutionState &initialState) {
   std::vector<ExecutionState *> newStates(states.begin(), states.end());
   searcher->update(0, newStates, std::vector<ExecutionState *>());
 
-  uint32_t current_cost = 0;
-
-  if (WriteQueryStats) {
-    dump_os = interpreterHandler->openOutputFile("stats.txt");
-  }
-
   while (!states.empty() && !haltExecution) {
     ExecutionState &state = searcher->selectState();
     KInstruction *ki = state.pc;
     stepInstruction(state);
 
     executeInstruction(state, ki);
+    //klee_message("Executed %lu", uint64_t(stats::instructions));
 
-    bool dump = false;
-    bool change = false;
-    Instruction *i = ki->inst;
-
-    if (state.queryCost.toMicroseconds() != current_cost) {
-      dump = true;
-      change = true;
-      current_cost = state.queryCost.toMicroseconds();
-    }
-
-    if (!WriteQueryChange && !dump) {
-      if (i->getOpcode() == Instruction::IndirectBr ||
-          i->getOpcode() == Instruction::Switch) {
-        dump = true;
-        current_cost = state.queryCost.toMicroseconds();
-      }
-      else if (i->getOpcode() == Instruction::Br) {
-        BranchInst *bi = cast<BranchInst>(i);
-        if (!bi->isUnconditional()) {
-          dump = true;
-        }
-      }
-    }
-
-    if (change && i->getOpcode() == Instruction::Br) {
-      BranchInst *bi = cast<BranchInst>(i);
-      if (bi->isUnconditional()) {
-        change = false;
-      }
-    }
-
-    processTimers(&state, maxInstructionTime, dump, change);
+    processTimers(&state, maxInstructionTime);
 
     checkMemoryUsage();
 

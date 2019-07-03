@@ -136,8 +136,12 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
     }
   } else {
     // Use malloc for the standard case
-    if (alignment <= 8)
+    if (alignment <= 8) {
       address = (uint64_t)malloc(size);
+      if (address) {
+        size = malloc_usable_size((void*)(address));
+      }
+    }
     else {
       int res = posix_memalign((void **)&address, alignment, size);
       if (res < 0) {
@@ -149,9 +153,6 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
 
   if (!address) {
     return 0;
-  }
-  else {
-    size = malloc_usable_size((void*)(address));
   }
 
   ++stats::allocations;

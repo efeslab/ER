@@ -654,14 +654,14 @@ void KleeHandler::processTestCase(const ExecutionState &state,
     }
     
     if (m_consPathWriter) {
-      std::vector<std::string> consPaths;
+      std::vector<ConstraintStats> consPaths;
       m_consPathWriter->readStream(m_interpreter->getConsPathStreamID(state), 
                                     consPaths);
       auto f = openTestFile("cons.path", id);
       if (f) {
-        unsigned int i = 0;
-        for (const auto c : consPaths) {
-          *f << i++ << "\t" << c << '\n';
+        for (const auto cs : consPaths) {
+          *f << "Instr " << cs.instructions_cnt << '\n'
+             << "New: " << cs.new_constraint << '\n';
         }
       }
     }
@@ -691,9 +691,6 @@ void KleeHandler::processTestCase(const ExecutionState &state,
           *f << "Instr " << exs.instructions_cnt << '\n'
              << "llvm_ir: " << exs.llvm_inst_str << '\n'
              << "file_loc: " << exs.file_loc << '\n'
-             << "Branches: True(" << exs.trueBranches << "), False(" << exs.falseBranches << ")\n"
-             << "Constraints: " << exs.constraint << "\n"
-             << "Query: " << exs.constraint_increment << "\n"
              << "queryCost: " << exs.queryCost_us<< " / " << total_queryCost_us
              << " (" << double2percent(queryCost_percent) << ")\n"
              << "queryCostIncrement: " << exs.queryCost_increment_us<< " / " << final_queryCost

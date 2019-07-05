@@ -70,12 +70,8 @@ namespace klee {
     std::string file_loc;
     uint64_t instructions_cnt;
     
-    std::string constraint;
     int64_t queryCost_us;
-    std::string constraint_increment;
     int64_t queryCost_increment_us;
-    
-    uint64_t trueBranches, falseBranches;
   };
   template <typename T> // ostream
   inline static void serialize(T &os, const struct ExecutionStats &exstats) {
@@ -83,13 +79,8 @@ namespace klee {
     serialize(os, exstats.file_loc);
     serialize(os, exstats.instructions_cnt);
     
-    serialize(os, exstats.constraint);
-    serialize(os, exstats.constraint_increment);
     serialize(os, exstats.queryCost_us);
     serialize(os, exstats.queryCost_increment_us);
-    
-    serialize(os, exstats.trueBranches);
-    serialize(os, exstats.falseBranches);
   }
   template <typename T> // istream
   inline static void deserialize(T &is, struct ExecutionStats &exstats) {
@@ -97,13 +88,8 @@ namespace klee {
     deserialize(is, exstats.file_loc);
     deserialize(is, exstats.instructions_cnt);
     
-    deserialize(is, exstats.constraint);
-    deserialize(is, exstats.constraint_increment);
     deserialize(is, exstats.queryCost_us);
     deserialize(is, exstats.queryCost_increment_us);
-    
-    deserialize(is, exstats.trueBranches);
-    deserialize(is, exstats.falseBranches);
   }
   template <typename T> // istream
   inline static void skip(T &is, const struct ExecutionStats &exstats) {
@@ -111,13 +97,29 @@ namespace klee {
     skip(is, exstats.file_loc);
     skip(is, exstats.instructions_cnt);
     
-    skip(is, exstats.constraint);
-    skip(is, exstats.constraint_increment);
     skip(is, exstats.queryCost_us);
     skip(is, exstats.queryCost_increment_us);
-    
-    skip(is, exstats.trueBranches);
-    skip(is, exstats.falseBranches);
+  }
+
+  // Constraint Statistics related serializer
+  struct ConstraintStats {
+    uint64_t instructions_cnt;
+    std::string new_constraint;
+  };
+  template <typename T> // ostream
+  inline static void serialize(T &os, const struct ConstraintStats &cs) {
+    serialize(os, cs.instructions_cnt);
+    serialize(os, cs.new_constraint);
+  }
+  template <typename T> // istream
+  inline static void deserialize(T &is, struct ConstraintStats &cs) {
+    deserialize(is, cs.instructions_cnt);
+    deserialize(is, cs.new_constraint);
+  }
+  template <typename T> // istream
+  inline static void skip(T &is, const struct ConstraintStats &cs) {
+    skip(is, cs.instructions_cnt);
+    skip(is, cs.new_constraint);
   }
 
   // Path recording related serializer

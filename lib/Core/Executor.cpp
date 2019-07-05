@@ -4363,17 +4363,14 @@ void Executor::dumpStateAtBranch(ExecutionState &current, PathEntry pe, ref<Expr
   if (stackPathWriter) {
     current.dumpStackPathOS();
   }
-  std::string BufferString;
-  llvm::raw_string_ostream ExprWriter(BufferString);
-  if (consPathWriter || statsPathWriter) {
-    ExprWriter << "(" << stats::instructions << ") ";
-    new_constraint.get()->print(ExprWriter);
-  }
   if (consPathWriter) {
-    current.consPathOS << ExprWriter.str();
+    std::string BufferString;
+    llvm::raw_string_ostream ExprWriter(BufferString);
+    new_constraint.get()->print(ExprWriter);
+    current.dumpConsPathOS(ExprWriter.str());
   }
   if (statsPathWriter) {
-    current.dumpStatsPathOS(ExprWriter.str());
+    current.dumpStatsPathOS();
   }
 }
 
@@ -4389,15 +4386,14 @@ void Executor::dumpStateAtFork(ExecutionState &current, ref<Expr> new_constraint
   if (stackPathWriter) {
     current.dumpStackPathOS();
   }
-  std::string BufferString;
-  llvm::raw_string_ostream ExprWriter(BufferString);
-  ExprWriter << "(" << stats::instructions << ") ";
-  new_constraint.get()->print(ExprWriter);
   if (consPathWriter) {
-    current.consPathOS << ExprWriter.str();
+    std::string BufferString;
+    llvm::raw_string_ostream ExprWriter(BufferString);
+    new_constraint.get()->print(ExprWriter);
+    current.dumpConsPathOS(ExprWriter.str());
   }
   if (statsPathWriter) {
-    current.dumpStatsPathOS(ExprWriter.str());
+    current.dumpStatsPathOS();
   }
 }
 

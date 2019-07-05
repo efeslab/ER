@@ -462,7 +462,7 @@ std::string ExecutionState::getInstructionStr(KInstruction *ki) {
  }
 }
 
-void ExecutionState::dumpStatsPathOS(std::string &con) {
+void ExecutionState::dumpStatsPathOS() {
   struct ExecutionStats exstats;
   time::Span current_cost = fork_queryCost - prev_fork_queryCost;
   time::Span current_cost_increment = current_cost - prev_fork_queryCost_single;
@@ -474,17 +474,18 @@ void ExecutionState::dumpStatsPathOS(std::string &con) {
     llvm::raw_string_ostream sos(exstats.llvm_inst_str);
     this->prevPC->inst->print(sos);
     exstats.file_loc = iinfo->file + ":" + std::to_string(iinfo->line);
-    llvm::raw_string_ostream ExprWriter(exstats.constraint);
-    dumpConstraints(ExprWriter);
-    ExprWriter.flush();
-    exstats.constraint_increment = con;
     exstats.queryCost_us = current_cost.toMicroseconds();
     exstats.queryCost_increment_us = current_cost_increment.toMicroseconds();
     
-    exstats.trueBranches = stats::trueBranches;
-    exstats.falseBranches = stats::falseBranches;
     statsPathOS << exstats;
   }
+}
+void ExecutionState::dumpConsPathOS(const std::string &cons) {
+  struct ConstraintStats constats;
+  constats.instructions_cnt = stats::instructions;
+  constats.new_constraint = cons;
+
+  consPathOS << constats;
 }
 
 void ExecutionState::dumpConstraints(llvm::raw_ostream &out) const {

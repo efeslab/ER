@@ -213,7 +213,8 @@ public:
   void dumpStack(llvm::raw_ostream &out) const;
   void dumpStack() const;
   void dumpStackPathOS();
-  void dumpStatsPathOS(std::string &constraint);
+  void dumpStatsPathOS();
+  void dumpConsPathOS(const std::string &cons);
   std::string getInstructionStr(KInstruction *ki);
 };
 }

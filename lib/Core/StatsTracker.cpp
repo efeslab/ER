@@ -227,8 +227,7 @@ StatsTracker::StatsTracker(Executor &_executor, std::string _objectFilename,
     }
   }
 
-  if (OutputIStats)
-    theStatisticManager->useIndexedStats(km->infos->getMaxID());
+  theStatisticManager->useIndexedStats(km->infos->getMaxID());
 
   for (auto &kfp : km->functions) {
     KFunction *kf = kfp.get();

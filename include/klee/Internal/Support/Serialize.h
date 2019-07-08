@@ -101,25 +101,26 @@ namespace klee {
     skip(is, exstats.queryCost_increment_us);
   }
 
-  // Constraint Statistics related serializer
-  struct ConstraintStats {
-    uint64_t instructions_cnt;
-    std::string new_constraint;
+  // One string one instruction counter Statistics related serializer
+  // Used by Constraint Stats and Stack Stats
+  struct StringInstStats {
+    uint64_t instcnt;
+    std::string str;
   };
   template <typename T> // ostream
-  inline static void serialize(T &os, const struct ConstraintStats &cs) {
-    serialize(os, cs.instructions_cnt);
-    serialize(os, cs.new_constraint);
+  inline static void serialize(T &os, const struct StringInstStats &stris) {
+    serialize(os, stris.instcnt);
+    serialize(os, stris.str);
   }
   template <typename T> // istream
-  inline static void deserialize(T &is, struct ConstraintStats &cs) {
-    deserialize(is, cs.instructions_cnt);
-    deserialize(is, cs.new_constraint);
+  inline static void deserialize(T &is, struct StringInstStats &stris) {
+    deserialize(is, stris.instcnt);
+    deserialize(is, stris.str);
   }
   template <typename T> // istream
-  inline static void skip(T &is, const struct ConstraintStats &cs) {
-    skip(is, cs.instructions_cnt);
-    skip(is, cs.new_constraint);
+  inline static void skip(T &is, const struct StringInstStats &stris) {
+    skip(is, stris.instcnt);
+    skip(is, stris.str);
   }
 
   // Path recording related serializer

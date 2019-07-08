@@ -419,10 +419,12 @@ bool ExecutionState::merge(const ExecutionState &b) {
 }
 
 void ExecutionState::dumpStackPathOS() {
-  std::string string_buf;
-  llvm::raw_string_ostream sos(string_buf);
+  struct StringInstStats stack;
+  llvm::raw_string_ostream sos(stack.str);
   dumpStack(sos);
-  stackPathOS << sos.str();
+  sos.flush();
+  stack.instcnt = stats::instructions;
+  stackPathOS << stack;
 }
 
 void ExecutionState::dumpStatsPathOS() {
@@ -444,9 +446,9 @@ void ExecutionState::dumpStatsPathOS() {
   }
 }
 void ExecutionState::dumpConsPathOS(const std::string &cons) {
-  struct ConstraintStats constats;
-  constats.instructions_cnt = stats::instructions;
-  constats.new_constraint = cons;
+  struct StringInstStats constats;
+  constats.instcnt = stats::instructions;
+  constats.str = cons;
 
   consPathOS << constats;
 }

@@ -645,26 +645,27 @@ void KleeHandler::processTestCase(const ExecutionState &state,
     }
     
     if (m_stackPathWriter) {
-      std::vector<std::string> stackPaths;
+      std::vector<StringInstStats> stackPaths;
       m_stackPathWriter->readStream(m_interpreter->getStackPathStreamID(state), stackPaths);
       auto f = openTestFile("stack.path", id);
       if (f) {
         unsigned i = 0;
         for (const auto s : stackPaths) {
-          *f << i++ << s << '\n';
+          *f << i++ << " Instr: " << s.instcnt << '\n'
+             << s.str << '\n';
         }
       }
     }
     
     if (m_consPathWriter) {
-      std::vector<ConstraintStats> consPaths;
+      std::vector<StringInstStats> consPaths;
       m_consPathWriter->readStream(m_interpreter->getConsPathStreamID(state), 
                                     consPaths);
       auto f = openTestFile("cons.path", id);
       if (f) {
         for (const auto cs : consPaths) {
-          *f << "Instr " << cs.instructions_cnt << '\n'
-             << "New: " << cs.new_constraint << '\n';
+          *f << "Instr: " << cs.instcnt << '\n'
+             << "New: " << cs.str << '\n';
         }
       }
     }

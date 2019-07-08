@@ -4363,7 +4363,7 @@ void Executor::dumpStateAtBranch(ExecutionState &current, PathEntry pe, ref<Expr
   if (stackPathWriter) {
     current.dumpStackPathOS();
   }
-  if (consPathWriter) {
+  if (consPathWriter && !dyn_cast<ConstantExpr>(new_constraint)) {
     std::string BufferString;
     llvm::raw_string_ostream ExprWriter(BufferString);
     new_constraint.get()->print(ExprWriter);
@@ -4386,7 +4386,7 @@ void Executor::dumpStateAtFork(ExecutionState &current, ref<Expr> new_constraint
   if (stackPathWriter) {
     current.dumpStackPathOS();
   }
-  if (consPathWriter) {
+  if (consPathWriter && !dyn_cast<ConstantExpr>(new_constraint)) {
     std::string BufferString;
     llvm::raw_string_ostream ExprWriter(BufferString);
     new_constraint.get()->print(ExprWriter);

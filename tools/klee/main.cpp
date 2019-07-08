@@ -695,6 +695,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
                                     statsPaths);
       auto f = openTestFile("stats.path", id);
       auto f_sum = openTestFile("sum.stats.path", id);
+      auto f_sum_increment = openTestFile("sum.increment.stats.path", id);
       auto cdf_f = openTestFile("cdf", id);
       *cdf_f << "# query_increment accumulated to 1.00\n";
       if (f) {
@@ -727,14 +728,14 @@ void KleeHandler::processTestCase(const ExecutionState &state,
         }
         
         if (f_sum) {
-          typedef std::function<bool(std::pair<std::string, queryCostSum>, std::pair<std::string, queryCostSum>)> Comparator;
-          Comparator compFunctor =
+          typedef std::function<bool(std::pair<std::string, queryCostSum>, std::pair<std::string, queryCostSum>)> ComparatorCost;
+          ComparatorCost compFunctor =
         			[](std::pair<std::string, queryCostSum> elem1 ,std::pair<std::string, queryCostSum> elem2)
         			{
         				return elem1.second.query_cost_sum > elem2.second.query_cost_sum;
         			};
           
-          std::set<std::pair<std::string, queryCostSum>, Comparator> setOfCost(
+          std::set<std::pair<std::string, queryCostSum>, ComparatorCost> setOfCost(
     			fileLoc_queryCost_map.begin(), fileLoc_queryCost_map.end(), compFunctor);
           
           for (auto element : setOfCost) {
@@ -749,7 +750,30 @@ void KleeHandler::processTestCase(const ExecutionState &state,
                << "queryCostIncrement: " << element.second.query_increment_cost_sum << " / " << final_queryCost
                << " (" << double2percent(element.second.queryCost_increment_percent_sum) << ")\n\n";
           }
-  
+        }
+        if (f_sum_increment) {
+          typedef std::function<bool(std::pair<std::string, queryCostSum>, std::pair<std::string, queryCostSum>)> ComparatorCost;
+          ComparatorCost compFunctor =
+              [](std::pair<std::string, queryCostSum> elem1 ,std::pair<std::string, queryCostSum> elem2)
+              {
+                return elem1.second.query_increment_cost_sum > elem2.second.query_increment_cost_sum;
+              };
+          
+          std::set<std::pair<std::string, queryCostSum>, ComparatorCost> setOfCost(
+          fileLoc_queryCost_map.begin(), fileLoc_queryCost_map.end(), compFunctor);
+          
+          for (auto element : setOfCost) {
+            *f_sum_increment << "Instr: ";
+            for (auto cnt: element.second.instr_cnt)
+              *f_sum_increment << cnt << " ";
+            *f_sum_increment << '\n' << "hit_time: " << element.second.hit_time << '\n'
+               << "llvm_ir: " << element.second.llvmIR << '\n'
+               << "file_loc: " << element.first << '\n'
+               << "queryCost: " << element.second.query_cost_sum << " / " << total_queryCost_us
+               << " (" << double2percent(element.second.queryCost_percent_sum) << ")\n"
+               << "queryCostIncrement: " << element.second.query_increment_cost_sum << " / " << final_queryCost
+               << " (" << double2percent(element.second.queryCost_increment_percent_sum) << ")\n\n";
+          }
         }
       }
     }

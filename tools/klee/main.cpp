@@ -446,6 +446,9 @@ KleeHandler::KleeHandler(int argc, char **argv)
 KleeHandler::~KleeHandler() {
   delete m_pathWriter;
   delete m_symPathWriter;
+  delete m_stackPathWriter;
+  delete m_consPathWriter;
+  delete m_statsPathWriter;
   fclose(klee_warning_file);
   fclose(klee_message_file);
 }

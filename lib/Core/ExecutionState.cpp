@@ -425,43 +425,6 @@ void ExecutionState::dumpStackPathOS() {
   stackPathOS << sos.str();
 }
 
-std::string ExecutionState::getInstructionStr(KInstruction *ki) {
-  Instruction *i = ki->inst;
-  switch (i->getOpcode()) {
-    // Control flow
-    case Instruction::Ret: {
-      return "Ret";
-    }
-    case Instruction::Br: {
-      return "Br";
-    }
-    case Instruction::IndirectBr: {
-      return "IndirectBr";
-    }
-    case Instruction::Switch: {
-      return "Switch";
-    }
-    case Instruction::Unreachable: {
-      return "Unreachable";
-    }
-    case Instruction::Invoke:
-    case Instruction::Call: {
-      return "Invoke / Call";
-    }
-    case Instruction::PHI: {
-      return "PHI";
-    }
-    case Instruction::Select: {
-      return "Select";
-    }
-    case Instruction::VAArg: {
-      return "VAArg";
-    }
-    default:
-      return "Other";
- }
-}
-
 void ExecutionState::dumpStatsPathOS() {
   struct ExecutionStats exstats;
   time::Span current_cost = fork_queryCost - prev_fork_queryCost;

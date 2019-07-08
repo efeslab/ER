@@ -448,19 +448,12 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
     klee_error("Failed to create core solver\n");
   }
 
-  Solver* temp = nullptr;
   Solver *solver = constructSolverChain(
       coreSolver,
       interpreterHandler->getOutputFilename(ALL_QUERIES_SMT2_FILE_NAME),
       interpreterHandler->getOutputFilename(SOLVER_QUERIES_SMT2_FILE_NAME),
       interpreterHandler->getOutputFilename(ALL_QUERIES_KQUERY_FILE_NAME),
-      interpreterHandler->getOutputFilename(SOLVER_QUERIES_KQUERY_FILE_NAME),
-      temp);
-
-  if (temp) {
-    this->qlSolver = dynamic_cast<QueryLoggingSolver* >(temp->impl);
-    assert(this->qlSolver && "fail dynamic cast");
-  }
+      interpreterHandler->getOutputFilename(SOLVER_QUERIES_KQUERY_FILE_NAME));
 
   this->solver = new TimingSolver(solver, EqualitySubstitution);
   memory = new MemoryManager(&arrayCache);

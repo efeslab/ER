@@ -215,7 +215,6 @@ public:
   void dumpStackPathOS();
   void dumpStatsPathOS();
   void dumpConsPathOS(const std::string &cons);
-  std::string getInstructionStr(KInstruction *ki);
 };
 }
 

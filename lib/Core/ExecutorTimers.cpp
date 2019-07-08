@@ -131,36 +131,6 @@ void Executor::processTimers(ExecutionState *current,
       dumpPTree = 0;
     }
 
-    if (qlSolver) {
-        ExecutionState *es = current;
-        *(qlSolver->os) << "# Stack: [";
-        auto next = es->stack.begin();
-        ++next;
-        for (auto sfIt = es->stack.begin(), sf_ie = es->stack.end();
-             sfIt != sf_ie; ++sfIt) {
-          *(qlSolver->os) << "('" << sfIt->kf->function->getName().str() << "',";
-          if (next == es->stack.end()) {
-            *(qlSolver->os) << es->prevPC->info->line << ", " <<
-                        es->prevPC->info->assemblyLine << ")";
-          } else {
-            *(qlSolver->os) << next->caller->info->line << ", " <<
-                        next->caller->info->assemblyLine << "), ";
-            ++next;
-          }
-        }
-        *(qlSolver->os) << "]\n";
-
-        *(qlSolver->os) << "# Instr (" << es->getInstructionStr(es->prevPC) << "): ";
-        es->prevPC->inst->print(*(qlSolver->os));
-        *(qlSolver->os) << '\n';
-        *(qlSolver->os) << "# depth : " << es->depth << "\n";
-        *(qlSolver->os) << "# weight : " << es->weight << "\n";
-        *(qlSolver->os) << "# queryCost : " << es->queryCost << "\n";
-        *(qlSolver->os) << "\n\n";
-        // buf_str = buf.str();
-        // writeStackKQueries(buf_str);
-    }
-
     if (maxInstTime && current &&
         std::find(removedStates.begin(), removedStates.end(), current) ==
             removedStates.end()) {

@@ -26,8 +26,7 @@ namespace klee {
                                  std::string querySMT2LogPath,
                                  std::string baseSolverQuerySMT2LogPath,
                                  std::string queryKQueryLogPath,
-                                 std::string baseSolverQueryKQueryLogPath,
-                                 Solver *&ql);
+                                 std::string baseSolverQueryKQueryLogPath);
 }
 
 

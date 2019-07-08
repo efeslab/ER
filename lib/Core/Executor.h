@@ -121,8 +121,6 @@ public:
     ReplayPath
   };
 
-  QueryLoggingSolver* qlSolver = nullptr;
-  
 private:
   static const char *TerminateReasonNames[];
 

@@ -5,8 +5,6 @@ KLEE_CMD= klee -solver-backend=z3 \
 		-write-sym-paths \
 		--libc=uclibc \
 		--posix-runtime \
-		-write-query-stats \
-		-write-query-change \
 		-write-cons-paths \
 		-write-stats-paths \
 		-env-file=env_file \

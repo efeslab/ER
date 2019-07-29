@@ -47,7 +47,7 @@ bool TreeStreamWriter::good() {
 }
 
 TreeOStream TreeStreamWriter::open() {
-  return open(TreeOStream(*this, 0));
+  return open(TreeOStream(*this, 0, 0));
 }
 
 TreeOStream TreeStreamWriter::open(const TreeOStream &os) {
@@ -58,7 +58,7 @@ TreeOStream TreeStreamWriter::open(const TreeOStream &os) {
   output->write(reinterpret_cast<const char*>(&os.id), 4);
   unsigned tag = id | (1<<31);
   output->write(reinterpret_cast<const char*>(&tag), 4);
-  return TreeOStream(*this, id);
+  return TreeOStream(*this, id, os.cnt);
 }
 
 void TreeStreamWriter::flush_lastLen() {
@@ -92,9 +92,8 @@ TreeOStream::TreeOStream()
     id(0) {
 }
 
-TreeOStream::TreeOStream(TreeStreamWriter &_writer, unsigned _id)
-  : writer(&_writer),
-    id(_id) {
+TreeOStream::TreeOStream(TreeStreamWriter &_writer, unsigned _id, unsigned int _cnt)
+  : writer(&_writer), id(_id), cnt(_cnt) {
 }
 
 TreeOStream::~TreeOStream() {

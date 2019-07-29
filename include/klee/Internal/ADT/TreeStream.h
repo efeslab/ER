@@ -69,9 +69,10 @@ namespace klee {
       TreeStreamWriter *writer;
       unsigned id;
 
-      TreeOStream(TreeStreamWriter &_writer, unsigned _id);
+      TreeOStream(TreeStreamWriter &_writer, unsigned _id, unsigned int _cnt);
 
       public:
+      unsigned int cnt = 0;
       TreeOStream();
       ~TreeOStream();
 
@@ -79,6 +80,7 @@ namespace klee {
       bool isValid() const { return writer != NULL; }
 
       template<typename T> TreeOStream &operator<<(const T &entry) {
+          ++cnt;
           assert(writer);
           writer->write(*this, entry);
           return *this;

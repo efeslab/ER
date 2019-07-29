@@ -215,6 +215,7 @@ public:
   void dumpStackPathOS();
   void dumpStatsPathOS();
   void dumpConsPathOS(const std::string &cons);
+  inline bool shouldRecord() const { return isInUserMain && !isInPOSIX; }
 };
 }
 

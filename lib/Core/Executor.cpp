@@ -953,8 +953,8 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         return StatePair(0, 0);
       }
 
-      if (res==Solver::True) {
-        if (current.isInUserMain && !current.isInPOSIX) {
+      if (res==Solver::True) { // Concrete branch
+        if (current.shouldRecord()) { // pathManager.test(true)
           PathEntry pe = (*replayPath)[current.replayPosition++];
           assert(pe.t == PathEntry::FORK);
           bool branch = pe.body.br;
@@ -971,8 +971,8 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
           }
           // assert(branch && "hit invalid branch in replay path mode");
         }
-      } else if (res==Solver::False) {
-        if (current.isInUserMain && !current.isInPOSIX) {
+      } else if (res==Solver::False) { // Concrete branch
+        if (current.shouldRecord()) { // pathManager.test(false)
           PathEntry pe = (*replayPath)[current.replayPosition++];
           assert(pe.t == PathEntry::FORK);
           bool branch = pe.body.br;
@@ -1078,7 +1078,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   // search ones. If that makes sense.
   if (res == Solver::True || res == Solver::False) {
     ref<Expr> new_constraint = (res == Solver::True)?(condition):(Expr::createIsZero(condition));
-    if (!isInternal && current.isInUserMain && !current.isInPOSIX) {
+    if (!isInternal && current.shouldRecord()) {
       dumpStateAtFork(current, new_constraint, res);
     }
     // dump first, then add new constraint
@@ -1827,7 +1827,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       auto bbindex_find_it = bbindexMap.find(bb_address);
       assert((bbindex_find_it != bbindexMap.end()) &&
           "Can't find this concrete basicblock address, it may never exist or it is unfeasible");
-      if (state.isInUserMain && !state.isInPOSIX) { // need to consider record/replay
+      if (state.shouldRecord()) { // need to consider record/replay
         PathEntry pe;
         if (replayPath) {
           // replaying, check
@@ -1849,7 +1849,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     // symbolic address
     std::vector<ExecutionState *> branches;
-    if (state.isInUserMain && !state.isInPOSIX && replayPath) {
+    if (state.shouldRecord()) {
       PathEntry pe;
       pe = (*replayPath)[state.replayPosition++];
       assert((pe.t == PathEntry::INDIRECTBR) &&
@@ -1967,7 +1967,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 #endif
       auto find_it = bbindexMap.find(succbb);
       assert((find_it != bbindexMap.end()) && "When replaying Instruction::Switch concrete condition, succeeding basicblock doesn't exist");
-      if (state.isInUserMain && !state.isInPOSIX) { // need to consider record/replay
+      if (state.shouldRecord()) { // need to consider record/replay
         PathEntry pe;
         if (replayPath) { // replaying
           pe = (*replayPath)[state.replayPosition++];
@@ -2058,7 +2058,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       // The index recorded bellow is not the index of cases taken
       // It is the index (in the bbOrder) of the taken succeeding basicblock.
       // Since the construction of bbOrder does not involve runtime info, the order of succeeding basicblocks should be fixed
-      if (state.isInUserMain && !state.isInPOSIX && replayPath) {
+      if (state.shouldRecord() && replayPath) {
         PathEntry pe;
         pe = (*replayPath)[state.replayPosition++];
         assert((pe.t == PathEntry::SWITCH) && "When replaying Instruction::Switch symbolic condition, wrong PathEntry type");

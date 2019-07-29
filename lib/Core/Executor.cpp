@@ -946,7 +946,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 
   bool isAddingNewConstraint = false;
   if (!isSeeding) {
-    // klee_message("replay: %d, res: %d, isSeeding: %d, Internal: %d", replayPosition, res, isSeeding, isInternal);
+    // replaying, read recorded branch condition
     if (replayPath && !isInternal) {
       if (current.replayPosition >= replayPath->size()) {
         terminateStateEarly(current, "Run out of recorded path");
@@ -961,15 +961,14 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
           // get the constraint and the replayPosition when the assertion fail
           if (!branch) {
               std::string constraints;
-              getConstraintLog(current, constraints,Interpreter::KQUERY);
+              getConstraintLog(current, constraints, Interpreter::KQUERY);
               auto f = interpreterHandler->openOutputFile("debugKQuery");
               if (f)
                   *f << constraints;
               klee_message("replay: %d/%lu res: 1 branch: %d, stack:\n", current.replayPosition-1, replayPath->size(), branch);
               current.dumpStack(llvm::errs());
-			        terminateStateOnError(current, "hit invalid branch in replay path mode", ReplayPath);
+              terminateStateOnError(current, "hit invalid branch in replay path mode", ReplayPath);
           }
-          // assert(branch && "hit invalid branch in replay path mode");
         }
       } else if (res==Solver::False) { // Concrete branch
         if (current.shouldRecord()) { // pathManager.test(false)
@@ -978,7 +977,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
           bool branch = pe.body.br;
           if (branch) {
             std::string constraints;
-            getConstraintLog(current, constraints,Interpreter::KQUERY);
+            getConstraintLog(current, constraints, Interpreter::KQUERY);
             auto f = interpreterHandler->openOutputFile("debugKQuery");
             if (f)
                 *f << constraints;
@@ -986,17 +985,16 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
             current.dumpStack(llvm::errs());
             terminateStateOnError(current, "hit invalid branch in replay path mode", ReplayPath);
           }
-          // assert(!branch && "hit invalid branch in replay path mode");
         }
-      } else {
-        // in replay mode, the branch condition is undecidable
+      } else { // pathManager.getFork(&new_constraint, &res)
+        // in replay mode, symbolic branch.
         // add constraints according to recorded replayPath
         assert(current.isInUserMain && "We assumed that during replay, uClibc doesn't need recorded path, wrong!");
         assert(!current.isInPOSIX && "We assumed that no constraints will be added inside POSIX runtime, wrong!");
         PathEntry pe = (*replayPath)[current.replayPosition++];
         assert(pe.t == PathEntry::FORK);
         bool branch = pe.body.br;
-        if(branch) {
+        if (branch) {
           res = Solver::True;
           isAddingNewConstraint = true;
         } else  {
@@ -1065,8 +1063,8 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     }
   }
   if (isAddingNewConstraint && current.isInPOSIX) {
-    klee_error("Adding new constraint within POSIX runtime");
     current.dumpStack();
+    klee_error("Adding new constraint within POSIX runtime");
   }
 
   // XXX - even if the constraint is provable one way or the other we
@@ -3454,6 +3452,7 @@ void Executor::callExternalFunction(ExecutionState &state,
        ae = arguments.end(); ai!=ae; ++ai) {
     if (ExternalCalls == ExternalCallPolicy::All) { // don't bother checking uniqueness
       *ai = optimizer.optimizeExpr(*ai, true);
+      // NOTE: here comes concolic behaviour (symbolic --assignment-> concrete)
       ref<ConstantExpr> ce;
       bool success = solver->getValue(state, *ai, ce);
       assert(success && "FIXME: Unhandled solver failure");

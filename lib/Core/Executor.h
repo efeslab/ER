@@ -124,6 +124,12 @@ public:
 private:
   static const char *TerminateReasonNames[];
 
+  /// Specify the range of random unsigned integers, which will be used to compute probabiliy
+  /// Note that it shouldn't be:
+  ///   - Too small (when bits expectation too short, hurting randomness)
+  ///   - Nor too large (when bits expectation too long, causing overflow)
+  static constexpr unsigned int RAND_MAX_WRAP = UINT16_MAX;
+
   class TimerInfo;
 
     int true_count = 0;
@@ -486,7 +492,33 @@ private:
   void printDebugInstructions(ExecutionState &state);
   void doDumpStates();
   void dumpStateAtBranch(ExecutionState &state, PathEntry pe, ref<Expr> new_constraint);
-  void dumpStateAtFork(ExecutionState &current, ref<Expr> condition, Solver::Validity solvalid);
+  void dumpStateAtFork(ExecutionState &current, ref<Expr> condition);
+  /// Record a single bit based on Solver Validity result.
+  ///
+  /// That bit represents a branch decision (true if taken, false if not taken)
+  /// \param[in] current Record to the pathOS of this ExecutionState
+  /// \param[in] solvalid The solver validity result (means "must be" True or False) returned from a solver query
+  void record1BitAtFork(ExecutionState &current, Solver::Validity solvalid);
+
+  /// Record additional bits based on the expression tree of a ConstantExpr.
+  ///
+  /// For now, I only record the first layer child nodes of a constant expression
+  /// tree. And only record > 1 bits at some probability, falling back to
+  /// record1BitAtFork otherwise.
+  /// \param[in] current Record to the pathOS of this ExecutionState
+  /// \param[in] CE The non-null constant expression tree
+  /// \param[in] solvalid Used to encode the 1 bit T/F together at the sign bit of numKids
+  void recordNBitAtFork(ExecutionState &current, ConstantExpr *CE, Solver::Validity solvalid);
+  static inline void getConstraintFromBool(ref<Expr> condition, ref<Expr> &new_constraint, Solver::Validity &res, bool br) {
+    if (br) {
+      res = Solver::True;
+      new_constraint = condition;
+    }
+    else {
+      res = Solver::False;
+      new_constraint = Expr::createIsZero(condition);
+    }
+  }
 
 public:
 
@@ -574,6 +606,27 @@ public:
   int *getErrnoLocation(const ExecutionState &state) const;
 
   // void writeStackKQueries(std::string& buf);
+  /*** Path Recording methods ***/
+  /// Assert next recorded branch is taken or not based on symbolic constraints
+  ///
+  /// \param[in] state The ExecutionState where next branch locates
+  /// \param[out] br The branch decision determined by symbolic constraints
+  void AssertNextBranchTaken(ExecutionState &state, bool br);
+
+  /// Get constraints enforced by next recorded branch.
+  ///
+  /// Used when you don't or can't determine this branch via symbolic approach
+  /// This function handled two type of record:
+  ///   1. Only 1 bit is recorded: will call getConstraintFromBool
+  ///   2. Additional bits are recorded: will generate:
+  ///       (true && [ (K == C) && ...
+  ///       for K, C in all (sym child expr, recorded concrete expr)])
+  /// \param[in] state The ExecutionState where next branch locates
+  /// \param[in] condition The symbolic expression bound to this branch
+  /// \param[out] new_constraint A single expression consists of conjunctions
+  /// \param[out] res Represent if next branch is taken (Solver::True) or not
+  void getNextBranchConstraint(ExecutionState &state, ref<Expr> condition,
+      ref<Expr> &new_constraint, Solver::Validity &res);
 };
 
 } // End klee namespace

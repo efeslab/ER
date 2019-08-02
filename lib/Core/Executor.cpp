@@ -402,7 +402,15 @@ cl::opt<bool> DebugCheckForImpliedValues(
     "debug-check-for-implied-values", cl::init(false),
     cl::desc("Debug the implied value optimization"),
     cl::cat(DebugCat));
-
+/*** HASE related Options ***/
+cl::opt<uint32_t> BitsLengthExpectation(
+    "record-bits-per-br", cl::init(1),
+    cl::desc("The expectation of the number of bits you want to record per branch. (default=1, means only record true/false)"),
+    cl::cat(HASECat));
+cl::opt<bool> AdditionalRecord(
+    "additional-record", cl::init(false),
+    cl::desc("Enable additional record, see also -record-bits-per-br. (default=false)"),
+    cl::cat(HASECat));
 } // namespace
 
 namespace klee {
@@ -944,7 +952,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     return StatePair(0, 0);
   }
 
-  bool isAddingNewConstraint = false;
+  ref<Expr> new_constraint;
   if (!isSeeding) {
     // replaying, read recorded branch condition
     if (replayPath && !isInternal) {
@@ -952,55 +960,20 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         terminateStateEarly(current, "Run out of recorded path");
         return StatePair(0, 0);
       }
-
       if (res==Solver::True) { // Concrete branch
-        if (current.shouldRecord()) { // pathManager.test(true)
-          PathEntry pe = (*replayPath)[current.replayPosition++];
-          assert(pe.t == PathEntry::FORK);
-          bool branch = pe.body.br;
-          // get the constraint and the replayPosition when the assertion fail
-          if (!branch) {
-              std::string constraints;
-              getConstraintLog(current, constraints, Interpreter::KQUERY);
-              auto f = interpreterHandler->openOutputFile("debugKQuery");
-              if (f)
-                  *f << constraints;
-              klee_message("replay: %d/%lu res: 1 branch: %d, stack:\n", current.replayPosition-1, replayPath->size(), branch);
-              current.dumpStack(llvm::errs());
-              terminateStateOnError(current, "hit invalid branch in replay path mode", ReplayPath);
-          }
+        if (current.shouldRecord()) {
+          AssertNextBranchTaken(current, true);
         }
       } else if (res==Solver::False) { // Concrete branch
-        if (current.shouldRecord()) { // pathManager.test(false)
-          PathEntry pe = (*replayPath)[current.replayPosition++];
-          assert(pe.t == PathEntry::FORK);
-          bool branch = pe.body.br;
-          if (branch) {
-            std::string constraints;
-            getConstraintLog(current, constraints, Interpreter::KQUERY);
-            auto f = interpreterHandler->openOutputFile("debugKQuery");
-            if (f)
-                *f << constraints;
-            klee_message("replay: %d/%lu res: 0 branch: %d, stack:\n", current.replayPosition-1, replayPath->size(), branch);
-            current.dumpStack(llvm::errs());
-            terminateStateOnError(current, "hit invalid branch in replay path mode", ReplayPath);
-          }
+        if (current.shouldRecord()) {
+          AssertNextBranchTaken(current, false);
         }
-      } else { // pathManager.getFork(&new_constraint, &res)
+      } else {
         // in replay mode, symbolic branch.
         // add constraints according to recorded replayPath
         assert(current.isInUserMain && "We assumed that during replay, uClibc doesn't need recorded path, wrong!");
         assert(!current.isInPOSIX && "We assumed that no constraints will be added inside POSIX runtime, wrong!");
-        PathEntry pe = (*replayPath)[current.replayPosition++];
-        assert(pe.t == PathEntry::FORK);
-        bool branch = pe.body.br;
-        if (branch) {
-          res = Solver::True;
-          isAddingNewConstraint = true;
-        } else  {
-          res = Solver::False;
-          isAddingNewConstraint = true;
-        }
+        getNextBranchConstraint(current, condition, new_constraint, res);
       }
     } else if (res==Solver::Unknown) {
       assert(!replayKTest && "in replay mode, only one branch can be true.");
@@ -1020,12 +993,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         else
           klee_warning_once(0, "skipping fork (max-forks reached)");
 
-        if (theRNG.getBool()) {
-          res = Solver::True;
-        } else {
-          res = Solver::False;
-        }
-        isAddingNewConstraint = true;
+        getConstraintFromBool(condition, new_constraint, res, theRNG.getBool());
       }
     }
   }
@@ -1057,12 +1025,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     }
     if (!(trueSeed && falseSeed)) {
       assert(trueSeed || falseSeed);
-
-      res = trueSeed ? Solver::True : Solver::False;
-      isAddingNewConstraint = true;
+      getConstraintFromBool(condition, new_constraint, res, trueSeed);
     }
   }
-  if (isAddingNewConstraint && current.isInPOSIX) {
+  if (!new_constraint.isNull() && current.isInPOSIX) {
     current.dumpStack();
     klee_error("Adding new constraint within POSIX runtime");
   }
@@ -1075,12 +1041,19 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   // hint to just use the single constraint instead of all the binary
   // search ones. If that makes sense.
   if (res == Solver::True || res == Solver::False) {
-    ref<Expr> new_constraint = (res == Solver::True)?(condition):(Expr::createIsZero(condition));
     if (!isInternal && current.shouldRecord()) {
-      dumpStateAtFork(current, new_constraint, res);
+        ConstantExpr *CE = dyn_cast<ConstantExpr>(condition);
+        if (AdditionalRecord && !replayPath && CE) {
+          // Special recording at a given possibility.
+          recordNBitAtFork(current, CE, res);
+        }
+        else {
+          record1BitAtFork(current, res);
+        }
+        dumpStateAtFork(current, new_constraint);
     }
     // dump first, then add new constraint
-    if (isAddingNewConstraint) {
+    if (!new_constraint.isNull()) {
       addConstraint(current, new_constraint);
     }
     if (res == Solver::True) {
@@ -1143,8 +1116,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 
     if (!isInternal && !current.isInPOSIX) {
       assert(current.isInUserMain && "We assumed state fork won't happen in uClibc, wrong!");
-      dumpStateAtFork(*trueState, true_constraint, Solver::True);
-      dumpStateAtFork(*falseState, false_constraint, Solver::False);
+      record1BitAtFork(*trueState, Solver::True);
+      dumpStateAtFork(*trueState, true_constraint);
+      record1BitAtFork(*falseState, Solver::False);
+      dumpStateAtFork(*falseState, false_constraint);
     }
 
     if (symPathWriter) {
@@ -4366,19 +4341,14 @@ void Executor::dumpStateAtBranch(ExecutionState &current, PathEntry pe, ref<Expr
   }
 }
 
-void Executor::dumpStateAtFork(ExecutionState &current, ref<Expr> new_constraint, Solver::Validity solvalid) {
-  assert((solvalid == Solver::True || solvalid == Solver::False) && "Don't support dumping Unknown fork");
-  if (pathWriter) {
-    PathEntry pe = {
-      .t = PathEntry::FORK,
-      .body = {.br = ((solvalid == Solver::True)? true: false)}
-    };
-    current.pathOS << pe;
-  }
+// dump execution state
+// \param[in] new_constraint: could be Null but mustn't be ConstantExpr
+void Executor::dumpStateAtFork(ExecutionState &current, ref<Expr> new_constraint) {
   if (stackPathWriter) {
     current.dumpStackPathOS();
   }
-  if (consPathWriter && !dyn_cast<ConstantExpr>(new_constraint)) {
+  if (consPathWriter && !new_constraint.isNull()) {
+    assert(!dyn_cast<ConstantExpr>(new_constraint));
     std::string BufferString;
     llvm::raw_string_ostream ExprWriter(BufferString);
     new_constraint.get()->print(ExprWriter);
@@ -4386,6 +4356,55 @@ void Executor::dumpStateAtFork(ExecutionState &current, ref<Expr> new_constraint
   }
   if (statsPathWriter) {
     current.dumpStatsPathOS();
+  }
+}
+
+void Executor::record1BitAtFork(ExecutionState &current, Solver::Validity solvalid) {
+  assert((solvalid == Solver::True || solvalid == Solver::False) && "Don't support dumping Unknown fork");
+  if (pathWriter) {
+    PathEntry pe;
+    pe.t = PathEntry::FORK;
+    pe.body.br = ((solvalid == Solver::True)? true: false);
+    current.pathOS << pe;
+  }
+}
+
+void Executor::recordNBitAtFork(ExecutionState &current, ConstantExpr *CE, Solver::Validity solvalid) {
+  // Parameter: bits expectation N
+  // Current Policy: try when condition is constant and not replaying
+  // TODO: only record symbolic branch, need logging index of those branches during symbolic execution.
+  unsigned int total_width = 0;
+  bool isAdditionalRecording;
+  unsigned int numKids;
+  ref<Expr> sym_expr = CE->getSym();
+  if (!sym_expr.isNull()) {
+    numKids = sym_expr->getNumKids();
+    for (unsigned int i=0; i < numKids; ++i) {
+      total_width += sym_expr->getKid(i)->getWidth();
+    }
+    // record additional bits at the probability of
+    //     BitsLengthExpectation / subExpr's total_width
+    isAdditionalRecording =
+      (unsigned int)(std::rand()%RAND_MAX_WRAP) < ((RAND_MAX_WRAP / total_width) * BitsLengthExpectation);
+  }
+  else {
+    isAdditionalRecording = false;
+    numKids = 0;
+  }
+  if (isAdditionalRecording) {
+    PathEntry pe;
+    pe.t = PathEntry::FORKREC;
+    pe.body.rec.br = (solvalid == Solver::True)?true:false;
+    pe.body.rec.numKids = numKids;
+    for (unsigned int i=0; i < numKids; ++i) {
+      ConstantExpr *CKid = dyn_cast<ConstantExpr>(sym_expr->getKid(i));
+      assert(CKid);
+      pe.Kids.push_back(CKid->getZExtValue(PathEntry::ConstantBits));
+    }
+    current.pathOS << pe;
+  }
+  else {
+    record1BitAtFork(current, solvalid);
   }
 }
 
@@ -4406,3 +4425,51 @@ void Executor::writeStackKQueries(std::string& buf) {
   solver->writeStackKQueries(buf);
 };
 */
+void Executor::AssertNextBranchTaken(ExecutionState &state, bool br) {
+  PathEntry pe = (*replayPath)[state.replayPosition++];
+  bool recorded_br;
+  if (pe.t == PathEntry::FORK) {
+    recorded_br = pe.body.br;
+  }
+  else if (pe.t == PathEntry::FORKREC) {
+    recorded_br = pe.body.rec.br;
+  }
+  else {
+    klee_error("Wrong PathEntry_t during asserting next branch");
+  }
+  if (br != recorded_br) {
+    std::string constraints;
+    getConstraintLog(state, constraints, Interpreter::KQUERY);
+    auto f = interpreterHandler->openOutputFile("debugKQuery");
+    if (f) {
+      *f << constraints;
+    }
+    klee_message("replay: %d/%lu runtime: %d recorded: %d, stack:\n", state.replayPosition-1, replayPath->size(), br, recorded_br);
+    state.dumpStack(llvm::errs());
+    terminateStateOnError(state, "hit invalid branch in replay path mode", ReplayPath);
+    std::abort();
+  }
+}
+
+void Executor::getNextBranchConstraint(ExecutionState &state, ref<Expr> condition,
+    ref<Expr> &new_constraint, Solver::Validity &res) {
+  PathEntry pe = (*replayPath)[state.replayPosition++];
+  switch (pe.t) {
+    case PathEntry::FORK:
+      getConstraintFromBool(condition, new_constraint, res, pe.body.br);
+      break;
+    case PathEntry::FORKREC:
+      new_constraint = ConstantExpr::alloc(1, Expr::Bool);
+      assert(condition->getNumKids() == pe.body.rec.numKids);
+      for (PathEntry::numKids_t i=0; i < pe.body.rec.numKids; ++i) {
+        ref<ConstantExpr> v = ConstantExpr::alloc(pe.Kids[i], condition->getKid(i)->getWidth());
+        new_constraint = AndExpr::create(
+            new_constraint,
+            EqExpr::create(condition->getKid(i), v));
+      }
+      res = pe.body.rec.br?Solver::True:Solver::False;
+      break;
+    default:
+      klee_error("Wrong recorded branch type");
+  }
+}

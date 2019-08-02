@@ -792,7 +792,14 @@ ref<Expr> SExtExpr::create(const ref<Expr> &e, Width w) {
 }
 
 /***/
-
+static ref<Expr> SwapBinaryExpr(ref<Expr> e) {
+  if (BinaryExpr *bexpr = dyn_cast<BinaryExpr>(e.get())) {
+    ref<Expr> tmp = bexpr->left;
+    bexpr->left = bexpr->right;
+    bexpr->right = tmp;
+  }
+  return e;
+}
 static ref<Expr> AndExpr_create(Expr *l, Expr *r);
 static ref<Expr> XorExpr_create(Expr *l, Expr *r);
 
@@ -822,7 +829,7 @@ static ref<Expr> AddExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
   }
 }
 static ref<Expr> AddExpr_createPartial(Expr *l, const ref<ConstantExpr> &cr) {
-  return AddExpr_createPartialR(cr, l);
+  return SwapBinaryExpr(AddExpr_createPartialR(cr, l));
 }
 static ref<Expr> AddExpr_create(Expr *l, Expr *r) {
   Expr::Width type = l->getWidth();
@@ -913,7 +920,7 @@ static ref<Expr> MulExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
   }
 }
 static ref<Expr> MulExpr_createPartial(Expr *l, const ref<ConstantExpr> &cr) {
-  return MulExpr_createPartialR(cr, l);
+  return SwapBinaryExpr(MulExpr_createPartialR(cr, l));
 }
 static ref<Expr> MulExpr_create(Expr *l, Expr *r) {
   Expr::Width type = l->getWidth();
@@ -935,7 +942,7 @@ static ref<Expr> AndExpr_createPartial(Expr *l, const ref<ConstantExpr> &cr) {
   }
 }
 static ref<Expr> AndExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
-  return AndExpr_createPartial(r, cl);
+  return SwapBinaryExpr(AndExpr_createPartial(r, cl));
 }
 static ref<Expr> AndExpr_create(Expr *l, Expr *r) {
   return AndExpr::alloc(l, r);
@@ -951,7 +958,7 @@ static ref<Expr> OrExpr_createPartial(Expr *l, const ref<ConstantExpr> &cr) {
   }
 }
 static ref<Expr> OrExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
-  return OrExpr_createPartial(r, cl);
+  return SwapBinaryExpr(OrExpr_createPartial(r, cl));
 }
 static ref<Expr> OrExpr_create(Expr *l, Expr *r) {
   return OrExpr::alloc(l, r);
@@ -968,7 +975,7 @@ static ref<Expr> XorExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
 }
 
 static ref<Expr> XorExpr_createPartial(Expr *l, const ref<ConstantExpr> &cr) {
-  return XorExpr_createPartialR(cr, l);
+  return SwapBinaryExpr(XorExpr_createPartialR(cr, l));
 }
 static ref<Expr> XorExpr_create(Expr *l, Expr *r) {
   return XorExpr::alloc(l, r);
@@ -1159,7 +1166,7 @@ static ref<Expr> EqExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
       }
     }
   } else if (rk == Expr::SExt) {
-    // (sext(a,T)==c) == (a==c)
+    // (c==sext(a,T)) == (c==a)
     const SExtExpr *see = cast<SExtExpr>(r);
     Expr::Width fromBits = see->src->getWidth();
     ref<ConstantExpr> trunc = cl->ZExt(fromBits);
@@ -1167,7 +1174,7 @@ static ref<Expr> EqExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
     // pathological check, make sure it is possible to
     // sext to this value *from any value*
     if (cl == trunc->SExt(width)) {
-      return EqExpr::create(see->src, trunc);
+      return EqExpr::create(trunc, see->src);
     } else {
       return ConstantExpr::create(0, Expr::Bool);
     }
@@ -1180,7 +1187,7 @@ static ref<Expr> EqExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
     // pathological check, make sure it is possible to
     // zext to this value *from any value*
     if (cl == trunc->ZExt(width)) {
-      return EqExpr::create(zee->src, trunc);
+      return EqExpr::create(trunc, zee->src);
     } else {
       return ConstantExpr::create(0, Expr::Bool);
     }
@@ -1208,7 +1215,7 @@ static ref<Expr> EqExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
 }
 
 static ref<Expr> EqExpr_createPartial(Expr *l, const ref<ConstantExpr> &cr) {  
-  return EqExpr_createPartialR(cr, l);
+  return SwapBinaryExpr(EqExpr_createPartialR(cr, l));
 }
   
 ref<Expr> NeExpr::create(const ref<Expr> &l, const ref<Expr> &r) {

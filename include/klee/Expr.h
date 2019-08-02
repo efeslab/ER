@@ -1002,6 +1002,7 @@ public:
 
 private:
   llvm::APInt value;
+  ref<Expr> sym_expr;
 
   ConstantExpr(const llvm::APInt &v) : value(v) {}
 
@@ -1013,6 +1014,8 @@ public:
 
   unsigned getNumKids() const { return 0; }
   ref<Expr> getKid(unsigned i) const { return 0; }
+  ref<Expr> getSym() const { return sym_expr; }
+  void dropSym() { sym_expr = nullptr; }
 
   /// getAPValue - Return the arbitrary precision value directly.
   ///
@@ -1064,26 +1067,31 @@ public:
   static ref<Expr> fromMemory(void *address, Width w);
   void toMemory(void *address);
 
-  static ref<ConstantExpr> alloc(const llvm::APInt &v) {
+  static ref<ConstantExpr> alloc(const llvm::APInt &v,
+      ref<Expr> new_sym_expr = ref<Expr>()) {
     ref<ConstantExpr> r(new ConstantExpr(v));
     r->computeHash();
+    r->sym_expr = new_sym_expr;
     return r;
   }
 
-  static ref<ConstantExpr> alloc(const llvm::APFloat &f) {
-    return alloc(f.bitcastToAPInt());
+  static ref<ConstantExpr> alloc(const llvm::APFloat &f,
+      ref<Expr> new_sym_expr = ref<Expr>()) {
+    return alloc(f.bitcastToAPInt(), new_sym_expr);
   }
 
-  static ref<ConstantExpr> alloc(uint64_t v, Width w) {
-    return alloc(llvm::APInt(w, v));
+  static ref<ConstantExpr> alloc(uint64_t v, Width w,
+      ref<Expr> new_sym_expr = ref<Expr>()) {
+    return alloc(llvm::APInt(w, v), new_sym_expr);
   }
 
-  static ref<ConstantExpr> create(uint64_t v, Width w) {
+  static ref<ConstantExpr> create(uint64_t v, Width w,
+      ref<Expr> new_sym_expr = ref<Expr>()) {
 #ifndef NDEBUG
     if (w <= 64)
       assert(v == bits64::truncateToNBits(v, w) && "invalid constant");
 #endif
-    return alloc(v, w);
+    return alloc(v, w, new_sym_expr);
   }
 
   static bool classof(const Expr *E) { return E->getKind() == Expr::Constant; }

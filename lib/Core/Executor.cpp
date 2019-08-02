@@ -4306,10 +4306,22 @@ size_t Executor::getAllocationAlignment(const llvm::Value *allocSite) const {
   return alignment;
 }
 
+/*** Runtime options ***/
 void Executor::prepareForEarlyExit() {
   if (statsTracker) {
     // Make sure stats get flushed out
     statsTracker->done();
+  }
+}
+
+void Executor::printInfo(llvm::raw_ostream &os) {
+  os << "Total Instructions: " << stats::instructions.getValue() << '\n';
+  unsigned int i=0;
+  for (auto s: states) {
+    os << "ExecutionState: " << i << '\n'
+       << "\t ReplayPosition: " << (replayPath?std::to_string(s->replayPosition):"N/A") << '\n'
+       << "\t Stack: ";
+    s->dumpStack(os);
   }
 }
 

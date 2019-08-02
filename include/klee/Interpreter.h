@@ -154,6 +154,8 @@ public:
 
   virtual void prepareForEarlyExit() = 0;
 
+  virtual void printInfo(llvm::raw_ostream &os) = 0;
+
   /*** State accessor methods ***/
 
   virtual unsigned getPathStreamID(const ExecutionState &state) = 0;

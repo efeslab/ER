@@ -574,6 +574,8 @@ public:
 
   void prepareForEarlyExit() override;
 
+  void printInfo(llvm::raw_ostream &os) override;
+
   /*** State accessor methods ***/
 
   unsigned getPathStreamID(const ExecutionState &state) override;

@@ -1193,11 +1193,10 @@ void stop_forking() {
 
 static void interrupt_handle() {
   if (!interrupted && theInterpreter) {
-    llvm::errs() << "KLEE: ctrl-c detected, requesting interpreter to halt.\n";
+    llvm::errs() << "KLEE: interrupt detected, requesting interpreter to halt.\n";
     halt_execution();
-    sys::SetInterruptFunction(interrupt_handle);
   } else {
-    llvm::errs() << "KLEE: ctrl-c detected, exiting.\n";
+    llvm::errs() << "KLEE: interrupt detected, exiting.\n";
     exit(1);
   }
   interrupted = true;
@@ -1205,6 +1204,37 @@ static void interrupt_handle() {
 
 static void interrupt_handle_watchdog() {
   // just wait for the child to finish
+}
+
+static void info_signal_handle(int signum) {
+  static llvm::raw_ostream &os = llvm::errs();
+  switch (signum) {
+    case SIGINT:
+      if (theInterpreter) {
+        theInterpreter->printInfo(os);
+      }
+      break;
+    case SIGQUIT:
+      interrupt_handle();
+      break;
+    default:
+      ;
+  }
+}
+
+static void register_sighandler() {
+  struct sigaction new_action;
+  new_action.sa_handler = info_signal_handle;
+  sigemptyset(&new_action.sa_mask);
+  new_action.sa_flags = 0;
+  if (sigaction(SIGINT, &new_action, NULL) != 0) {
+    perror("register SIGINT handler error");
+    exit(-1);
+  }
+  if (sigaction(SIGQUIT, &new_action, NULL) != 0) {
+    perror("register SIGQUIT handler error");
+    exit(-1);
+  }
 }
 
 // This is a temporary hack. If the running process has access to
@@ -1423,7 +1453,7 @@ int main(int argc, char **argv, char **envp) {
     }
   }
 
-  sys::SetInterruptFunction(interrupt_handle);
+  register_sighandler();
 
   // Load the bytecode...
   std::string errorMsg;

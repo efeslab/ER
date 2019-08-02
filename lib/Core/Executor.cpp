@@ -411,6 +411,10 @@ cl::opt<bool> AdditionalRecord(
     "additional-record", cl::init(false),
     cl::desc("Enable additional record, see also -record-bits-per-br. (default=false)"),
     cl::cat(HASECat));
+cl::opt<bool> CallSolver(
+    "call-solver", cl::init(true),
+    cl::desc("Call solver at Executor::fork. (default=true)"),
+    cl::cat(HASECat));
 } // namespace
 
 namespace klee {
@@ -938,18 +942,33 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     }
   }
 
-  time::Span timeout = coreSolverTimeout;
-  time::Span fork_queryCost_begin = current.queryCost;
-  if (isSeeding)
-    timeout *= static_cast<unsigned>(it->second.size());
-  solver->setTimeout(timeout);
-  bool success = solver->evaluate(current, condition, res);
-  solver->setTimeout(time::Span());
-  current.fork_queryCost += current.queryCost - fork_queryCost_begin;
-  if (!success) {
-    current.pc = current.prevPC;
-    terminateStateEarly(current, "Query timed out (fork).");
-    return StatePair(0, 0);
+  if (CallSolver || !current.shouldRecord()) {
+    time::Span timeout = coreSolverTimeout;
+    time::Span fork_queryCost_begin = current.queryCost;
+    if (isSeeding)
+      timeout *= static_cast<unsigned>(it->second.size());
+    solver->setTimeout(timeout);
+    bool success = solver->evaluate(current, condition, res);
+    solver->setTimeout(time::Span());
+    current.fork_queryCost += current.queryCost - fork_queryCost_begin;
+    if (!success) {
+      current.pc = current.prevPC;
+      terminateStateEarly(current, "Query timed out (fork).");
+      return StatePair(0, 0);
+    }
+  }
+  else {
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(condition)) {
+      if (CE->isTrue()) {
+        res = Solver::True;
+      }
+      else {
+        res = Solver::False;
+      }
+    }
+    else {
+      res = Solver::Unknown;
+    }
   }
 
   ref<Expr> new_constraint;
@@ -3789,13 +3808,18 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     check = optimizer.optimizeExpr(check, true);
 
     bool inBounds;
-    solver->setTimeout(coreSolverTimeout);
-    bool success = solver->mustBeTrue(state, check, inBounds);
-    solver->setTimeout(time::Span());
-    if (!success) {
-      state.pc = state.prevPC;
-      terminateStateEarly(state, "Query timed out (bounds check).");
-      return;
+    if (CallSolver) {
+      solver->setTimeout(coreSolverTimeout);
+      bool success = solver->mustBeTrue(state, check, inBounds);
+      solver->setTimeout(time::Span());
+      if (!success) {
+        state.pc = state.prevPC;
+        terminateStateEarly(state, "Query timed out (bounds check).");
+        return;
+      }
+    }
+    else {
+      inBounds = true;
     }
 
     if (inBounds) {

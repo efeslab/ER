@@ -466,7 +466,9 @@ void ExecutionState::dumpConsPathOS(const std::string &cons) {
 void ExecutionState::dumpConstraints(llvm::raw_ostream &out) const {
   for (ConstraintManager::const_iterator i = constraints.begin();
       i != constraints.end(); i++) {
+    out << '*';
     (*i)->print(out);
+    out << '\n';
   }
 }
 void ExecutionState::dumpConstraints() const {

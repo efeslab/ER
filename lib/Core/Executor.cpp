@@ -2092,7 +2092,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
             dumpStateAtBranch((*branches[i]), pe, conditions[i]);
           }
         }
-        // FIXME: do the same thing to Instruction::indirectBr and fix the ExecutionState branch TreeStream fork
 
         std::vector<ExecutionState*>::iterator state_it = branches.begin();
         for (auto bbp: bbOrder) {
@@ -4356,8 +4355,8 @@ void Executor::printInfo(llvm::raw_ostream &os) {
   unsigned int i=0;
   for (auto s: states) {
     os << "ExecutionState: " << i << '\n'
-       << "\t ReplayPosition: " << (replayPath?std::to_string(s->replayPosition):"N/A") << '\n'
-       << "\t Stack: ";
+       << "  ReplayPosition: " << (replayPath?std::to_string(s->replayPosition):"N/A") << '\n'
+       << "  Stack:\n";
     s->dumpStack(os);
   }
 }

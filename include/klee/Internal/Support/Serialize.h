@@ -1,6 +1,7 @@
 #ifndef KLEE_SERIALIZE_H
 #define KLEE_SERIALIZE_H
 #include <iostream>
+#include <type_traits>
 #include "klee/Internal/Support/SerializableTypes.h"
 /*
  * Serialize and Deserialize
@@ -39,30 +40,26 @@ namespace klee {
     is.read(reinterpret_cast<char*>(&size), sizeof(size));
     is.seekg(size, std::ios::cur);
   }
-  // uint64_t serializer
-  template <typename T> // ostream
-  inline static void serialize(T &os, const uint64_t uit) {
+  // simple type serializer
+#define BUILTIN_SERIALIZATION_CHECK static_assert(\
+    std::is_same<V, uint64_t>::value ||\
+    std::is_same<V, int64_t>::value ||\
+    std::is_same<V, uint32_t>::value ||\
+    std::is_same<V, int32_t>::value, "Type not supported")
+  template <typename T, typename V> // ostream
+  inline static void serialize(T &os, const V uit) {
+    BUILTIN_SERIALIZATION_CHECK;
     os.write(reinterpret_cast<const char*>(&uit), sizeof(uit));
   }
-  template <typename T> // istream
-  inline static void deserialize(T &is, uint64_t &uit) {
+  template <typename T, typename V> // istream
+  inline static void deserialize(T &is, V &uit) {
+    BUILTIN_SERIALIZATION_CHECK;
     is.read(reinterpret_cast<char*>(&uit), sizeof(uit));
   }
-  template <typename T> // istream
-  inline static void skip(T &is, const uint64_t &uit) {
+  template <typename T, typename V> // istream
+  inline static void skip(T &is, const V &uit) {
+    BUILTIN_SERIALIZATION_CHECK;
     is.seekg(sizeof(uit), std::ios::cur);
-  }
-  template <typename T> // ostream
-  inline static void serialize(T &os, const int64_t it) {
-    os.write(reinterpret_cast<const char*>(&it), sizeof(it));
-  }
-  template <typename T> // istream
-  inline static void deserialize(T &is, int64_t &it) {
-    is.read(reinterpret_cast<char*>(&it), sizeof(it));
-  }
-  template <typename T> // istream
-  inline static void skip(T &is, const int64_t &it) {
-    is.seekg(sizeof(it), std::ios::cur);
   }
 
   // vector recording related serializer

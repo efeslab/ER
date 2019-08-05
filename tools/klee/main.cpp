@@ -316,6 +316,16 @@ namespace {
                 cl::init(false),
                 cl::desc("Write .stats.path files for each test case (default=false)"),
                 cl::cat(HASECat));
+  cl::opt<bool>
+  WriteSymIndex("write-sym-index",
+                cl::init(false),
+                cl::desc("Write .symindex (the indices of symbolic branchs during replay) files for each test case (default=false)"),
+                cl::cat(HASECat));
+  cl::opt<std::string>
+  SymIndexFile( "symindex-file",
+      cl::desc("Specify a symindex file to use for additional recording"),
+      cl::value_desc("symindex file"),
+      cl::cat(HASECat));
 }
 
 namespace klee {
@@ -328,7 +338,7 @@ class KleeHandler : public InterpreterHandler {
 private:
   Interpreter *m_interpreter;
   TreeStreamWriter *m_pathWriter, *m_symPathWriter;
-  TreeStreamWriter *m_stackPathWriter, *m_consPathWriter, *m_statsPathWriter;
+  TreeStreamWriter *m_stackPathWriter, *m_consPathWriter, *m_statsPathWriter, *m_symIndexWriter;
   std::unique_ptr<llvm::raw_ostream> m_infoFile;
   
   SmallString<128> m_outputDirectory;
@@ -365,6 +375,9 @@ public:
   // load a .path file
   static void loadPathFile(std::string name,
                            std::vector<PathEntry> &buffer);
+  // load a .symindex.path file
+  static void loadSymIndex(std::string name,
+                           std::vector<unsigned int> &buffer);
 
   static void getKTestFilesInDir(std::string directoryPath,
                                  std::vector<std::string> &results);
@@ -374,7 +387,7 @@ public:
 
 KleeHandler::KleeHandler(int argc, char **argv)
     : m_interpreter(0), m_pathWriter(0), m_symPathWriter(0),
-      m_stackPathWriter(0), m_consPathWriter(0), m_statsPathWriter(0),
+      m_stackPathWriter(0), m_consPathWriter(0), m_statsPathWriter(0), m_symIndexWriter(0),
       m_outputDirectory(), m_numTotalTests(0), m_numGeneratedTests(0),
       m_pathsExplored(0), m_argc(argc), m_argv(argv) {
 
@@ -449,6 +462,7 @@ KleeHandler::~KleeHandler() {
   delete m_stackPathWriter;
   delete m_consPathWriter;
   delete m_statsPathWriter;
+  delete m_symIndexWriter;
   fclose(klee_warning_file);
   fclose(klee_message_file);
 }
@@ -484,6 +498,12 @@ void KleeHandler::setInterpreter(Interpreter *i) {
     m_statsPathWriter = new TreeStreamWriter(getOutputFilename("statsPaths.ts"));
     assert(m_statsPathWriter->good());
     m_interpreter->setStatsPathWriter(m_statsPathWriter);
+  }
+
+  if (WriteSymIndex) {
+    m_symIndexWriter = new TreeStreamWriter(getOutputFilename("symindex.ts"));
+    assert(m_symIndexWriter->good());
+    m_interpreter->setSymIndexWriter(m_symIndexWriter);
   }
 }
 
@@ -670,6 +690,18 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       }
     }
 
+    if (m_symIndexWriter) {
+      std::vector<unsigned int> symIndices;
+      m_symIndexWriter->readStream(m_interpreter->getSymIndexStreamID(state),
+                                symIndices);
+      auto f = openTestFile("symindex.path", id);
+      if (f) {
+        for (const auto idx: symIndices) {
+          serialize(*f, idx);
+        }
+      }
+    }
+
     // summary file
     auto summary_f = openTestFile("summary", id);
     int64_t fork_queryCost_us = state.fork_queryCost.toMicroseconds();
@@ -809,7 +841,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
   }
 }
 
-  // load a .path file
+// load a .path file
 void KleeHandler::loadPathFile(std::string name,
                                      std::vector<PathEntry> &buffer) {
   std::ifstream f(name.c_str(), std::ios::in | std::ios::binary);
@@ -821,6 +853,23 @@ void KleeHandler::loadPathFile(std::string name,
     PathEntry pe;
     deserialize(f, pe);
     buffer.push_back(pe);
+  }
+}
+
+// load a .symindex.path file
+void KleeHandler::loadSymIndex(std::string name,
+                                     std::vector<unsigned int> &buffer) {
+  std::ifstream f(name.c_str(), std::ios::in | std::ios::binary);
+  assert(f.good() && "unable to open symindex path file");
+  while (1) {
+    unsigned int i;
+    deserialize(f, i);
+    if (f.good()) {
+      buffer.push_back(i);
+    }
+    else {
+      break;
+    }
   }
 }
 
@@ -1587,12 +1636,6 @@ int main(int argc, char **argv, char **envp) {
     pArgv[i] = pArg;
   }
 
-  std::vector<PathEntry> replayPath;
-
-  if (ReplayPathFile != "") {
-    KleeHandler::loadPathFile(ReplayPathFile, replayPath);
-  }
-
   Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = MakeConcreteSymbolic;
   KleeHandler *handler = new KleeHandler(pArgc, pArgv);
@@ -1617,8 +1660,18 @@ int main(int argc, char **argv, char **envp) {
 
   externalsAndGlobalsCheck(finalModule);
 
+  // load replayPath
+  std::vector<PathEntry> replayPath;
+
   if (ReplayPathFile != "") {
+    KleeHandler::loadPathFile(ReplayPathFile, replayPath);
     interpreter->setReplayPath(&replayPath);
+  }
+  // load symIndex
+  std::vector<unsigned int> symindex;
+  if (SymIndexFile != "") {
+    KleeHandler::loadSymIndex(SymIndexFile, symindex);
+    interpreter->setSymIndex(&symindex);
   }
 
 

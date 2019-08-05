@@ -442,8 +442,8 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
                    InterpreterHandler *ih)
     : Interpreter(opts), interpreterHandler(ih), searcher(0),
       externalDispatcher(new ExternalDispatcher(ctx)), statsTracker(0), pathWriter(0),
-      symPathWriter(0), stackPathWriter(0), consPathWriter(0), statsPathWriter(0),
-      specialFunctionHandler(0), processTree(0), replayKTest(0), replayPath(0), 
+      symPathWriter(0), stackPathWriter(0), consPathWriter(0), statsPathWriter(0), symIndexWriter(0),
+      specialFunctionHandler(0), processTree(0), replayKTest(0), replayPath(0), symIndex(0),
       usingSeeds(0), atMemoryLimit(false), inhibitForking(false), haltExecution(false),
       ivcEnabled(false), debugLogBuffer(debugBufferString) {
 
@@ -993,6 +993,12 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         assert(current.isInUserMain && "We assumed that during replay, uClibc doesn't need recorded path, wrong!");
         assert(!current.isInPOSIX && "We assumed that no constraints will be added inside POSIX runtime, wrong!");
         getNextBranchConstraint(current, condition, new_constraint, res);
+        // at this point, replayPosition points to the index of next branch
+        // while current branch hasn't been recorded
+        assert(current.pathOS.cnt == current.replayPosition - 1);
+        if (symIndexWriter) {
+          current.symIndexOS << current.replayPosition - 1;
+        }
       }
     } else if (res==Solver::Unknown) {
       assert(!replayKTest && "in replay mode, only one branch can be true.");
@@ -4035,6 +4041,8 @@ void Executor::runFunctionAsMain(Function *f,
     state->consPathOS = consPathWriter->open();
   if (statsPathWriter)
     state->statsPathOS = statsPathWriter->open();
+  if (symIndexWriter)
+    state->symIndexOS = symIndexWriter->open();
 
   if (statsTracker)
     statsTracker->framePushed(*state, 0);
@@ -4104,13 +4112,18 @@ unsigned Executor::getStackPathStreamID(const ExecutionState &state) {
 }
 
 unsigned Executor::getConsPathStreamID(const ExecutionState &state) {
-	  assert(consPathWriter);
-	  return state.consPathOS.getID();
+  assert(consPathWriter);
+  return state.consPathOS.getID();
 }
 
 unsigned Executor::getStatsPathStreamID(const ExecutionState &state) {
-	  assert(statsPathWriter);
-	  return state.statsPathOS.getID();
+  assert(statsPathWriter);
+  return state.statsPathOS.getID();
+}
+
+unsigned Executor::getSymIndexStreamID(const ExecutionState &state) {
+  assert(symIndexWriter);
+  return state.symIndexOS.getID();
 }
 
 void Executor::getConstraintLog(const ExecutionState &state, std::string &res,
@@ -4413,15 +4426,23 @@ void Executor::recordNBitAtFork(ExecutionState &current, ConstantExpr *CE, Solve
   bool isAdditionalRecording;
   unsigned int numKids;
   ref<Expr> sym_expr = CE->getSym();
-  if (!sym_expr.isNull()) {
-    numKids = sym_expr->getNumKids();
-    for (unsigned int i=0; i < numKids; ++i) {
-      total_width += sym_expr->getKid(i)->getWidth();
+  if (!sym_expr.isNull() && symIndex &&
+      (current.symIndexPosition != symIndex->size())) {
+    if ((*symIndex)[current.symIndexPosition] == current.pathOS.cnt) {
+      ++current.symIndexPosition;
+      numKids = sym_expr->getNumKids();
+      for (unsigned int i=0; i < numKids; ++i) {
+        total_width += sym_expr->getKid(i)->getWidth();
+      }
+      // record additional bits at the probability of
+      //     BitsLengthExpectation / subExpr's total_width
+      isAdditionalRecording =
+        (unsigned int)(std::rand()%RAND_MAX_WRAP) < ((RAND_MAX_WRAP / total_width) * BitsLengthExpectation);
     }
-    // record additional bits at the probability of
-    //     BitsLengthExpectation / subExpr's total_width
-    isAdditionalRecording =
-      (unsigned int)(std::rand()%RAND_MAX_WRAP) < ((RAND_MAX_WRAP / total_width) * BitsLengthExpectation);
+    else {
+      isAdditionalRecording = false;
+      numKids = 0;
+    }
   }
   else {
     isAdditionalRecording = false;

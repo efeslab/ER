@@ -288,6 +288,7 @@ void KModule::optimiseAndPrepare(
   pm3.add(new IntrinsicCleanerPass(*targetData));
   pm3.add(new PhiCleanerPass());
   pm3.run(*module);
+  klee::stripDebugInfo(*module);
 }
 
 void KModule::manifest(InterpreterHandler *ih, bool forceSourceOutput) {

@@ -26,6 +26,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ValueSymbolTable.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Object/Archive.h"
@@ -488,4 +489,28 @@ bool klee::loadFile(const std::string &fileName, LLVMContext &context,
   }
   modules.push_back(std::move(module));
   return true;
+}
+
+/**
+ * Strip Debug Info in a list of functions
+ * It is a workaround for OverShift check Pass:
+ *
+ *   It is invalid that a CallInst has no debug info, but its target function has debug info.
+ *
+ *   So KLEE will fail to verify instrumented Module if klee_overshift_check
+ *   is compiled with debug info, but shift instructions in the target bitcode are not
+ */
+static std::vector<std::string> toStripFuncList = {
+  "klee_overshift_check"
+};
+bool klee::stripDebugInfo(llvm::Module &module) {
+  bool modified = false;
+  for (auto &F: module) {
+    for (auto &s: toStripFuncList) {
+      if ((F.getName() == s) && !F.isDeclaration()) {
+        modified |= llvm::stripDebugInfo(F);
+      }
+    }
+  }
+  return modified;
 }

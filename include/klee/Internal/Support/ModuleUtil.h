@@ -65,6 +65,7 @@ bool functionEscapes(const llvm::Function *f);
 bool loadFile(const std::string &libraryName, llvm::LLVMContext &context,
               std::vector<std::unique_ptr<llvm::Module>> &modules,
               std::string &errorMsg);
+bool stripDebugInfo(llvm::Module &module);
 }
 
 #endif

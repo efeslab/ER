@@ -995,7 +995,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         getNextBranchConstraint(current, condition, new_constraint, res);
         // at this point, replayPosition points to the index of next branch
         // while current branch hasn't been recorded
-        assert(current.pathOS.cnt == current.replayPosition - 1);
+        assert(current.nbranches_rec == current.replayPosition - 1);
         if (symIndexWriter) {
           current.symIndexOS << current.replayPosition - 1;
         }
@@ -1075,6 +1075,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         else {
           record1BitAtFork(current, res);
         }
+        ++current.nbranches_rec;
         dumpStateAtFork(current, new_constraint);
     }
     // dump first, then add new constraint
@@ -4372,6 +4373,7 @@ int *Executor::getErrnoLocation(const ExecutionState &state) const {
 }
 
 void Executor::dumpStateAtBranch(ExecutionState &current, PathEntry pe, ref<Expr> new_constraint) {
+  ++current.nbranches_rec;
   if (pathWriter) {
     current.pathOS << pe;
   }

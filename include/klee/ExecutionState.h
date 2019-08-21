@@ -166,6 +166,10 @@ public:
   unsigned replayPosition;
   /// The index info the current \ref symIndex object
   unsigned symIndexPosition;
+  /// The number of branches recorded
+  /// regardless of fork or switch or indirectbr, symbolic or concrete
+  ///   should record or not (isInPosix, isInUserMain)
+  unsigned nbranches_rec;
 
   /// @brief Set containing which lines in which files are covered by this state
   std::map<const std::string *, std::set<unsigned> > coveredLines;
@@ -192,7 +196,7 @@ public:
   std::uint64_t steppedInstructions;
 
 private:
-  ExecutionState() : replayPosition(0), symIndexPosition(0), ptreeNode(0) {}
+  ExecutionState() : replayPosition(0), symIndexPosition(0), nbranches_rec(0), ptreeNode(0) {}
 
 public:
   ExecutionState(KFunction *kf);

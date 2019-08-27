@@ -20,7 +20,7 @@ namespace klee {
   // The unit of path recording
   struct PathEntryBase {
     enum PathEntry_t: unsigned char {FORK, SWITCH, INDIRECTBR, FORKREC};
-    typedef uint8_t switchIndex_t;
+    typedef uint16_t switchIndex_t;
     typedef uint8_t indirectbrIndex_t;
     typedef uint8_t numKids_t;
     typedef struct {

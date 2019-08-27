@@ -368,7 +368,6 @@ public:
 class BinaryExpr : public NonConstantExpr {
 public:
   ref<Expr> left, right;
-  friend ref<Expr> SwapBinaryExpr(ref<Expr> e);
 
 public:
   unsigned getNumKids() const { return 2; }

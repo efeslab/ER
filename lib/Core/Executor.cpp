@@ -4470,10 +4470,40 @@ Interpreter *Interpreter::create(LLVMContext &ctx, const InterpreterOptions &opt
                                  InterpreterHandler *ih) {
   return new Executor(ctx, opts, ih);
 }
+
 void debugDumpLLVMIR(llvm::Instruction *llvmir) {
     llvmir->print(llvm::errs());
     llvm::errs() << '\n';
 }
+
+void Executor::debugDumpConstraintsToFile(ExecutionState &state, ref<Expr> condition) {
+    std::string filename = "constraints.txt";
+    std::string str;
+    llvm::raw_string_ostream stream(str);
+    std::ofstream ofs(filename);
+
+    const ref<Expr>* evalExprsBegin = 0;
+    const ref<Expr>* evalExprsEnd = 0;
+    const Array* const *evalArraysBegin = 0;
+    const Array* const *evalArraysEnd = 0;
+
+    std::vector<const Array*> objects;
+    for (unsigned i = 0; i != state.symbolics.size(); ++i)
+        objects.push_back(state.symbolics[i].second);
+
+    if (!objects.empty()) {
+        evalArraysBegin = &(objects[0]);
+        evalArraysEnd = &(objects[0]) + objects.size();
+    }
+
+    ExprPPrinter::printQuery(stream, state.constraints, condition,
+                        evalExprsBegin, evalExprsEnd,
+                        evalArraysBegin, evalArraysEnd);
+
+    ofs << stream.str();
+    ofs.close();
+}
+
 static llvm::raw_ostream &debugLLVMErrs = llvm::errs();
 
 /*

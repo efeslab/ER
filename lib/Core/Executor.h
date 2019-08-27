@@ -640,6 +640,8 @@ public:
   /// \param[out] res Represent if next branch is taken (Solver::True) or not
   void getNextBranchConstraint(ExecutionState &state, ref<Expr> condition,
       ref<Expr> &new_constraint, Solver::Validity &res);
+
+  void debugDumpConstraintsToFile(ExecutionState &state, ref<Expr> condition);
 };
 
 } // End klee namespace

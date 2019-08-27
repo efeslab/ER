@@ -740,20 +740,30 @@ ref<Expr> ExtractExpr::create(ref<Expr> expr, unsigned off, Width w) {
     return expr;
   } else if (ConstantExpr *CE = dyn_cast<ConstantExpr>(expr)) {
     return CE->Extract(off, w);
-  } else {
-    // Extract(Concat)
-    if (ConcatExpr *ce = dyn_cast<ConcatExpr>(expr)) {
-      // if the extract skips the right side of the concat
-      if (off >= ce->getRight()->getWidth())
-        return ExtractExpr::create(ce->getLeft(), off - ce->getRight()->getWidth(), w);
-      
-      // if the extract skips the left side of the concat
-      if (off + w <= ce->getRight()->getWidth())
-        return ExtractExpr::create(ce->getRight(), off, w);
+  } else if (ConcatExpr *ce = dyn_cast<ConcatExpr>(expr)) { // Extract(Concat)
+    // if the extract skips the right side of the concat
+    if (off >= ce->getRight()->getWidth())
+      return ExtractExpr::create(ce->getLeft(), off - ce->getRight()->getWidth(), w);
 
-      // E(C(x,y)) = C(E(x), E(y))
-      return ConcatExpr::create(ExtractExpr::create(ce->getKid(0), 0, w - ce->getKid(1)->getWidth() + off),
-          ExtractExpr::create(ce->getKid(1), off, ce->getKid(1)->getWidth() - off));
+    // if the extract skips the left side of the concat
+    if (off + w <= ce->getRight()->getWidth())
+      return ExtractExpr::create(ce->getRight(), off, w);
+
+    // E(C(x,y)) = C(E(x), E(y))
+    return ConcatExpr::create(ExtractExpr::create(ce->getKid(0), 0, w - ce->getKid(1)->getWidth() + off),
+        ExtractExpr::create(ce->getKid(1), off, ce->getKid(1)->getWidth() - off));
+  }
+  else if (CastExpr *cast = dyn_cast<CastExpr>(expr)) {
+    assert(cast->getWidth() > cast->src->getWidth() && "CastExpr not longer than CastExpr->src");
+    if (off + w <= cast->src->getWidth()) { // The data we want to Extract already known before Z/SExt
+      if (off == 0 && (w == cast->src->getWidth())) { // we can remove both Extract and Z/SExt
+        // Extract(w8, 0, Z/SExt(w32, Read(w8, idx, array))) => Read(w8, idx, array)
+        return cast->src;
+      }
+      else {
+        // Extract(w8, 2, Z/SExt(w32, Read(w8, idx, array))) => Extract(w8, 2, Read(w8, idx, array))
+        return ExtractExpr::create(cast->src, off, w);
+      }
     }
   }
   

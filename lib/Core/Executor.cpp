@@ -3120,13 +3120,13 @@ void Executor::run(ExecutionState &initialState) {
       if (it == seedMap.end())
         it = seedMap.begin();
       lastState = it->first;
-      unsigned numSeeds = it->second.size();
       ExecutionState &state = *lastState;
       KInstruction *ki = state.pc;
       stepInstruction(state);
 
       executeInstruction(state, ki);
-      processTimers(&state, maxInstructionTime * numSeeds);
+      //unsigned numSeeds = it->second.size();
+      //processTimers(&state, maxInstructionTime * numSeeds);
       updateStates(&state);
 
       if ((stats::instructions % 1000) == 0) {
@@ -3182,7 +3182,7 @@ void Executor::run(ExecutionState &initialState) {
     executeInstruction(state, ki);
     //klee_message("Executed %lu", uint64_t(stats::instructions));
 
-    processTimers(&state, maxInstructionTime);
+    //processTimers(&state, maxInstructionTime);
 
     checkMemoryUsage();
 

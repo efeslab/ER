@@ -415,6 +415,8 @@ cl::opt<bool> CallSolver(
     "call-solver", cl::init(true),
     cl::desc("Call solver at Executor::fork. (default=true)"),
     cl::cat(HASECat));
+cl::opt<std::string> OracleKTest( "oracle-KTest", cl::init(""),
+		cl::desc(""), cl::cat(HASECat));
 } // namespace
 
 namespace klee {
@@ -443,7 +445,8 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
     : Interpreter(opts), interpreterHandler(ih), searcher(0),
       externalDispatcher(new ExternalDispatcher(ctx)), statsTracker(0), pathWriter(0),
       symPathWriter(0), stackPathWriter(0), consPathWriter(0), statsPathWriter(0), symIndexWriter(0),
-      specialFunctionHandler(0), processTree(0), replayKTest(0), replayPath(0), symIndex(0),
+      specialFunctionHandler(0), processTree(0), replayKTest(0),
+	  oracle_eval(0), replayPath(0), symIndex(0),
       usingSeeds(0), atMemoryLimit(false), inhibitForking(false), haltExecution(false),
       ivcEnabled(false), debugLogBuffer(debugBufferString) {
 
@@ -468,6 +471,11 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
       interpreterHandler->getOutputFilename(SOLVER_QUERIES_KQUERY_FILE_NAME));
 
   this->solver = new TimingSolver(solver, EqualitySubstitution);
+
+  if (OracleKTest != "") {
+    oracle_eval = new OracleEvaluator(OracleKTest);
+  }
+
   memory = new MemoryManager(&arrayCache);
 
   initializeSearchOptions();
@@ -1201,6 +1209,15 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
       klee_warning("seeds patched for violating constraint");
   }
 
+  if (oracle_eval) {
+    ref<Expr> res = oracle_eval->visit(condition);
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(res)) {
+      assert(CE->isTrue() && "Adding False Constaint");
+    }
+    else {
+      assert(0 && "NonConstant Expr returned by OracleEvaluator");
+    }
+  }
   state.addConstraint(condition);
   if (ivcEnabled)
     doImpliedValueConcretization(state, condition,
@@ -4534,8 +4551,7 @@ void Executor::AssertNextBranchTaken(ExecutionState &state, bool br) {
     }
     klee_message("replay: %d/%lu runtime: %d recorded: %d, stack:\n", state.replayPosition-1, replayPath->size(), br, recorded_br);
     state.dumpStack(llvm::errs());
-    terminateStateOnError(state, "hit invalid branch in replay path mode", ReplayPath);
-    std::abort();
+    klee_warning("hit invalid branch in replay path mode");
   }
 }
 

@@ -29,6 +29,7 @@
 #include "llvm/ADT/Twine.h"
 
 #include "../Expr/ArrayExprOptimizer.h"
+#include "../Expr/OracleEvaluator.h"
 #include <map>
 #include <memory>
 #include <set>
@@ -201,6 +202,9 @@ private:
   /// When non-null the bindings that will be used for calls to
   /// klee_make_symbolic in order replay.
   const struct KTest *replayKTest;
+
+  /// When non-null, this evaluator knows all inputs of symbolic objects
+  OracleEvaluator *oracle_eval;
 
   /// When non-null a list of branch decisions to be used for replay.
   const std::vector<PathEntry> *replayPath;

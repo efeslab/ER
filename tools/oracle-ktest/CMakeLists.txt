@@ -6,11 +6,14 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
-add_subdirectory(gen-bout)
-add_subdirectory(gen-random-bout)
-add_subdirectory(kleaver)
-add_subdirectory(klee)
-add_subdirectory(klee-replay)
-add_subdirectory(klee-stats)
-add_subdirectory(ktest-tool)
-add_subdirectory(oracle-ktest)
+add_executable(oracle-ktest
+  main.cpp
+)
+
+set(KLEE_LIBS
+  kleeBasic
+)
+
+target_link_libraries(oracle-ktest ${KLEE_LIBS})
+
+install(TARGETS oracle-ktest RUNTIME DESTINATION bin)

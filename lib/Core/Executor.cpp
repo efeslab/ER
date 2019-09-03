@@ -4377,6 +4377,8 @@ void Executor::printInfo(llvm::raw_ostream &os) {
        << "  Stack:\n";
     s->dumpStack(os);
   }
+  os << "======== Statistics =============\n";
+  dumpStatisticsToLLVMrawos(os);
 }
 
 /// Returns the errno location in memory

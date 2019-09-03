@@ -12,6 +12,8 @@
 
 #include "Statistic.h"
 
+#include "llvm/Support/raw_ostream.h"
+
 #include <vector>
 #include <string>
 #include <string.h>
@@ -149,6 +151,8 @@ namespace klee {
                                                 uint64_t value) {
     indexedStats[index*stats.size() + s.id] = value;
   }
+
+  void dumpStatisticsToLLVMrawos(llvm::raw_ostream &os);
 }
 
 #endif

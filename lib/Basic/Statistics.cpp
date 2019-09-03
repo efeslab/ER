@@ -10,6 +10,8 @@
 #include "klee/Statistics.h"
 
 #include <vector>
+#include <iomanip>
+#include <sstream>
 
 using namespace klee;
 
@@ -81,4 +83,13 @@ Statistic &Statistic::operator +=(const uint64_t addend) {
 
 uint64_t Statistic::getValue() const {
   return theStatisticManager->getValue(*this);
+}
+
+void klee::dumpStatisticsToLLVMrawos(llvm::raw_ostream &os) {
+  for (size_t i = 0 ; i < theStatisticManager->getNumStatistics(); ++i) {
+    Statistic &stat = theStatisticManager->getStatistic(i);
+    std::ostringstream bufstr;
+    bufstr << std::setw(32) << stat.getName() << ": " << std::right << std::setw(24) << stat << '\n';
+    os << bufstr.str();
+  }
 }

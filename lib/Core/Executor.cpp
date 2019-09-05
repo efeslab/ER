@@ -950,7 +950,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     }
   }
 
-  if (CallSolver || !current.shouldRecord()) {
+  if (CallSolver || !current.shouldRecord() || isInternal) {
     time::Span timeout = coreSolverTimeout;
     time::Span fork_queryCost_begin = current.queryCost;
     if (isSeeding)

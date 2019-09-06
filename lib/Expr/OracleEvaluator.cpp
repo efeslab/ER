@@ -1,5 +1,5 @@
 #include "OracleEvaluator.h"
-
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/SolverImpl.h"
 
 ref<Expr> OracleEvaluator::getInitialValue(const Array &array, unsigned index) {

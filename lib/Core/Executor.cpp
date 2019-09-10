@@ -4497,6 +4497,20 @@ void debugDumpLLVMIR(llvm::Instruction *llvmir) {
     llvm::errs() << '\n';
 }
 
+void debugAnalyzeIndirectMemoryAccess(ExecutionState &state) {
+  ConstraintManager &constraints = state.constraints;
+  int cnt = 0;
+
+  for (ConstraintManager::const_iterator it = constraints.begin(),
+          ie = constraints.end(); it != ie; ++it) {
+    const ref<Expr> &e = *it;
+    llvm::errs() << "max indirect memory depth: " << e->maxIndirDep << "\n";
+    cnt++;
+  }
+
+  llvm::errs() << "# of constraints: " << cnt << "\n";
+}
+
 /// Dump constraints to a file, used inside gdb
 ///
 /// \param[in] state Contains all symbolic variables we are interested in.

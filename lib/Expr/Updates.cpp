@@ -32,8 +32,22 @@ UpdateNode::UpdateNode(const UpdateNode *_next,
   if (next) {
     ++next->refCount;
     size = 1 + next->size;
+
+    int indirDep;
+    if (index->getKind() != Expr::Constant)
+      indirDep = std::max(index->maxIndirDep+1, value->maxIndirDep);
+    else
+      indirDep = value->maxIndirDep;
+    maxIndirDep = std::max(indirDep, next->maxIndirDep);
   }
-  else size = 1;
+  else {
+    size = 1;
+
+    if (index->getKind() != Expr::Constant)
+      maxIndirDep = std::max(index->maxIndirDep+1, value->maxIndirDep);
+    else
+      maxIndirDep = value->maxIndirDep;
+  }
 }
 
 extern "C" void vc_DeleteExpr(void*);

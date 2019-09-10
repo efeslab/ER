@@ -175,6 +175,7 @@ public:
   };
 
   unsigned refCount;
+  int maxIndirDep;
 
 protected:  
   unsigned hashValue;
@@ -380,7 +381,9 @@ public:
   }
  
 protected:
-  BinaryExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {}
+  BinaryExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {
+    maxIndirDep = std::max(l->maxIndirDep, r->maxIndirDep);
+  }
 
 public:
   static bool classof(const Expr *E) {
@@ -394,7 +397,9 @@ public:
 class CmpExpr : public BinaryExpr {
 
 protected:
-  CmpExpr(ref<Expr> l, ref<Expr> r) : BinaryExpr(l,r) {}
+  CmpExpr(ref<Expr> l, ref<Expr> r) : BinaryExpr(l,r) {
+    maxIndirDep = std::max(l->maxIndirDep, r->maxIndirDep);
+  }
   
 public:                                                       
   Width getWidth() const { return Bool; }
@@ -431,7 +436,9 @@ public:
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { return create(kids[0]); }
 
 private:
-  NotOptimizedExpr(const ref<Expr> &_src) : src(_src) {}
+  NotOptimizedExpr(const ref<Expr> &_src) : src(_src) {
+    maxIndirDep = src->maxIndirDep;
+  }
 
 protected:
   virtual int compareContents(const Expr &b) const {
@@ -458,6 +465,8 @@ class UpdateNode {
 public:
   const UpdateNode *next;
   ref<Expr> index, value;
+
+  int maxIndirDep;
   
 private:
   /// size of this update sequence, including this update
@@ -598,7 +607,25 @@ public:
 
 private:
   ReadExpr(const UpdateList &_updates, const ref<Expr> &_index) : 
-    updates(_updates), index(_index) { assert(updates.root); }
+    updates(_updates), index(_index) {
+      assert(updates.root);
+
+      int indirDepOfArr = updates.root->isSymbolicArray() ? 1 : 0;
+      if (index->getKind() == Expr::Constant) {
+        if (updates.head == nullptr)
+          maxIndirDep = indirDepOfArr;
+        else
+          maxIndirDep = std::max(updates.head->maxIndirDep, indirDepOfArr);
+      }
+      else {
+        if (updates.head == nullptr)
+          maxIndirDep = std::max(index->maxIndirDep+1, indirDepOfArr);
+        else {
+          maxIndirDep = std::max(updates.head->maxIndirDep, indirDepOfArr);
+          maxIndirDep = std::max(index->maxIndirDep+1, maxIndirDep);
+        }
+      }
+    }
 
 public:
   static bool classof(const Expr *E) {
@@ -653,7 +680,10 @@ public:
 
 private:
   SelectExpr(const ref<Expr> &c, const ref<Expr> &t, const ref<Expr> &f) 
-    : cond(c), trueExpr(t), falseExpr(f) {}
+    : cond(c), trueExpr(t), falseExpr(f) {
+      maxIndirDep = std::max(t->maxIndirDep, f->maxIndirDep);
+      maxIndirDep = std::max(maxIndirDep, c->maxIndirDep);
+    }
 
 public:
   static bool classof(const Expr *E) {
@@ -716,6 +746,7 @@ public:
 private:
   ConcatExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {
     width = l->getWidth() + r->getWidth();
+    maxIndirDep = std::max(l->maxIndirDep, r->maxIndirDep);
   }
 
 public:
@@ -779,7 +810,9 @@ public:
 
 private:
   ExtractExpr(const ref<Expr> &e, unsigned b, Width w) 
-    : expr(e),offset(b),width(w) {}
+    : expr(e),offset(b),width(w) {
+      maxIndirDep = e->maxIndirDep;
+    }
 
 public:
   static bool classof(const Expr *E) {
@@ -827,7 +860,9 @@ public:
   static bool classof(const NotExpr *) { return true; }
 
 private:
-  NotExpr(const ref<Expr> &e) : expr(e) {}
+  NotExpr(const ref<Expr> &e) : expr(e) {
+    maxIndirDep = e->maxIndirDep;
+  }
 
 protected:
   virtual int compareContents(const Expr &b) const {
@@ -846,7 +881,9 @@ public:
   Width width;
 
 public:
-  CastExpr(const ref<Expr> &e, Width w) : src(e), width(w) {}
+  CastExpr(const ref<Expr> &e, Width w) : src(e), width(w) {
+    maxIndirDep = e->maxIndirDep;
+  }
 
   Width getWidth() const { return width; }
 
@@ -1004,7 +1041,9 @@ private:
   llvm::APInt value;
   ref<Expr> sym_expr;
 
-  ConstantExpr(const llvm::APInt &v) : value(v) {}
+  ConstantExpr(const llvm::APInt &v) : value(v) {
+    maxIndirDep = 0;
+  }
 
 public:
   ~ConstantExpr() {}

@@ -122,6 +122,9 @@ void klee_init_fds(unsigned n_files, unsigned file_length,
   for (k=0; k < n_files; k++) {
     name[0] = 'A' + k;
     __create_new_dfile(&__exe_fs.sym_files[k], file_length, name, &s);
+    /* FIXME: This is a workaround since currently we don't record the path
+     * of libc. */
+    klee_assume(!S_ISCHR(__exe_fs.sym_files[k].stat->st_mode));
   }
   
   /* setting symbolic stdin */

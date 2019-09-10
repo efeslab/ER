@@ -4505,6 +4505,7 @@ void debugDumpLLVMIR(llvm::Instruction *llvmir) {
 ///   the dumped query will not ask for symbolic values' assignment.
 ///   If null, the query will evalute `false` and ask for assignment.
 /// \param[in] filename The path and name of the dumped file. Default is "constraints.txt"
+static ref<Expr> debugExpr = ref<Expr>(0);
 void debugDumpConstraints(ExecutionState &state, ConstraintManager &cm, ref<Expr> expr, const char *filename) {
   std::string str;
   llvm::raw_string_ostream os(str);

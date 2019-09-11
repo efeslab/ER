@@ -15,7 +15,6 @@
 namespace klee {
 namespace stats {
 
-  extern Statistic cexCacheTime;
   extern Statistic queries;
   extern Statistic queriesInvalid;
   extern Statistic queriesValid;
@@ -26,6 +25,11 @@ namespace stats {
   extern Statistic queryConstructTime;
   extern Statistic queryConstructs;
   extern Statistic queryCounterexamples;
+  extern Statistic independentConstraints;
+  extern Statistic independentAllConstraints;
+  // Solver Time related stats
+  extern Statistic independentTime;
+  extern Statistic cexCacheTime;
   extern Statistic queryTime;
   
 #ifdef KLEE_ARRAY_DEBUG

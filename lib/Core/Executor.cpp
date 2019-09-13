@@ -4497,32 +4497,46 @@ void debugDumpLLVMIR(llvm::Instruction *llvmir) {
     llvm::errs() << '\n';
 }
 
-void Executor::debugDumpConstraintsToFile(ExecutionState &state, ref<Expr> condition) {
-    std::string filename = "constraints.txt";
-    std::string str;
-    llvm::raw_string_ostream stream(str);
-    std::ofstream ofs(filename);
-
-    const ref<Expr>* evalExprsBegin = 0;
-    const ref<Expr>* evalExprsEnd = 0;
-    const Array* const *evalArraysBegin = 0;
-    const Array* const *evalArraysEnd = 0;
-
-    std::vector<const Array*> objects;
-    for (unsigned i = 0; i != state.symbolics.size(); ++i)
-        objects.push_back(state.symbolics[i].second);
-
-    if (!objects.empty()) {
-        evalArraysBegin = &(objects[0]);
-        evalArraysEnd = &(objects[0]) + objects.size();
+/// Dump constraints to a file, used inside gdb
+///
+/// \param[in] state Contains all symbolic variables we are interested in.
+/// \param[in] cm Contains all constraints, not necessary to be state.constraints
+/// \param[in] expr If non-null, it's the expr you want to evaluate and
+///   the dumped query will not ask for symbolic values' assignment.
+///   If null, the query will evalute `false` and ask for assignment.
+/// \param[in] filename The path and name of the dumped file. Default is "constraints.txt"
+static ref<Expr> debugExpr = ref<Expr>(0);
+void debugDumpConstraints(ExecutionState &state, ConstraintManager &cm, ref<Expr> expr, const char *filename) {
+  std::string str;
+  llvm::raw_string_ostream os(str);
+  std::ofstream ofs(filename);
+  if (!ofs.good()) {
+    llvm::errs() << "open file " << filename << "failed\n";
+    return;
+  }
+  const ref<Expr> *evalExprsBegin = nullptr;
+  const ref<Expr> *evalExprsEnd = nullptr;
+  const Array *const *evalArraysBegin = nullptr;
+  const Array *const *evalArraysEnd = nullptr;
+  std::vector<const Array*> symbolic_objs;
+  if (expr.isNull()) { // no query expr, dumping for initial assigment
+    for (auto s: state.symbolics) {
+      symbolic_objs.push_back(s.second);
     }
-
-    ExprPPrinter::printQuery(stream, state.constraints, condition,
-                        evalExprsBegin, evalExprsEnd,
-                        evalArraysBegin, evalArraysEnd);
-
-    ofs << stream.str();
-    ofs.close();
+    if (!symbolic_objs.empty()) {
+      evalArraysBegin = &(symbolic_objs[0]);
+      evalArraysEnd = evalArraysBegin + symbolic_objs.size();
+    }
+  }
+  else { // has query expr, dumping for evaluation
+    evalExprsBegin = &expr;
+    evalExprsEnd = evalExprsBegin + 1;
+  }
+  ExprPPrinter::printQuery(os, cm, klee::ConstantExpr::alloc(false, Expr::Bool),
+      evalExprsBegin, evalExprsEnd,
+      evalArraysBegin, evalArraysEnd, true);
+  ofs << os.str();
+  ofs.close();
 }
 
 static llvm::raw_ostream &debugLLVMErrs = llvm::errs();
@@ -4553,7 +4567,7 @@ void Executor::AssertNextBranchTaken(ExecutionState &state, bool br) {
     }
     klee_message("replay: %d/%lu runtime: %d recorded: %d, stack:\n", state.replayPosition-1, replayPath->size(), br, recorded_br);
     state.dumpStack(llvm::errs());
-    klee_warning("hit invalid branch in replay path mode");
+    terminateStateOnError(state, "hit invalid branch in replay path mode", ReplayPath);
   }
 }
 

@@ -1249,6 +1249,7 @@ static void info_signal_handle(int signum) {
   static llvm::raw_ostream &os = llvm::errs();
   switch (signum) {
     case SIGINT:
+    case SIGUSR1:
       if (theInterpreter) {
         theInterpreter->printInfo(os);
       }
@@ -1267,6 +1268,10 @@ static void register_sighandler() {
   sigemptyset(&new_action.sa_mask);
   new_action.sa_flags = 0;
   if (sigaction(SIGINT, &new_action, NULL) != 0) {
+    perror("register SIGINT handler error");
+    exit(-1);
+  }
+  if (sigaction(SIGUSR1, &new_action, NULL) != 0) {
     perror("register SIGINT handler error");
     exit(-1);
   }

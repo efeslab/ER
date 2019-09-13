@@ -1,2 +1,15 @@
 INSTALL_BASE=/mnt/storage/gefeizuo/hase/install
-cmake -DCMAKE_INCLUDE_PATH=${INSTALL_BASE}/include -DCMAKE_LIBRARY_PATH=${INSTALL_BASE}/lib -DENABLE_SOLVER_STP=ON -DENABLE_SOLVER_Z3=ON -DENABLE_POSIX_RUNTIME=ON -DENABLE_KLEE_UCLIBC=ON -DKLEE_UCLIBC_PATH=/mnt/storage/gefeizuo/hase/klee-uclibc/ -DENABLE_UNIT_TEST=ON -DGTEST_SRC_DIR=/mnt/storage/gefeizuo/hase/googletest-release-1.7.0/ -DLLVM_CONFIG_BINARY=/usr/bin/llvm-config-6.0 -DLLVMCC=/usr/bin/clang-6.0 -DLLVMCXX=/usr/bin/clang++-6.0 -DCMAKE_INSTALL_PREFIX=${INSTALL_BASE} ..
+#LLVMPREFIX=${INSTALL_BASE}/bin
+LLVMPREFIX=/usr/bin
+cmake -DCMAKE_INCLUDE_PATH=${INSTALL_BASE}/include \
+      -DCMAKE_BUILD_TYPE=Debug\
+      -DCMAKE_LIBRARY_PATH=${INSTALL_BASE}/lib\
+      -DENABLE_SOLVER_STP=ON -DENABLE_SOLVER_Z3=ON\
+      -DENABLE_POSIX_RUNTIME=ON\
+      -DENABLE_KLEE_UCLIBC=ON -DKLEE_UCLIBC_PATH=/mnt/storage/gefeizuo/hase/klee-uclibc/\
+      -DLLVM_CONFIG_BINARY=${LLVMPREFIX}/llvm-config -DLLVMCC=${LLVMPREFIX}/clang-6.0 -DLLVMCXX=${LLVMPREFIX}/clang-6.0\
+      -DCMAKE_INSTALL_PREFIX=${INSTALL_BASE}\
+      ..
+	  #commented out options
+      ##-DCMAKE_EXPORT_COMPILE_COMMANDS=ON\
+      #-DENABLE_UNIT_TESTS=ON -DGTEST_SRC_DIR=/mnt/storage/gefeizuo/hase/googletest-release-1.7.0/\

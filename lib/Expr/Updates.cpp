@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "klee/Expr.h"
+#include "klee/Internal/Module/KInstruction.h"
 
 #include <cassert>
 
@@ -17,11 +18,15 @@ using namespace klee;
 
 UpdateNode::UpdateNode(const UpdateNode *_next, 
                        const ref<Expr> &_index, 
-                       const ref<Expr> &_value) 
+                       const ref<Expr> &_value,
+                       Expr::CreatorKind _creator,
+                       KInstruction *_kinst) 
   : refCount(0),    
     next(_next),
     index(_index),
-    value(_value) {
+    value(_value),
+    creator(_creator),
+    kinst(_kinst) {
   // FIXME: What we need to check here instead is that _value is of the same width 
   // as the range of the array that the update node is part of.
   /*
@@ -158,7 +163,8 @@ UpdateList &UpdateList::operator=(const UpdateList &b) {
   return *this;
 }
 
-void UpdateList::extend(const ref<Expr> &index, const ref<Expr> &value) {
+void UpdateList::extend(const ref<Expr> &index, const ref<Expr> &value,
+            Expr::CreatorKind creator, KInstruction *kinst) {
   
   if (root) {
     assert(root->getDomain() == index->getWidth());
@@ -166,7 +172,7 @@ void UpdateList::extend(const ref<Expr> &index, const ref<Expr> &value) {
   }
 
   if (head) --head->refCount;
-  head = new UpdateNode(head, index, value);
+  head = new UpdateNode(head, index, value, creator, kinst);
   ++head->refCount;
 }
 

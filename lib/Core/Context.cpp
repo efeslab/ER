@@ -10,6 +10,7 @@
 #include "Context.h"
 
 #include "klee/Expr.h"
+#include "klee/Internal/Module/KInstruction.h"
 
 #include "llvm/IR/Type.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -35,12 +36,14 @@ const Context &Context::get() {
 // FIXME: This is a total hack, just to avoid a layering issue until this stuff
 // moves out of Expr.
 
-ref<Expr> Expr::createSExtToPointerWidth(ref<Expr> e) {
-  return SExtExpr::create(e, Context::get().getPointerWidth());
+ref<Expr> Expr::createSExtToPointerWidth(ref<Expr> e,
+        Expr::CreatorKind creator, KInstruction *kinst) {
+  return SExtExpr::create(e, Context::get().getPointerWidth(), creator, kinst);
 }
 
-ref<Expr> Expr::createZExtToPointerWidth(ref<Expr> e) {
-  return ZExtExpr::create(e, Context::get().getPointerWidth());
+ref<Expr> Expr::createZExtToPointerWidth(ref<Expr> e,
+        Expr::CreatorKind creator, KInstruction *kinst) {
+  return ZExtExpr::create(e, Context::get().getPointerWidth(), creator, kinst);
 }
 
 ref<ConstantExpr> Expr::createPointer(uint64_t v) {

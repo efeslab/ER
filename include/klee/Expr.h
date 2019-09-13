@@ -12,6 +12,7 @@
 
 #include "klee/util/Bits.h"
 #include "klee/util/Ref.h"
+#include "klee/Internal/Module/KInstruction.h"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -177,6 +178,16 @@ public:
   unsigned refCount;
   int maxIndirDep;
 
+  enum CreatorKind {
+      Unknown,
+      Initializer,
+      Instruction,
+      Optimizer,
+      Internal
+  };
+  Expr::CreatorKind creator;
+  KInstruction *kinst;
+
 protected:  
   unsigned hashValue;
 
@@ -267,14 +278,19 @@ public:
   /* Kind utilities */
 
   /* Utility creation functions */
-  static ref<Expr> createSExtToPointerWidth(ref<Expr> e);
-  static ref<Expr> createZExtToPointerWidth(ref<Expr> e);
-  static ref<Expr> createImplies(ref<Expr> hyp, ref<Expr> conc);
-  static ref<Expr> createIsZero(ref<Expr> e);
+  static ref<Expr> createSExtToPointerWidth(ref<Expr> e,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
+  static ref<Expr> createZExtToPointerWidth(ref<Expr> e,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
+  static ref<Expr> createImplies(ref<Expr> hyp, ref<Expr> conc,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
+  static ref<Expr> createIsZero(ref<Expr> e,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
 
   /// Create a little endian read of the given type at offset 0 of the
   /// given object.
-  static ref<Expr> createTempRead(const Array *array, Expr::Width w);
+  static ref<Expr> createTempRead(const Array *array,
+            Expr::Width w, Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
   
   static ref<ConstantExpr> createPointer(uint64_t v);
 
@@ -381,8 +397,12 @@ public:
   }
  
 protected:
-  BinaryExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {
+  BinaryExpr(const ref<Expr> &l, const ref<Expr> &r,
+                Expr::CreatorKind _creator, KInstruction *_kinst)
+      : left(l), right(r) {
     maxIndirDep = std::max(l->maxIndirDep, r->maxIndirDep);
+    creator = _creator;
+    kinst = _kinst;
   }
 
 public:
@@ -397,7 +417,9 @@ public:
 class CmpExpr : public BinaryExpr {
 
 protected:
-  CmpExpr(ref<Expr> l, ref<Expr> r) : BinaryExpr(l,r) {
+  CmpExpr(ref<Expr> l, ref<Expr> r,
+                Expr::CreatorKind _creator, KInstruction *_kinst)
+            : BinaryExpr(l,r,_creator,_kinst) {
     maxIndirDep = std::max(l->maxIndirDep, r->maxIndirDep);
   }
   
@@ -419,13 +441,15 @@ public:
   static const unsigned numKids = 1;
   ref<Expr> src;
 
-  static ref<Expr> alloc(const ref<Expr> &src) {
-    ref<Expr> r(new NotOptimizedExpr(src));
+  static ref<Expr> alloc(const ref<Expr> &src,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr) {
+    ref<Expr> r(new NotOptimizedExpr(src, creator, kinst));
     r->computeHash();
     return r;
   }
   
-  static ref<Expr> create(ref<Expr> src);
+  static ref<Expr> create(ref<Expr> src,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
   
   Width getWidth() const { return src->getWidth(); }
   Kind getKind() const { return NotOptimized; }
@@ -433,11 +457,17 @@ public:
   unsigned getNumKids() const { return 1; }
   ref<Expr> getKid(unsigned i) const { return src; }
 
-  virtual ref<Expr> rebuild(ref<Expr> kids[]) const { return create(kids[0]); }
+  virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
+      return create(kids[0], creator, kinst); 
+  }
 
 private:
-  NotOptimizedExpr(const ref<Expr> &_src) : src(_src) {
+  NotOptimizedExpr(const ref<Expr> &_src,
+                Expr::CreatorKind _creator, KInstruction *_kinst)
+            : src(_src) {
     maxIndirDep = src->maxIndirDep;
+    creator = _creator;
+    kinst = _kinst;
   }
 
 protected:
@@ -467,6 +497,8 @@ public:
   ref<Expr> index, value;
 
   int maxIndirDep;
+  Expr::CreatorKind creator;
+  KInstruction *kinst;
   
 private:
   /// size of this update sequence, including this update
@@ -475,7 +507,9 @@ private:
 public:
   UpdateNode(const UpdateNode *_next, 
              const ref<Expr> &_index, 
-             const ref<Expr> &_value);
+             const ref<Expr> &_value,
+             Expr::CreatorKind _creator,
+             KInstruction *_kinst);
 
   unsigned getSize() const { return size; }
 
@@ -564,7 +598,8 @@ public:
   /// size of this update list
   unsigned getSize() const { return (head ? head->getSize() : 0); }
   
-  void extend(const ref<Expr> &index, const ref<Expr> &value);
+  void extend(const ref<Expr> &index, const ref<Expr> &value,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
 
   int compare(const UpdateList &b) const;
   unsigned hash() const;
@@ -583,13 +618,15 @@ public:
   ref<Expr> index;
 
 public:
-  static ref<Expr> alloc(const UpdateList &updates, const ref<Expr> &index) {
-    ref<Expr> r(new ReadExpr(updates, index));
+  static ref<Expr> alloc(const UpdateList &updates, const ref<Expr> &index,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr) {
+    ref<Expr> r(new ReadExpr(updates, index, creator, kinst));
     r->computeHash();
     return r;
   }
   
-  static ref<Expr> create(const UpdateList &updates, ref<Expr> i);
+  static ref<Expr> create(const UpdateList &updates, ref<Expr> i,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
   
   Width getWidth() const { assert(updates.root); return updates.root->getRange(); }
   Kind getKind() const { return Read; }
@@ -600,13 +637,14 @@ public:
   int compareContents(const Expr &b) const;
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
-    return create(updates, kids[0]);
+    return create(updates, kids[0], creator, kinst);
   }
 
   virtual unsigned computeHash();
 
 private:
-  ReadExpr(const UpdateList &_updates, const ref<Expr> &_index) : 
+  ReadExpr(const UpdateList &_updates, const ref<Expr> &_index,
+                Expr::CreatorKind _creator, KInstruction *_kinst) : 
     updates(_updates), index(_index) {
       assert(updates.root);
 
@@ -625,6 +663,8 @@ private:
           maxIndirDep = std::max(index->maxIndirDep+1, maxIndirDep);
         }
       }
+      creator = _creator;
+      kinst = _kinst;
     }
 
 public:
@@ -646,13 +686,15 @@ public:
 
 public:
   static ref<Expr> alloc(const ref<Expr> &c, const ref<Expr> &t, 
-                         const ref<Expr> &f) {
-    ref<Expr> r(new SelectExpr(c, t, f));
+                         const ref<Expr> &f, Expr::CreatorKind creator = Expr::Unknown,
+                         KInstruction *kinst = nullptr) {
+    ref<Expr> r(new SelectExpr(c, t, f, creator, kinst));
     r->computeHash();
     return r;
   }
   
-  static ref<Expr> create(ref<Expr> c, ref<Expr> t, ref<Expr> f);
+  static ref<Expr> create(ref<Expr> c, ref<Expr> t, ref<Expr> f,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
 
   Width getWidth() const { return trueExpr->getWidth(); }
   Kind getKind() const { return Select; }
@@ -675,14 +717,17 @@ public:
   }
     
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
-    return create(kids[0], kids[1], kids[2]);
+    return create(kids[0], kids[1], kids[2], creator, kinst);
   }
 
 private:
-  SelectExpr(const ref<Expr> &c, const ref<Expr> &t, const ref<Expr> &f) 
+  SelectExpr(const ref<Expr> &c, const ref<Expr> &t, const ref<Expr> &f,
+                Expr::CreatorKind _creator, KInstruction *_kinst) 
     : cond(c), trueExpr(t), falseExpr(f) {
       maxIndirDep = std::max(t->maxIndirDep, f->maxIndirDep);
       maxIndirDep = std::max(maxIndirDep, c->maxIndirDep);
+      creator = _creator;
+      kinst = _kinst;
     }
 
 public:
@@ -712,13 +757,15 @@ private:
   ref<Expr> left, right;  
 
 public:
-  static ref<Expr> alloc(const ref<Expr> &l, const ref<Expr> &r) {
-    ref<Expr> c(new ConcatExpr(l, r));
+  static ref<Expr> alloc(const ref<Expr> &l, const ref<Expr> &r,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr) {
+    ref<Expr> c(new ConcatExpr(l, r, creator, kinst));
     c->computeHash();
     return c;
   }
   
-  static ref<Expr> create(const ref<Expr> &l, const ref<Expr> &r);
+  static ref<Expr> create(const ref<Expr> &l, const ref<Expr> &r,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
 
   Width getWidth() const { return width; }
   Kind getKind() const { return kind; }
@@ -733,20 +780,29 @@ public:
   }
 
   /// Shortcuts to create larger concats.  The chain returned is unbalanced to the right
-  static ref<Expr> createN(unsigned nKids, const ref<Expr> kids[]);
+  static ref<Expr> createN(unsigned nKids, const ref<Expr> kids[],
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
   static ref<Expr> create4(const ref<Expr> &kid1, const ref<Expr> &kid2,
-			   const ref<Expr> &kid3, const ref<Expr> &kid4);
+			   const ref<Expr> &kid3, const ref<Expr> &kid4,
+               Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
   static ref<Expr> create8(const ref<Expr> &kid1, const ref<Expr> &kid2,
 			   const ref<Expr> &kid3, const ref<Expr> &kid4,
 			   const ref<Expr> &kid5, const ref<Expr> &kid6,
-			   const ref<Expr> &kid7, const ref<Expr> &kid8);
+			   const ref<Expr> &kid7, const ref<Expr> &kid8,
+               Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
   
-  virtual ref<Expr> rebuild(ref<Expr> kids[]) const { return create(kids[0], kids[1]); }
+  virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
+      return create(kids[0], kids[1], creator, kinst);
+  }
   
 private:
-  ConcatExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {
+  ConcatExpr(const ref<Expr> &l, const ref<Expr> &r,
+                Expr::CreatorKind _creator, KInstruction *_kinst)
+        : left(l), right(r) {
     width = l->getWidth() + r->getWidth();
     maxIndirDep = std::max(l->maxIndirDep, r->maxIndirDep);
+    creator = _creator;
+    kinst = _kinst;
   }
 
 public:
@@ -780,14 +836,16 @@ public:
   Width width;
 
 public:  
-  static ref<Expr> alloc(const ref<Expr> &e, unsigned o, Width w) {
-    ref<Expr> r(new ExtractExpr(e, o, w));
+  static ref<Expr> alloc(const ref<Expr> &e, unsigned o, Width w,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr) {
+    ref<Expr> r(new ExtractExpr(e, o, w, creator, kinst));
     r->computeHash();
     return r;
   }
   
   /// Creates an ExtractExpr with the given bit offset and width
-  static ref<Expr> create(ref<Expr> e, unsigned bitOff, Width w);
+  static ref<Expr> create(ref<Expr> e, unsigned bitOff, Width w,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
 
   Width getWidth() const { return width; }
   Kind getKind() const { return Extract; }
@@ -803,15 +861,18 @@ public:
   }
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
-    return create(kids[0], offset, width);
+    return create(kids[0], offset, width, creator, kinst);
   }
 
   virtual unsigned computeHash();
 
 private:
-  ExtractExpr(const ref<Expr> &e, unsigned b, Width w) 
+  ExtractExpr(const ref<Expr> &e, unsigned b, Width w,
+                Expr::CreatorKind _creator, KInstruction *_kinst) 
     : expr(e),offset(b),width(w) {
       maxIndirDep = e->maxIndirDep;
+      creator = _creator;
+      kinst = _kinst;
     }
 
 public:
@@ -833,13 +894,15 @@ public:
   ref<Expr> expr;
 
 public:  
-  static ref<Expr> alloc(const ref<Expr> &e) {
-    ref<Expr> r(new NotExpr(e));
+  static ref<Expr> alloc(const ref<Expr> &e,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr) {
+    ref<Expr> r(new NotExpr(e, creator, kinst));
     r->computeHash();
     return r;
   }
   
-  static ref<Expr> create(const ref<Expr> &e);
+  static ref<Expr> create(const ref<Expr> &e,
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);
 
   Width getWidth() const { return expr->getWidth(); }
   Kind getKind() const { return Not; }
@@ -848,7 +911,7 @@ public:
   ref<Expr> getKid(unsigned i) const { return expr; }
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
-    return create(kids[0]);
+    return create(kids[0], creator, kinst);
   }
 
   virtual unsigned computeHash();
@@ -860,8 +923,12 @@ public:
   static bool classof(const NotExpr *) { return true; }
 
 private:
-  NotExpr(const ref<Expr> &e) : expr(e) {
+  NotExpr(const ref<Expr> &e,
+                Expr::CreatorKind _creator, KInstruction *_kinst)
+      : expr(e) {
     maxIndirDep = e->maxIndirDep;
+    creator = _creator;
+    kinst = _kinst;
   }
 
 protected:
@@ -881,8 +948,12 @@ public:
   Width width;
 
 public:
-  CastExpr(const ref<Expr> &e, Width w) : src(e), width(w) {
+  CastExpr(const ref<Expr> &e, Width w,
+                Expr::CreatorKind _creator, KInstruction *_kinst)
+        : src(e), width(w) {
     maxIndirDep = e->maxIndirDep;
+    creator = _creator;
+    kinst = _kinst;
   }
 
   Width getWidth() const { return width; }
@@ -913,22 +984,26 @@ public:                                                          \
   static const Kind kind = _class_kind;                          \
   static const unsigned numKids = 1;                             \
 public:                                                          \
-    _class_kind ## Expr(ref<Expr> e, Width w) : CastExpr(e,w) {} \
-    static ref<Expr> alloc(const ref<Expr> &e, Width w) {        \
-      ref<Expr> r(new _class_kind ## Expr(e, w));                \
+    _class_kind ## Expr(ref<Expr> e, Width w,                    \
+            Expr::CreatorKind _creator, KInstruction *_kinst)          \
+        : CastExpr(e,w,_creator,_kinst) {}                       \
+    static ref<Expr> alloc(const ref<Expr> &e, Width w,          \
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr) {      \
+      ref<Expr> r(new _class_kind##Expr(e, w, creator, kinst));  \
       r->computeHash();                                          \
       return r;                                                  \
     }                                                            \
-    static ref<Expr> create(const ref<Expr> &e, Width w);        \
+    static ref<Expr> create(const ref<Expr> &e, Width w,         \
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);       \
     Kind getKind() const { return _class_kind; }                 \
     virtual ref<Expr> rebuild(ref<Expr> kids[]) const {          \
-      return create(kids[0], width);                             \
+      return create(kids[0], width, creator, kinst);             \
     }                                                            \
                                                                  \
     static bool classof(const Expr *E) {                         \
       return E->getKind() == Expr::_class_kind;                  \
     }                                                            \
-    static bool classof(const  _class_kind ## Expr *) {          \
+    static bool classof(const  _class_kind##Expr *) {            \
       return true;                                               \
     }                                                            \
 };                                                               \
@@ -945,18 +1020,21 @@ CAST_EXPR_CLASS(ZExt)
     static const unsigned numKids = 2;                                         \
                                                                                \
   public:                                                                      \
-    _class_kind##Expr(const ref<Expr> &l, const ref<Expr> &r)                  \
-        : BinaryExpr(l, r) {}                                                  \
-    static ref<Expr> alloc(const ref<Expr> &l, const ref<Expr> &r) {           \
-      ref<Expr> res(new _class_kind##Expr(l, r));                              \
+    _class_kind##Expr(const ref<Expr> &l, const ref<Expr> &r,                  \
+                Expr::CreatorKind _creator, KInstruction *_kinst)                    \
+        : BinaryExpr(l, r, _creator, _kinst) {}                                \
+    static ref<Expr> alloc(const ref<Expr> &l, const ref<Expr> &r,             \
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr) {                    \
+      ref<Expr> res(new _class_kind##Expr(l, r, creator, kinst));              \
       res->computeHash();                                                      \
       return res;                                                              \
     }                                                                          \
-    static ref<Expr> create(const ref<Expr> &l, const ref<Expr> &r);           \
+    static ref<Expr> create(const ref<Expr> &l, const ref<Expr> &r,            \
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);                     \
     Width getWidth() const { return left->getWidth(); }                        \
     Kind getKind() const { return _class_kind; }                               \
     virtual ref<Expr> rebuild(ref<Expr> kids[]) const {                        \
-      return create(kids[0], kids[1]);                                         \
+      return create(kids[0], kids[1], creator, kinst);                         \
     }                                                                          \
                                                                                \
     static bool classof(const Expr *E) {                                       \
@@ -994,17 +1072,20 @@ ARITHMETIC_EXPR_CLASS(AShr)
     static const unsigned numKids = 2;                                         \
                                                                                \
   public:                                                                      \
-    _class_kind##Expr(const ref<Expr> &l, const ref<Expr> &r)                  \
-        : CmpExpr(l, r) {}                                                     \
-    static ref<Expr> alloc(const ref<Expr> &l, const ref<Expr> &r) {           \
-      ref<Expr> res(new _class_kind##Expr(l, r));                              \
+    _class_kind##Expr(const ref<Expr> &l, const ref<Expr> &r,                  \
+                Expr::CreatorKind _creator, KInstruction *_kinst)                    \
+        : CmpExpr(l, r, _creator, _kinst) {}                                   \
+    static ref<Expr> alloc(const ref<Expr> &l, const ref<Expr> &r,             \
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr) {                    \
+      ref<Expr> res(new _class_kind##Expr(l, r, creator, kinst));              \
       res->computeHash();                                                      \
       return res;                                                              \
     }                                                                          \
-    static ref<Expr> create(const ref<Expr> &l, const ref<Expr> &r);           \
+    static ref<Expr> create(const ref<Expr> &l, const ref<Expr> &r,            \
+                Expr::CreatorKind creator = Expr::Unknown, KInstruction *kinst = nullptr);                     \
     Kind getKind() const { return _class_kind; }                               \
     virtual ref<Expr> rebuild(ref<Expr> kids[]) const {                        \
-      return create(kids[0], kids[1]);                                         \
+      return create(kids[0], kids[1], creator, kinst);                         \
     }                                                                          \
                                                                                \
     static bool classof(const Expr *E) {                                       \

@@ -597,7 +597,7 @@ void Executor::initializeGlobalObject(ExecutionState &state, ObjectState *os,
   } else if (isa<ConstantAggregateZero>(c)) {
     unsigned i, size = targetData->getTypeStoreSize(c->getType());
     for (i=0; i<size; i++)
-      os->write8(offset+i, (uint8_t) 0);
+      os->write8(offset+i, (uint8_t) 0, Expr::FLAG_INITIALIZATION, nullptr);
   } else if (const ConstantArray *ca = dyn_cast<ConstantArray>(c)) {
     unsigned elementSize =
       targetData->getTypeStoreSize(ca->getType()->getElementType());
@@ -626,7 +626,7 @@ void Executor::initializeGlobalObject(ExecutionState &state, ObjectState *os,
     if (StoreBits > C->getWidth())
       C = C->ZExt(StoreBits);
 
-    os->write(offset, C);
+    os->write(offset, C, Expr::FLAG_INITIALIZATION, nullptr);
   }
 }
 
@@ -637,7 +637,7 @@ MemoryObject * Executor::addExternalObject(ExecutionState &state,
                                   size, nullptr);
   ObjectState *os = bindObjectInState(state, mo, false);
   for(unsigned i = 0; i < size; i++)
-    os->write8(i, ((uint8_t*)addr)[i]);
+    os->write8(i, ((uint8_t*)addr)[i], Expr::FLAG_INITIALIZATION, nullptr);
   if(isReadOnly)
     os->setReadOnly(true);
   return mo;
@@ -768,7 +768,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
                      i->getName().data());
 
         for (unsigned offset=0; offset<mo->size; offset++)
-          os->write8(offset, ((unsigned char*)addr)[offset]);
+          os->write8(offset, ((unsigned char*)addr)[offset], Expr::FLAG_INITIALIZATION, nullptr);
       }
     } else {
       Type *ty = i->getType()->getElementType();
@@ -1246,6 +1246,8 @@ const Cell& Executor::eval(KInstruction *ki, unsigned index,
 void Executor::bindLocal(KInstruction *target, ExecutionState &state,
                          ref<Expr> value) {
   getDestCell(state, target).value = value;
+  value->kinst = target;
+  value->flags |= Expr::Expr::FLAG_INSTRUCTION_ROOT;
 }
 
 void Executor::bindArgument(KFunction *kf, unsigned index,
@@ -1427,7 +1429,7 @@ void Executor::executeCall(ExecutionState &state,
       Expr::Width WordSize = Context::get().getPointerWidth();
       if (WordSize == Expr::Int32) {
         executeMemoryOperation(state, true, arguments[0],
-                               sf.varargs->getBaseExpr(), 0);
+                               sf.varargs->getBaseExpr(), ki);
       } else {
         assert(WordSize == Expr::Int64 && "Unknown word size!");
 
@@ -1435,19 +1437,19 @@ void Executor::executeCall(ExecutionState &state,
         // instead of implementing it, we can do a simple hack: just
         // make a function believe that all varargs are on stack.
         executeMemoryOperation(state, true, arguments[0],
-                               ConstantExpr::create(48, 32), 0); // gp_offset
+                               ConstantExpr::create(48, 32), ki); // gp_offset
         executeMemoryOperation(state, true,
                                AddExpr::create(arguments[0],
                                                ConstantExpr::create(4, 64)),
-                               ConstantExpr::create(304, 32), 0); // fp_offset
+                               ConstantExpr::create(304, 32), ki); // fp_offset
         executeMemoryOperation(state, true,
                                AddExpr::create(arguments[0],
                                                ConstantExpr::create(8, 64)),
-                               sf.varargs->getBaseExpr(), 0); // overflow_arg_area
+                               sf.varargs->getBaseExpr(), ki); // overflow_arg_area
         executeMemoryOperation(state, true,
                                AddExpr::create(arguments[0],
                                                ConstantExpr::create(16, 64)),
-                               ConstantExpr::create(0, 64), 0); // reg_save_area
+                               ConstantExpr::create(0, 64), ki); // reg_save_area
       }
       break;
     }
@@ -1566,7 +1568,7 @@ void Executor::executeCall(ExecutionState &state,
           // FIXME: This is really specific to the architecture, not the pointer
           // size. This happens to work for x86-32 and x86-64, however.
           if (WordSize == Expr::Int32) {
-            os->write(offset, arguments[i]);
+            os->write(offset, arguments[i], Expr::FLAG_INSTRUCTION_ROOT, ki);
             offset += Expr::getMinBytesForWidth(arguments[i]->getWidth());
           } else {
             assert(WordSize == Expr::Int64 && "Unknown word size!");
@@ -1579,7 +1581,7 @@ void Executor::executeCall(ExecutionState &state,
               offset = llvm::RoundUpToAlignment(offset, 16);
 #endif
             }
-            os->write(offset, arguments[i]);
+            os->write(offset, arguments[i], Expr::FLAG_INSTRUCTION_ROOT, ki);
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 9)
             offset += llvm::alignTo(argWidth, WordSize) / 8;
 #else
@@ -2488,7 +2490,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Store: {
     ref<Expr> base = eval(ki, 1, state).value;
     ref<Expr> value = eval(ki, 0, state).value;
-    executeMemoryOperation(state, true, base, value, 0);
+    executeMemoryOperation(state, true, base, value, ki);
     break;
   }
 
@@ -3644,7 +3646,7 @@ void Executor::executeAlloc(ExecutionState &state,
       if (reallocFrom) {
         unsigned count = std::min(reallocFrom->size, os->size);
         for (unsigned i=0; i<count; i++)
-          os->write(i, reallocFrom->read8(i));
+          os->write(i, reallocFrom->read8(i), Expr::FLAG_INSTRUCTION_ROOT, target);
         state.addressSpace.unbindObject(reallocFrom->getObject());
       }
     }
@@ -3853,7 +3855,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                 ReadOnly);
         } else {
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-          wos->write(offset, value);
+          wos->write(offset, value, Expr::FLAG_INSTRUCTION_ROOT, target);
         }
       } else {
         ref<Expr> result = os->read(offset, type);
@@ -3897,7 +3899,8 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                 ReadOnly);
         } else {
           ObjectState *wos = bound->addressSpace.getWriteable(mo, os);
-          wos->write(mo->getOffsetExpr(address), value);
+          wos->write(mo->getOffsetExpr(address), value,
+                    Expr::FLAG_INSTRUCTION_ROOT, target);
         }
       } else {
         ref<Expr> result = os->read(mo->getOffsetExpr(address), type);
@@ -3990,7 +3993,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
         terminateStateOnError(state, "replay size mismatch", User);
       } else {
         for (unsigned i=0; i<mo->size; i++)
-          os->write8(i, obj->bytes[i]);
+          os->write8(i, obj->bytes[i], Expr::FLAG_INITIALIZATION, nullptr);
       }
     }
   }
@@ -4074,7 +4077,7 @@ void Executor::runFunctionAsMain(Function *f,
     for (int i=0; i<argc+1+envc+1+1; i++) {
       if (i==argc || i>=argc+1+envc) {
         // Write NULL pointer
-        argvOS->write(i * NumPtrBytes, Expr::createPointer(0));
+        argvOS->write(i * NumPtrBytes, Expr::createPointer(0), Expr::FLAG_INITIALIZATION, nullptr);
       } else {
         char *s = i<argc ? argv[i] : envp[i-(argc+1)];
         int j, len = strlen(s);
@@ -4086,10 +4089,10 @@ void Executor::runFunctionAsMain(Function *f,
           klee_error("Could not allocate memory for function arguments");
         ObjectState *os = bindObjectInState(*state, arg, false);
         for (j=0; j<len+1; j++)
-          os->write8(j, s[j]);
+          os->write8(j, s[j], Expr::FLAG_INITIALIZATION, nullptr);
 
         // Write pointer to newly allocated and initialised argv/envp c-string
-        argvOS->write(i * NumPtrBytes, arg->getBaseExpr());
+        argvOS->write(i * NumPtrBytes, arg->getBaseExpr(), Expr::FLAG_INITIALIZATION, nullptr);
       }
     }
   }
@@ -4283,7 +4286,7 @@ void Executor::doImpliedValueConcretization(ExecutionState &state,
         assert(!os->readOnly &&
                "not possible? read only object with static read?");
         ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-        wos->write(CE, it->second);
+        wos->write(CE, it->second, 0, nullptr);
       }
     }
   }
@@ -4497,6 +4500,65 @@ void debugDumpLLVMIR(llvm::Instruction *llvmir) {
     llvm::errs() << '\n';
 }
 
+class KInstVisitor : public ExprVisitor {
+private:
+    unsigned exprHitCnt, exprTotalCnt;
+    unsigned updateHitCnt, updateTotalCnt;
+    std::set<const Expr *> visitedExpr;
+    std::set<const UpdateNode *> visitedUpdate;
+    std::map<uint64_t, unsigned> untaggedUpdateType;
+
+public:
+    KInstVisitor():
+        exprHitCnt(0), exprTotalCnt(0), updateHitCnt(0), updateTotalCnt(0) {
+    }
+
+    void report() {
+        llvm::errs() << "expr hit: " << exprHitCnt << "/" << exprTotalCnt << "\n";
+        llvm::errs() << "update hit: " << updateHitCnt << "/" << updateTotalCnt << "\n";
+
+        for (auto it = untaggedUpdateType.begin(); it != untaggedUpdateType.end(); it++) {
+            llvm::errs() << it->first << ": " << it->second << "\n";
+        }
+    }
+
+    Action visitExpr(const Expr &e) {
+        if (visitedExpr.find(&e) == visitedExpr.end()) {
+            if (e.kinst != nullptr)
+                exprHitCnt++;
+            exprTotalCnt++;
+
+            visitedExpr.insert(&e);
+        }
+
+        return ExprVisitor::visitExpr(e);
+    }
+
+    Action visitRead(const ReadExpr &re) {
+        const UpdateNode *un = re.updates.head;
+        for (; un != nullptr; un = un->next) {
+            if (visitedUpdate.find(un) == visitedUpdate.end()) {
+                if (untaggedUpdateType.find(un->flags) != untaggedUpdateType.end()) {
+                    untaggedUpdateType[un->flags]++;
+                }
+                else {
+                    untaggedUpdateType.insert({un->flags, 1});
+                }
+
+                if (un->kinst != nullptr)
+                    updateHitCnt++;
+                updateTotalCnt++;
+
+                visitedUpdate.insert(un);
+                visit(un->index);
+                visit(un->value);
+            }
+        }
+
+        return ExprVisitor::visitRead(re);
+    }
+};
+
 void debugAnalyzeIndirectMemoryAccess(ExecutionState &state) {
   ConstraintManager &constraints = state.constraints;
   int cnt = 0;
@@ -4506,6 +4568,10 @@ void debugAnalyzeIndirectMemoryAccess(ExecutionState &state) {
     const ref<Expr> &e = *it;
     llvm::errs() << "max indirect memory depth: " << e->maxIndirDep << "\n";
     cnt++;
+
+    KInstVisitor kv;
+    kv.visit(e);
+    kv.report();
   }
 
   llvm::errs() << "# of constraints: " << cnt << "\n";

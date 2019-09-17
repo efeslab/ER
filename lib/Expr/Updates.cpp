@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "klee/Expr.h"
+#include "klee/Internal/Module/KInstruction.h"
 
 #include <cassert>
 
@@ -15,13 +16,18 @@ using namespace klee;
 
 ///
 
+static unsigned kinstMissCounter = 0;
 UpdateNode::UpdateNode(const UpdateNode *_next, 
                        const ref<Expr> &_index, 
-                       const ref<Expr> &_value) 
+                       const ref<Expr> &_value,
+                       uint64_t _flags,
+                       KInstruction *_kinst) 
   : refCount(0),    
     next(_next),
     index(_index),
-    value(_value) {
+    value(_value),
+    flags(_flags),
+    kinst(_kinst) {
   // FIXME: What we need to check here instead is that _value is of the same width 
   // as the range of the array that the update node is part of.
   /*
@@ -29,6 +35,11 @@ UpdateNode::UpdateNode(const UpdateNode *_next,
          "Update value should be 8-bit wide.");
   */
   computeHash();
+
+  if (_flags == Expr::FLAG_INTERNAL && _kinst == nullptr) {
+      kinstMissCounter++;
+  }
+
   if (next) {
     ++next->refCount;
     size = 1 + next->size;
@@ -158,7 +169,8 @@ UpdateList &UpdateList::operator=(const UpdateList &b) {
   return *this;
 }
 
-void UpdateList::extend(const ref<Expr> &index, const ref<Expr> &value) {
+void UpdateList::extend(const ref<Expr> &index, const ref<Expr> &value,
+                uint64_t flags, KInstruction *kinst) {
   
   if (root) {
     assert(root->getDomain() == index->getWidth());
@@ -166,7 +178,7 @@ void UpdateList::extend(const ref<Expr> &index, const ref<Expr> &value) {
   }
 
   if (head) --head->refCount;
-  head = new UpdateNode(head, index, value);
+  head = new UpdateNode(head, index, value, flags, kinst);
   ++head->refCount;
 }
 

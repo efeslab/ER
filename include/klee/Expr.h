@@ -12,6 +12,7 @@
 
 #include "klee/util/Bits.h"
 #include "klee/util/Ref.h"
+#include "klee/Internal/Module/KInstruction.h"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -176,6 +177,15 @@ public:
 
   unsigned refCount;
   int maxIndirDep;
+
+  enum {
+    FLAG_INSTRUCTION_ROOT = 1<<0,
+    FLAG_OPTIMIZATION = 1<<1,
+    FLAG_INTERNAL = 1<<2,
+    FLAG_INITIALIZATION = 1<<3
+  };
+  uint64_t flags;
+  KInstruction *kinst;
 
 protected:  
   unsigned hashValue;
@@ -467,6 +477,8 @@ public:
   ref<Expr> index, value;
 
   int maxIndirDep;
+  uint64_t flags;
+  KInstruction *kinst;
   
 private:
   /// size of this update sequence, including this update
@@ -475,7 +487,9 @@ private:
 public:
   UpdateNode(const UpdateNode *_next, 
              const ref<Expr> &_index, 
-             const ref<Expr> &_value);
+             const ref<Expr> &_value,
+             uint64_t _flags = 0,
+             KInstruction *_kinst = nullptr);
 
   unsigned getSize() const { return size; }
 
@@ -564,7 +578,8 @@ public:
   /// size of this update list
   unsigned getSize() const { return (head ? head->getSize() : 0); }
   
-  void extend(const ref<Expr> &index, const ref<Expr> &value);
+  void extend(const ref<Expr> &index, const ref<Expr> &value,
+                uint64_t flags, KInstruction *kinst);
 
   int compare(const UpdateList &b) const;
   unsigned hash() const;

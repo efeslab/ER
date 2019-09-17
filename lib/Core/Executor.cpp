@@ -3799,7 +3799,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
                                       KInstruction *target /* undef if write */) {
-  TimerStatIncrementer timer(stats::executeMemopTime);
+  TimerStatIncrementer timerS1(stats::executeMemopTimeS1);
   Expr::Width type = (isWrite ? value->getWidth() :
                      getWidthForLLVMType(target->inst->getType()));
   unsigned bytes = Expr::getMinBytesForWidth(type);
@@ -3822,8 +3822,9 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
   }
   solver->setTimeout(time::Span());
-
+  timerS1.check();
   if (success) {
+    TimerStatIncrementer timerOOBCheck(stats::executeMemopOOBCheck);
     const MemoryObject *mo = op.first;
 
     if (MaxSymArraySize && mo->size >= MaxSymArraySize) {
@@ -3853,8 +3854,10 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     else {
       inBounds = true;
     }
+    timerOOBCheck.check();
 
     if (inBounds) {
+      TimerStatIncrementer timerInBounds(stats::executeMemopTimeInBounds);
       const ObjectState *os = op.second;
       if (isWrite) {
         if (os->readOnly) {
@@ -3876,6 +3879,8 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       return;
     }
   }
+  TimerStatIncrementer timerErrHandl(stats::executeMemopTimeErrHandl);
+  ++stats::outofboundMemory;
 
   // we are on an error path (no resolution, multiple resolution, one
   // resolution with out of bounds)

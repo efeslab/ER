@@ -3674,32 +3674,32 @@ void Executor::executeAlloc(ExecutionState &state,
     // Try and start with a small example.
     Expr::Width W = example->getWidth();
     while (example->Ugt(ConstantExpr::alloc(128, W))->isTrue()) {
-      ref<ConstantExpr> tmp = example->LShr(ConstantExpr::alloc(1, W));
+      ref<ConstantExpr> try_smaller = example->LShr(ConstantExpr::alloc(1, W));
       bool res;
-      bool success = solver->mayBeTrue(state, EqExpr::create(tmp, size), res);
+      bool success = solver->mayBeTrue(state, EqExpr::create(try_smaller, size), res);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (!res)
         break;
-      example = tmp;
+      example = try_smaller;
     }
 
     StatePair fixedSize = fork(state, EqExpr::create(example, size), true);
 
     if (fixedSize.second) {
       // Check for exactly two values
-      ref<ConstantExpr> tmp;
-      bool success = solver->getValue(*fixedSize.second, size, tmp);
+      ref<ConstantExpr> example2;
+      bool success = solver->getValue(*fixedSize.second, size, example2);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       bool res;
       success = solver->mustBeTrue(*fixedSize.second,
-                                   EqExpr::create(tmp, size),
+                                   EqExpr::create(example2, size),
                                    res);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (res) {
-        executeAlloc(*fixedSize.second, tmp, isLocal,
+        executeAlloc(*fixedSize.second, example2, isLocal,
                      target, zeroMemory, reallocFrom);
       } else {
         // See if a *really* big value is possible. If so assume
@@ -3720,7 +3720,7 @@ void Executor::executeAlloc(ExecutionState &state,
           llvm::raw_string_ostream info(Str);
           ExprPPrinter::printOne(info, "  size expr", size);
           info << "  concretization : " << example << "\n";
-          info << "  unbound example: " << tmp << "\n";
+          info << "  unbound example: " << example2 << "\n";
           terminateStateOnError(*hugeSize.second, "concretized symbolic size",
                                 Model, NULL, info.str());
         }

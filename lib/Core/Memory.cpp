@@ -101,7 +101,7 @@ ObjectState::ObjectState(const MemoryObject *mo)
     flagStore(new uint64_t[mo->size]),
     kinstStore(new KInstruction*[mo->size]),
     concreteMask(0),
-    flushMask(new BitArray(mo->size, false)),
+    flushMask(0),
     knownSymbolics(0),
     updates(0, 0),
     size(mo->size),
@@ -129,7 +129,7 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
     flagStore(new uint64_t[mo->size]),
     kinstStore(new KInstruction*[mo->size]),
     concreteMask(0),
-    flushMask(new BitArray(mo->size, false)),
+    flushMask(0),
     knownSymbolics(0),
     updates(array, 0),
     size(mo->size),
@@ -151,7 +151,7 @@ ObjectState::ObjectState(const ObjectState &os)
     flagStore(new uint64_t[os.size]),
     kinstStore(new KInstruction*[os.size]),
     concreteMask(os.concreteMask ? new BitArray(*os.concreteMask, os.size) : 0),
-    flushMask(os.flushMask ? new BitArray(*os.flushMask, os.size) : new BitArray(size, false)),
+    flushMask(os.flushMask ? new BitArray(*os.flushMask, os.size) : 0),
     knownSymbolics(0),
     updates(os.updates),
     size(os.size),
@@ -274,7 +274,7 @@ void ObjectState::makeConcrete() {
   delete flushMask;
   delete[] knownSymbolics;
   concreteMask = 0;
-  flushMask = new BitArray(size, false);
+  flushMask = 0;
   knownSymbolics = 0;
 }
 
@@ -294,7 +294,7 @@ void ObjectState::initializeToZero() {
   makeConcrete();
   memset(concreteStore, 0, size);
   for (unsigned i = 0; i < size; i++) {
-    flagStore[i] = Expr::FLAG_INTERNAL;
+    flagStore[i] = Expr::FLAG_INITIALIZATION;
   }
   memset(kinstStore, 0, size*sizeof(KInstruction*));
 }
@@ -306,7 +306,7 @@ void ObjectState::initializeToRandom() {
     concreteStore[i] = 0xAB;
   }
   for (unsigned i = 0; i < size; i++) {
-    flagStore[i] = Expr::FLAG_INTERNAL;
+    flagStore[i] = Expr::FLAG_INITIALIZATION;
   }
   memset(kinstStore, 0, size*sizeof(KInstruction*));
 }

@@ -4538,15 +4538,17 @@ public:
         const UpdateNode *un = re.updates.head;
         for (; un != nullptr; un = un->next) {
             if (visitedUpdate.find(un) == visitedUpdate.end()) {
-                if (untaggedUpdateType.find(un->flags) != untaggedUpdateType.end()) {
-                    untaggedUpdateType[un->flags]++;
-                }
-                else {
-                    untaggedUpdateType.insert({un->flags, 1});
-                }
-
                 if (un->kinst != nullptr)
                     updateHitCnt++;
+                else {
+                    if (untaggedUpdateType.find(un->flags) != untaggedUpdateType.end()) {
+                        untaggedUpdateType[un->flags]++;
+                    }
+                    else {
+                        untaggedUpdateType.insert({un->flags, 1});
+                    }
+                }
+
                 updateTotalCnt++;
 
                 visitedUpdate.insert(un);

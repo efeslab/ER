@@ -415,6 +415,10 @@ cl::opt<bool> CallSolver(
     "call-solver", cl::init(true),
     cl::desc("Call solver at Executor::fork. (default=true)"),
     cl::cat(HASECat));
+cl::opt<bool> DoOutofBoundaryCheck(
+    "oob-check", cl::init(true),
+    cl::desc("Disable out of boundary check during memory operations"),
+    cl::cat(HASECat));
 cl::opt<std::string> OracleKTest( "oracle-KTest", cl::init(""),
 		cl::desc(""), cl::cat(HASECat));
 } // namespace
@@ -3827,11 +3831,16 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     }
 
     ref<Expr> offset = mo->getOffsetExpr(address);
-    ref<Expr> check = mo->getBoundsCheckOffset(offset, bytes);
-    check = optimizer.optimizeExpr(check, true);
 
     bool inBounds;
-    if (CallSolver) {
+    // I would say it is totally OK to disable solver call here.
+    // Since we only symbolic execute instructions before the crash, thus no
+    //   out of bound memory access should happen.
+    //   Otherwise, the program is supposed to crash earlier.
+    if (DoOutofBoundaryCheck) {
+      ref<Expr> check = mo->getBoundsCheckOffset(offset, bytes);
+      check = optimizer.optimizeExpr(check, true);
+
       solver->setTimeout(coreSolverTimeout);
       bool success = solver->mustBeTrue(state, check, inBounds);
       solver->setTimeout(time::Span());

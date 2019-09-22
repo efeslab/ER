@@ -72,11 +72,6 @@ StackFrame::StackFrame(const StackFrame &s)
 }
 
 StackFrame::~StackFrame() { 
-  for (unsigned int i = 0; i < kf->numRegisters; ++i) {
-    if (ConstantExpr *CE = dyn_cast_or_null<ConstantExpr>(locals[i].value.get())) {
-      CE->dropSym();
-    }
-  }
   delete[] locals; 
 }
 

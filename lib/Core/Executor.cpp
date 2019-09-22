@@ -403,14 +403,6 @@ cl::opt<bool> DebugCheckForImpliedValues(
     cl::desc("Debug the implied value optimization"),
     cl::cat(DebugCat));
 /*** HASE related Options ***/
-cl::opt<uint32_t> BitsLengthExpectation(
-    "record-bits-per-br", cl::init(1),
-    cl::desc("The expectation of the number of bits you want to record per branch. (default=1, means only record true/false)"),
-    cl::cat(HASECat));
-cl::opt<bool> AdditionalRecord(
-    "additional-record", cl::init(false),
-    cl::desc("Enable additional record, see also -record-bits-per-br. (default=false)"),
-    cl::cat(HASECat));
 cl::opt<bool> CallSolver(
     "call-solver", cl::init(true),
     cl::desc("Call solver at Executor::fork. (default=true)"),
@@ -1079,14 +1071,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   // search ones. If that makes sense.
   if (res == Solver::True || res == Solver::False) {
     if (!isInternal && current.shouldRecord()) {
-        ConstantExpr *CE = dyn_cast<ConstantExpr>(condition);
-        if (AdditionalRecord && !replayPath && CE) {
-          // Special recording at a given possibility.
-          recordNBitAtFork(current, CE, res);
-        }
-        else {
-          record1BitAtFork(current, res);
-        }
+        record1BitAtFork(current, res);
         ++current.nbranches_rec;
         dumpStateAtFork(current, new_constraint);
     }
@@ -4454,55 +4439,6 @@ void Executor::record1BitAtFork(ExecutionState &current, Solver::Validity solval
     current.pathOS << pe;
   }
 }
-
-void Executor::recordNBitAtFork(ExecutionState &current, ConstantExpr *CE, Solver::Validity solvalid) {
-  // Parameter: bits expectation N
-  // Current Policy: try when condition is constant and not replaying
-  // TODO: only record symbolic branch, need logging index of those branches during symbolic execution.
-  unsigned int total_width = 0;
-  bool isAdditionalRecording;
-  unsigned int numKids;
-  ref<Expr> sym_expr = CE->getSym();
-  if (!sym_expr.isNull() && symIndex &&
-      (current.symIndexPosition != symIndex->size())) {
-    if ((*symIndex)[current.symIndexPosition] == current.pathOS.cnt) {
-      ++current.symIndexPosition;
-      numKids = sym_expr->getNumKids();
-      for (unsigned int i=0; i < numKids; ++i) {
-        total_width += sym_expr->getKid(i)->getWidth();
-      }
-      // record additional bits at the probability of
-      //     BitsLengthExpectation / subExpr's total_width
-      isAdditionalRecording =
-        (unsigned int)(std::rand()%RAND_MAX_WRAP) < ((RAND_MAX_WRAP / total_width) * BitsLengthExpectation);
-    }
-    else {
-      isAdditionalRecording = false;
-      numKids = 0;
-    }
-  }
-  else {
-    isAdditionalRecording = false;
-    numKids = 0;
-  }
-  if (isAdditionalRecording) {
-    PathEntry pe;
-    pe.t = PathEntry::FORKREC;
-    pe.body.rec.br = (solvalid == Solver::True)?true:false;
-    pe.body.rec.numKids = numKids;
-    for (unsigned int i=0; i < numKids; ++i) {
-      ConstantExpr *CKid = dyn_cast<ConstantExpr>(sym_expr->getKid(i));
-      assert(CKid);
-      pe.Kids.push_back(CKid->getZExtValue(PathEntry::ConstantBits));
-    }
-    current.pathOS << pe;
-  }
-  else {
-    record1BitAtFork(current, solvalid);
-  }
-}
-
-///
 
 Interpreter *Interpreter::create(LLVMContext &ctx, const InterpreterOptions &opts,
                                  InterpreterHandler *ih) {

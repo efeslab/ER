@@ -505,15 +505,6 @@ private:
   /// \param[in] solvalid The solver validity result (means "must be" True or False) returned from a solver query
   void record1BitAtFork(ExecutionState &current, Solver::Validity solvalid);
 
-  /// Record additional bits based on the expression tree of a ConstantExpr.
-  ///
-  /// For now, I only record the first layer child nodes of a constant expression
-  /// tree. And only record > 1 bits at some probability, falling back to
-  /// record1BitAtFork otherwise.
-  /// \param[in] current Record to the pathOS of this ExecutionState
-  /// \param[in] CE The non-null constant expression tree
-  /// \param[in] solvalid Used to encode the 1 bit T/F together at the sign bit of numKids
-  void recordNBitAtFork(ExecutionState &current, ConstantExpr *CE, Solver::Validity solvalid);
   static inline void getConstraintFromBool(ref<Expr> condition, ref<Expr> &new_constraint, Solver::Validity &res, bool br) {
     if (br) {
       res = Solver::True;

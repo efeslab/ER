@@ -1216,7 +1216,10 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
   if (oracle_eval) {
     ref<Expr> res = oracle_eval->visit(condition);
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(res)) {
-      assert(CE->isTrue() && "Adding False Constaint");
+      if (!CE->isTrue()) {
+        printInfo(llvm::errs());
+        terminateStateOnError(state, "Adding False Constaint", Abort);
+      }
     }
     else {
       assert(0 && "NonConstant Expr returned by OracleEvaluator");

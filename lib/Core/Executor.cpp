@@ -3868,7 +3868,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     }
   }
   TimerStatIncrementer timerErrHandl(stats::executeMemopTimeErrHandl);
-  ++stats::outofboundMemory;
 
   // we are on an error path (no resolution, multiple resolution, one
   // resolution with out of bounds)

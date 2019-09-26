@@ -1202,7 +1202,6 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
     ref<Expr> res = oracle_eval->visit(condition);
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(res)) {
       if (!CE->isTrue()) {
-        printInfo(llvm::errs());
         terminateStateOnError(state, "Adding False Constaint", Abort);
       }
     }
@@ -3406,8 +3405,8 @@ void Executor::terminateStateOnError(ExecutionState &state,
       msg << "Line: " << ii.line << "\n";
       msg << "assembly.ll line: " << ii.assemblyLine << "\n";
     }
-    msg << "Stack: \n";
-    state.dumpStack(msg);
+
+    printInfo(llvm::errs());
 
     std::string info_str = info.str();
     if (info_str != "")

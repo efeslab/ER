@@ -18,15 +18,23 @@ namespace klee {
   private:
     WallTimer timer;
     Statistic &statistic;
+    bool checked;
 
   public:
-    TimerStatIncrementer(Statistic &_statistic) : statistic(_statistic) {}
+    TimerStatIncrementer(Statistic &_statistic) : statistic(_statistic), checked(false) {}
     ~TimerStatIncrementer() {
-      // record microseconds
-      statistic += timer.check().toMicroseconds();
+      if (!checked) {
+        check();
+      }
     }
 
-    time::Span check() { return timer.check(); }
+    time::Span check() {
+      // record microseconds
+      time::Span delta = timer.check();
+      statistic += delta.toMicroseconds();
+      checked = true;
+      return delta;
+    }
   };
 }
 

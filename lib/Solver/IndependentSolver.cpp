@@ -14,6 +14,8 @@
 #include "klee/Constraints.h"
 #include "klee/SolverImpl.h"
 #include "klee/Internal/Support/Debug.h"
+#include "klee/SolverStats.h"
+#include "klee/TimerStatIncrementer.h"
 
 #include "klee/util/ExprUtil.h"
 #include "klee/util/Assignment.h"
@@ -365,7 +367,8 @@ IndependentElementSet getIndependentConstraints(const Query& query,
     errs() << "elts closure: " << eltsClosure << "\n";
  );
 
-
+  stats::independentConstraints += result.size();
+  stats::independentAllConstraints += query.constraints.size();
   return eltsClosure;
 }
 
@@ -413,6 +416,7 @@ public:
   
 bool IndependentSolver::computeValidity(const Query& query,
                                         Solver::Validity &result) {
+  TimerStatIncrementer t(stats::independentTime);
   std::vector< ref<Expr> > required;
   IndependentElementSet eltsClosure =
     getIndependentConstraints(query, required);
@@ -422,6 +426,7 @@ bool IndependentSolver::computeValidity(const Query& query,
 }
 
 bool IndependentSolver::computeTruth(const Query& query, bool &isValid) {
+  TimerStatIncrementer t(stats::independentTime);
   std::vector< ref<Expr> > required;
   IndependentElementSet eltsClosure = 
     getIndependentConstraints(query, required);
@@ -431,6 +436,7 @@ bool IndependentSolver::computeTruth(const Query& query, bool &isValid) {
 }
 
 bool IndependentSolver::computeValue(const Query& query, ref<Expr> &result) {
+  TimerStatIncrementer t(stats::independentTime);
   std::vector< ref<Expr> > required;
   IndependentElementSet eltsClosure = 
     getIndependentConstraints(query, required);
@@ -476,6 +482,7 @@ bool IndependentSolver::computeInitialValues(const Query& query,
                                              const std::vector<const Array*> &objects,
                                              std::vector< std::vector<unsigned char> > &values,
                                              bool &hasSolution){
+  TimerStatIncrementer t(stats::independentTime);
   // We assume the query has a solution except proven differently
   // This is important in case we don't have any constraints but
   // we need initial values for requested array objects.

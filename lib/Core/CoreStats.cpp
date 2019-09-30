@@ -21,7 +21,10 @@ Statistic stats::instructions("Instructions", "I");
 Statistic stats::minDistToReturn("MinDistToReturn", "Rdist");
 Statistic stats::minDistToUncovered("MinDistToUncovered", "UCdist");
 Statistic stats::reachableUncovered("ReachableUncovered", "IuncovReach");
-Statistic stats::resolveTime("ResolveTime", "Rtime");
+Statistic stats::resolveTime("ResolveTime", "RtimeC");
+Statistic stats::resolveTimeCheapGetValue("ResolveTime-Cheap-GetValue", "RtimeC");
+Statistic stats::resolveTimeCheapLookup("ResolveTime-Cheap-Lookup", "RtimeC");
+Statistic stats::resolveTimeSearch("ResolveTime-Search", "RtimeS");
 Statistic stats::solverTime("SolverTime", "Stime");
 Statistic stats::states("States", "States");
 Statistic stats::trueBranches("TrueBranches", "Bt");
@@ -33,7 +36,10 @@ Statistic stats::dummy1("************************* internal function ***********
 Statistic stats::forkTime("internal_forkTime", "Ftime");
 Statistic stats::branchTime("internal_branchTime", "FBTime");
 Statistic stats::executeAllocTime("internal_executeAllocTime", "eATime");
-Statistic stats::executeMemopTime("internal_executeMemopTime", "memopTime");
+Statistic stats::executeMemopTimeS1("internal_executeMemopTimeS1", "memopTimeS1");
+Statistic stats::executeMemopOOBCheck("internal_executeMemopOOBCheck", "memopOOBC");
+Statistic stats::executeMemopTimeInBounds("internal_executeMemopTimeInBounds", "memopTimeInBounds");
+Statistic stats::executeMemopTimeErrHandl("internal_executeMemopTimeErrHandl", "memopTimeErrHandl");
 // ** llvm ir instruction
 Statistic stats::dummy2("************************* llvm ir instruction *********************", "dummy2");
 Statistic stats::switchTime("SwitchTime", "SwitchTime");

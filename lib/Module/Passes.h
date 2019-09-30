@@ -71,6 +71,18 @@ public:
   bool runOnModule(llvm::Module &M) override;
 };
 
+class DebugPass : public llvm::ModulePass {
+  static char ID;
+  int nxtLine;
+  bool runOnBasicBlock(llvm::BasicBlock &b, llvm::Module &M);
+
+public:
+  DebugPass() : ModulePass(ID), nxtLine(0) {}
+  bool runOnModule(llvm::Module &M) override;
+};
+
+
+
 // performs two transformations which make interpretation
 // easier and faster.
 //

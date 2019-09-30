@@ -14,7 +14,6 @@ klee_add_component(kleeSupport
   PrintVersion.cpp
   RNG.cpp
   Time.cpp
-  Timer.cpp
   TreeStream.cpp
 )
 

@@ -13,8 +13,8 @@
 using namespace llvm;
 using namespace klee;
 
-static cl::opt<std::string> InputFile(cl::desc("input template file"), cl::Positional, cl::Required);
-static cl::opt<std::string> OutputFile(cl::desc("output file"), cl::Positional, cl::Required);
+static cl::opt<std::string> InputFile(cl::desc("input_template_file"), cl::Positional, cl::Required);
+static cl::opt<std::string> OutputFile(cl::desc("output_file"), cl::Positional, cl::Required);
 static cl::extrahelp inputFormatHelp(
         "Input template file format:\n"
         "  each line consists of an input format, then input file path, "

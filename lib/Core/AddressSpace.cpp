@@ -78,13 +78,15 @@ bool AddressSpace::resolveOne(ExecutionState &state,
     success = resolveOne(CE, result);
     return true;
   } else {
-    TimerStatIncrementer timer(stats::resolveTime);
+    TimerStatIncrementer timerCheapGetValue(stats::resolveTimeCheapGetValue);
 
     // try cheap search, will succeed for any inbounds pointer
 
     ref<ConstantExpr> cex;
     if (!solver->getValue(state, address, cex))
       return false;
+    timerCheapGetValue.check();
+    TimerStatIncrementer timerCheapLookup(stats::resolveTimeCheapLookup);
     uint64_t example = cex->getZExtValue();
     MemoryObject hack(example);
     const MemoryMap::value_type *res = objects.lookup_previous(&hack);
@@ -97,9 +99,10 @@ bool AddressSpace::resolveOne(ExecutionState &state,
         return true;
       }
     }
+    timerCheapLookup.check();
 
     // didn't work, now we have to search
-       
+    TimerStatIncrementer timerSearch(stats::resolveTimeSearch);
     MemoryMap::iterator oi = objects.upper_bound(&hack);
     MemoryMap::iterator begin = objects.begin();
     MemoryMap::iterator end = objects.end();

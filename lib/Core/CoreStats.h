@@ -17,6 +17,9 @@ namespace stats {
 
   extern Statistic allocations;
   extern Statistic resolveTime;
+  extern Statistic resolveTimeCheapGetValue;
+  extern Statistic resolveTimeCheapLookup;
+  extern Statistic resolveTimeSearch;
   extern Statistic instructions;
   extern Statistic instructionTime;
   extern Statistic instructionRealTime;
@@ -32,7 +35,10 @@ namespace stats {
   extern Statistic forkTime;
   extern Statistic branchTime;
   extern Statistic executeAllocTime;
-  extern Statistic executeMemopTime;
+  extern Statistic executeMemopTimeS1;
+  extern Statistic executeMemopOOBCheck;
+  extern Statistic executeMemopTimeInBounds;
+  extern Statistic executeMemopTimeErrHandl;
   // ** llvm ir instruction
   extern Statistic dummy2;
   extern Statistic switchTime;

@@ -403,17 +403,13 @@ cl::opt<bool> DebugCheckForImpliedValues(
     cl::desc("Debug the implied value optimization"),
     cl::cat(DebugCat));
 /*** HASE related Options ***/
-cl::opt<uint32_t> BitsLengthExpectation(
-    "record-bits-per-br", cl::init(1),
-    cl::desc("The expectation of the number of bits you want to record per branch. (default=1, means only record true/false)"),
-    cl::cat(HASECat));
-cl::opt<bool> AdditionalRecord(
-    "additional-record", cl::init(false),
-    cl::desc("Enable additional record, see also -record-bits-per-br. (default=false)"),
-    cl::cat(HASECat));
 cl::opt<bool> CallSolver(
     "call-solver", cl::init(true),
     cl::desc("Call solver at Executor::fork. (default=true)"),
+    cl::cat(HASECat));
+cl::opt<bool> DoOutofBoundaryCheck(
+    "oob-check", cl::init(true),
+    cl::desc("Disable out of boundary check during memory operations"),
     cl::cat(HASECat));
 cl::opt<std::string> OracleKTest( "oracle-KTest", cl::init(""),
 		cl::desc(""), cl::cat(HASECat));
@@ -1075,14 +1071,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   // search ones. If that makes sense.
   if (res == Solver::True || res == Solver::False) {
     if (!isInternal && current.shouldRecord()) {
-        ConstantExpr *CE = dyn_cast<ConstantExpr>(condition);
-        if (AdditionalRecord && !replayPath && CE) {
-          // Special recording at a given possibility.
-          recordNBitAtFork(current, CE, res);
-        }
-        else {
-          record1BitAtFork(current, res);
-        }
+        record1BitAtFork(current, res);
         ++current.nbranches_rec;
         dumpStateAtFork(current, new_constraint);
     }
@@ -1212,7 +1201,10 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
   if (oracle_eval) {
     ref<Expr> res = oracle_eval->visit(condition);
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(res)) {
-      assert(CE->isTrue() && "Adding False Constaint");
+      if (!CE->isTrue()) {
+        printInfo(llvm::errs());
+        terminateStateOnError(state, "Adding False Constaint", Abort);
+      }
     }
     else {
       assert(0 && "NonConstant Expr returned by OracleEvaluator");
@@ -3674,32 +3666,32 @@ void Executor::executeAlloc(ExecutionState &state,
     // Try and start with a small example.
     Expr::Width W = example->getWidth();
     while (example->Ugt(ConstantExpr::alloc(128, W))->isTrue()) {
-      ref<ConstantExpr> tmp = example->LShr(ConstantExpr::alloc(1, W));
+      ref<ConstantExpr> try_smaller = example->LShr(ConstantExpr::alloc(1, W));
       bool res;
-      bool success = solver->mayBeTrue(state, EqExpr::create(tmp, size), res);
+      bool success = solver->mayBeTrue(state, EqExpr::create(try_smaller, size), res);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (!res)
         break;
-      example = tmp;
+      example = try_smaller;
     }
 
     StatePair fixedSize = fork(state, EqExpr::create(example, size), true);
 
     if (fixedSize.second) {
       // Check for exactly two values
-      ref<ConstantExpr> tmp;
-      bool success = solver->getValue(*fixedSize.second, size, tmp);
+      ref<ConstantExpr> example2;
+      bool success = solver->getValue(*fixedSize.second, size, example2);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       bool res;
       success = solver->mustBeTrue(*fixedSize.second,
-                                   EqExpr::create(tmp, size),
+                                   EqExpr::create(example2, size),
                                    res);
       assert(success && "FIXME: Unhandled solver failure");
       (void) success;
       if (res) {
-        executeAlloc(*fixedSize.second, tmp, isLocal,
+        executeAlloc(*fixedSize.second, example2, isLocal,
                      target, zeroMemory, reallocFrom);
       } else {
         // See if a *really* big value is possible. If so assume
@@ -3720,7 +3712,7 @@ void Executor::executeAlloc(ExecutionState &state,
           llvm::raw_string_ostream info(Str);
           ExprPPrinter::printOne(info, "  size expr", size);
           info << "  concretization : " << example << "\n";
-          info << "  unbound example: " << tmp << "\n";
+          info << "  unbound example: " << example2 << "\n";
           terminateStateOnError(*hugeSize.second, "concretized symbolic size",
                                 Model, NULL, info.str());
         }
@@ -3799,7 +3791,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
                                       KInstruction *target /* undef if write */) {
-  TimerStatIncrementer timer(stats::executeMemopTime);
+  TimerStatIncrementer timerS1(stats::executeMemopTimeS1);
   Expr::Width type = (isWrite ? value->getWidth() :
                      getWidthForLLVMType(target->inst->getType()));
   unsigned bytes = Expr::getMinBytesForWidth(type);
@@ -3822,8 +3814,9 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
   }
   solver->setTimeout(time::Span());
-
+  timerS1.check();
   if (success) {
+    TimerStatIncrementer timerOOBCheck(stats::executeMemopOOBCheck);
     const MemoryObject *mo = op.first;
 
     if (MaxSymArraySize && mo->size >= MaxSymArraySize) {
@@ -3831,11 +3824,16 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     }
 
     ref<Expr> offset = mo->getOffsetExpr(address);
-    ref<Expr> check = mo->getBoundsCheckOffset(offset, bytes);
-    check = optimizer.optimizeExpr(check, true);
 
     bool inBounds;
-    if (CallSolver) {
+    // I would say it is totally OK to disable solver call here.
+    // Since we only symbolic execute instructions before the crash, thus no
+    //   out of bound memory access should happen.
+    //   Otherwise, the program is supposed to crash earlier.
+    if (DoOutofBoundaryCheck) {
+      ref<Expr> check = mo->getBoundsCheckOffset(offset, bytes);
+      check = optimizer.optimizeExpr(check, true);
+
       solver->setTimeout(coreSolverTimeout);
       bool success = solver->mustBeTrue(state, check, inBounds);
       solver->setTimeout(time::Span());
@@ -3848,8 +3846,10 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     else {
       inBounds = true;
     }
+    timerOOBCheck.check();
 
     if (inBounds) {
+      TimerStatIncrementer timerInBounds(stats::executeMemopTimeInBounds);
       const ObjectState *os = op.second;
       if (isWrite) {
         if (os->readOnly) {
@@ -3871,6 +3871,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       return;
     }
   }
+  TimerStatIncrementer timerErrHandl(stats::executeMemopTimeErrHandl);
 
   // we are on an error path (no resolution, multiple resolution, one
   // resolution with out of bounds)
@@ -4443,55 +4444,6 @@ void Executor::record1BitAtFork(ExecutionState &current, Solver::Validity solval
   }
 }
 
-void Executor::recordNBitAtFork(ExecutionState &current, ConstantExpr *CE, Solver::Validity solvalid) {
-  // Parameter: bits expectation N
-  // Current Policy: try when condition is constant and not replaying
-  // TODO: only record symbolic branch, need logging index of those branches during symbolic execution.
-  unsigned int total_width = 0;
-  bool isAdditionalRecording;
-  unsigned int numKids;
-  ref<Expr> sym_expr = CE->getSym();
-  if (!sym_expr.isNull() && symIndex &&
-      (current.symIndexPosition != symIndex->size())) {
-    if ((*symIndex)[current.symIndexPosition] == current.pathOS.cnt) {
-      ++current.symIndexPosition;
-      numKids = sym_expr->getNumKids();
-      for (unsigned int i=0; i < numKids; ++i) {
-        total_width += sym_expr->getKid(i)->getWidth();
-      }
-      // record additional bits at the probability of
-      //     BitsLengthExpectation / subExpr's total_width
-      isAdditionalRecording =
-        (unsigned int)(std::rand()%RAND_MAX_WRAP) < ((RAND_MAX_WRAP / total_width) * BitsLengthExpectation);
-    }
-    else {
-      isAdditionalRecording = false;
-      numKids = 0;
-    }
-  }
-  else {
-    isAdditionalRecording = false;
-    numKids = 0;
-  }
-  if (isAdditionalRecording) {
-    PathEntry pe;
-    pe.t = PathEntry::FORKREC;
-    pe.body.rec.br = (solvalid == Solver::True)?true:false;
-    pe.body.rec.numKids = numKids;
-    for (unsigned int i=0; i < numKids; ++i) {
-      ConstantExpr *CKid = dyn_cast<ConstantExpr>(sym_expr->getKid(i));
-      assert(CKid);
-      pe.Kids.push_back(CKid->getZExtValue(PathEntry::ConstantBits));
-    }
-    current.pathOS << pe;
-  }
-  else {
-    record1BitAtFork(current, solvalid);
-  }
-}
-
-///
-
 Interpreter *Interpreter::create(LLVMContext &ctx, const InterpreterOptions &opts,
                                  InterpreterHandler *ih) {
   return new Executor(ctx, opts, ih);
@@ -4538,6 +4490,7 @@ void debugAnalyzeIndirectMemoryAccess(ExecutionState &state) {
 ///   the dumped query will not ask for symbolic values' assignment.
 ///   If null, the query will evalute `false` and ask for assignment.
 /// \param[in] filename The path and name of the dumped file. Default is "constraints.txt"
+static ref<Expr> debugExpr = ref<Expr>(0);
 void debugDumpConstraints(ExecutionState &state, ConstraintManager &cm, ref<Expr> expr, const char *filename) {
   std::string str;
   llvm::raw_string_ostream os(str);
@@ -4599,7 +4552,7 @@ void Executor::AssertNextBranchTaken(ExecutionState &state, bool br) {
     }
     klee_message("replay: %d/%lu runtime: %d recorded: %d, stack:\n", state.replayPosition-1, replayPath->size(), br, recorded_br);
     state.dumpStack(llvm::errs());
-    klee_warning("hit invalid branch in replay path mode");
+    terminateStateOnError(state, "hit invalid branch in replay path mode", ReplayPath);
   }
 }
 

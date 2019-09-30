@@ -17,10 +17,22 @@ namespace klee {
     time::Point start;
     
   public:
-    WallTimer();
+    WallTimer() {
+      reset();
+    }
 
-    /// check - Return the delta since the timer was created
-    time::Span check();
+    void reset() {
+      start = time::getWallTime();
+    }
+
+    /// check - Return the delta since the timer was created or reseted
+    ///         then reset the timer.
+    time::Span check() {
+      time::Point now = time::getWallTime();
+      time::Span delta(now - start);
+      start = now;
+      return delta;
+    }
   };
 }
 

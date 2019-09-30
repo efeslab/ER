@@ -376,176 +376,119 @@ ref<ConstantExpr> ConstantExpr::Concat(const ref<ConstantExpr> &RHS) {
   Tmp <<= RHS->getWidth();
   Tmp |= APInt(RHS->value).zext(W);
 
-  return ConstantExpr::alloc(Tmp,
-      ConcatExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(Tmp);
 }
 
 ref<ConstantExpr> ConstantExpr::Extract(unsigned Offset, Width W) {
-  return ConstantExpr::alloc(APInt(value.ashr(Offset)).zextOrTrunc(W),
-      ExtractExpr::alloc(ref<Expr>(this), Offset, W)
-  );
+  return ConstantExpr::alloc(APInt(value.ashr(Offset)).zextOrTrunc(W));
 }
 
 ref<ConstantExpr> ConstantExpr::ZExt(Width W) {
-  return ConstantExpr::alloc(APInt(value).zextOrTrunc(W),
-      ZExtExpr::alloc(ref<Expr>(this), W)
-  );
+  return ConstantExpr::alloc(APInt(value).zextOrTrunc(W));
 }
 
 ref<ConstantExpr> ConstantExpr::SExt(Width W) {
-  return ConstantExpr::alloc(APInt(value).sextOrTrunc(W),
-      SExtExpr::alloc(ref<Expr>(this), W)
-  );
+  return ConstantExpr::alloc(APInt(value).sextOrTrunc(W));
 }
 
 ref<ConstantExpr> ConstantExpr::Add(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value + RHS->value,
-      AddExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value + RHS->value);
 }
 
-// FIXME: make sure no symbolic expression for Neg is fine
 ref<ConstantExpr> ConstantExpr::Neg() {
   return ConstantExpr::alloc(-value);
 }
 
 ref<ConstantExpr> ConstantExpr::Sub(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value - RHS->value,
-      SubExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value - RHS->value);
 }
 
 ref<ConstantExpr> ConstantExpr::Mul(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value * RHS->value,
-      MulExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value * RHS->value);
 }
 
 ref<ConstantExpr> ConstantExpr::UDiv(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.udiv(RHS->value),
-      UDivExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.udiv(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::SDiv(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.sdiv(RHS->value),
-      SDivExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.sdiv(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::URem(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.urem(RHS->value),
-      URemExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.urem(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::SRem(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.srem(RHS->value),
-      SRemExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.srem(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::And(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value & RHS->value,
-      AddExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value & RHS->value);
 }
 
 ref<ConstantExpr> ConstantExpr::Or(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value | RHS->value,
-      OrExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value | RHS->value);
 }
 
 ref<ConstantExpr> ConstantExpr::Xor(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value ^ RHS->value,
-      XorExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value ^ RHS->value);
 }
 
 ref<ConstantExpr> ConstantExpr::Shl(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.shl(RHS->value),
-      ShlExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.shl(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::LShr(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.lshr(RHS->value),
-      LShrExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.lshr(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::AShr(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.ashr(RHS->value),
-      AShrExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.ashr(RHS->value));
 }
 
 ref<ConstantExpr> ConstantExpr::Not() {
-  return ConstantExpr::alloc(~value,
-      NotExpr::alloc(ref<Expr>(this))
-  );
+  return ConstantExpr::alloc(~value);
 }
 
 ref<ConstantExpr> ConstantExpr::Eq(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value == RHS->value, Expr::Bool,
-      EqExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value == RHS->value, Expr::Bool);
 }
 
 ref<ConstantExpr> ConstantExpr::Ne(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value != RHS->value, Expr::Bool,
-      NeExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value != RHS->value, Expr::Bool);
 }
 
 ref<ConstantExpr> ConstantExpr::Ult(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.ult(RHS->value), Expr::Bool,
-      UltExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.ult(RHS->value), Expr::Bool);
 }
 
 ref<ConstantExpr> ConstantExpr::Ule(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.ule(RHS->value), Expr::Bool,
-      UleExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.ule(RHS->value), Expr::Bool);
 }
 
 ref<ConstantExpr> ConstantExpr::Ugt(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.ugt(RHS->value), Expr::Bool,
-      UgtExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.ugt(RHS->value), Expr::Bool);
 }
 
 ref<ConstantExpr> ConstantExpr::Uge(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.uge(RHS->value), Expr::Bool,
-      UgeExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.uge(RHS->value), Expr::Bool);
 }
 
 ref<ConstantExpr> ConstantExpr::Slt(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.slt(RHS->value), Expr::Bool,
-      SltExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.slt(RHS->value), Expr::Bool);
 }
 
 ref<ConstantExpr> ConstantExpr::Sle(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.sle(RHS->value), Expr::Bool,
-      SleExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.sle(RHS->value), Expr::Bool);
 }
 
 ref<ConstantExpr> ConstantExpr::Sgt(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.sgt(RHS->value), Expr::Bool,
-      SgtExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.sgt(RHS->value), Expr::Bool);
 }
 
 ref<ConstantExpr> ConstantExpr::Sge(const ref<ConstantExpr> &RHS) {
-  return ConstantExpr::alloc(value.sge(RHS->value), Expr::Bool,
-      SgeExpr::alloc(ref<Expr>(this), ref<Expr>(RHS))
-  );
+  return ConstantExpr::alloc(value.sge(RHS->value), Expr::Bool);
 }
 
 /***/
@@ -1285,7 +1228,3 @@ CMPCREATE(UltExpr, Ult)
 CMPCREATE(UleExpr, Ule)
 CMPCREATE(SltExpr, Slt)
 CMPCREATE(SleExpr, Sle)
-
-ConstantExpr* debug_to_ConstantExpr(Expr *e) {
-  return dyn_cast<ConstantExpr>(e);
-}

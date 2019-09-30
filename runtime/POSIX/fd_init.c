@@ -126,6 +126,10 @@ void klee_init_fds(unsigned n_files, unsigned file_length,
      * of libc. */
     klee_assume(!S_ISCHR(__exe_fs.sym_files[k].stat->st_mode));
   }
+
+  /* FIXME */
+  //klee_assume(__exe_fs.sym_files[0].contents[13]='(');
+  //__exe_fs.sym_files[0].contents[13] = '(';
   
   /* setting symbolic stdin */
   if (stdin_length) {

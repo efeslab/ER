@@ -1243,6 +1243,7 @@ const Cell& Executor::eval(KInstruction *ki, unsigned index,
   }
 }
 
+void debugDumpLLVMIR(llvm::Instruction *llvmir);
 void Executor::bindLocal(KInstruction *target, ExecutionState &state,
                          ref<Expr> value) {
   getDestCell(state, target).value = value;
@@ -1683,7 +1684,15 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
   }
 }
 
+void debugAnalyzeIndirectMemoryAccess(ExecutionState &);
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
+
+#if 1
+  if (*theStatisticManager->getStatisticByName("Instructions") == 11910000) {
+      debugAnalyzeIndirectMemoryAccess(state);
+  }
+#endif
+
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
     // Control flow
@@ -4500,6 +4509,7 @@ void debugDumpLLVMIR(llvm::Instruction *llvmir) {
     llvm::errs() << '\n';
 }
 
+#if 0
 class KInstVisitor : public ExprVisitor {
 private:
     unsigned exprHitCnt, exprTotalCnt;
@@ -4561,22 +4571,486 @@ public:
     }
 };
 
-void debugAnalyzeIndirectMemoryAccess(ExecutionState &state) {
-  ConstraintManager &constraints = state.constraints;
-  int cnt = 0;
+class ExprCountVisitor : public ExprVisitor {
+private:
+  std::set<const Expr *> visitedExpr;
+  std::set<const UpdateNode *> visitedUpdate;
+  std::vector<const Expr *> readStack;
+  std::map<const Expr *, std::set<const Expr *>> upRead;
 
-  for (ConstraintManager::const_iterator it = constraints.begin(),
-          ie = constraints.end(); it != ie; ++it) {
-    const ref<Expr> &e = *it;
-    llvm::errs() << "max indirect memory depth: " << e->maxIndirDep << "\n";
-    cnt++;
-
-    KInstVisitor kv;
-    kv.visit(e);
-    kv.report();
+public:
+  Action visitExpr(const Expr &e) {
+    if (visitedExpr.find(&e) == visitedExpr.end()) {
+      if (readStack.size() > 0) {
+        if (upRead.find(&e) == upRead.end()) {
+          upRead.insert({&e, std::set<const Expr *>()});
+        }
+        upRead[&e].insert(readStack[readStack.size()-1]);
+      }
+    }
+    return ExprVisitor::visitExpr(e);
   }
 
-  llvm::errs() << "# of constraints: " << cnt << "\n";
+  Action visitRead(const ReadExpr &re) {
+    readStack.push_back(&re);
+
+    visit(re.index);
+    const UpdateNode *un = re.updates.head;
+    for (; un != nullptr; un = un->next) {
+      if (visitedUpdate.find(un) == visitedUpdate.end()) {
+        visit(un->index);
+        visit(un->value);
+      }
+    }
+
+    readStack.pop_back();
+
+    return Action::skipChildren();
+  }
+};
+#endif
+
+bool isTargetReadExpr(const ReadExpr &re) {
+  if (re.updates.root->name == "A-data" && re.updates.head == nullptr) {
+    if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(re.index)) {
+        if (CE->getZExtValue() == 24) {
+            return true;
+        }
+    }
+  }
+  return false;
+}
+
+#if 0
+class IndirReadCleanUpVisitor : public ExprVisitor {
+private:
+  //std::set<const Expr *> visitedExpr;
+  //std::set<const UpdateNode *> visitedUpdate;
+  std::set<const Expr *> lastLevelReads;
+
+public:
+  std::set<const Expr *> getLastLevelReads() {
+    return lastLevelReads;
+  }
+
+  ref<Expr> visit(const ref<Expr> &e) {
+    e->indirectReadRefCount = -1;
+    return ExprVisitor::visit(e);
+  }
+
+#if 1
+  Action visitExpr(const Expr &e) override {
+    int nkids = e.getNumKids();
+    for (int i = 0; i < nkids; i++) {
+      ref<Expr> kid = e.getKid(i);
+      kid->indirectReadRefCount = -1;
+    }
+
+    //if (visitedExpr.find(&e) == visitedExpr.end()) {
+      //visitedExpr.insert(&e);
+    return Action::doChildren();
+    //}
+    //else {
+      //return Action::skipChildren();
+    //}
+  }
+#endif
+
+  Action visitRead(const ReadExpr &re) override {
+    isTargetReadExpr(re);
+    bool unNoSymbolic = true;
+    const UpdateNode *un = re.updates.head;
+    for (; un != nullptr; un = un->next) {
+      //if (visitedUpdate.find(un) == visitedUpdate.end()) {
+        //visitedUpdate.insert(un);
+        visit(un->index);
+        visit(un->value);
+      //}
+      if (un->index->getKind() != Expr::Constant ||
+            un->value->getKind() != Expr::Constant) {
+        unNoSymbolic = false;
+      }
+    }
+
+    if (re.index->getKind() == Expr::Constant && unNoSymbolic) {
+      lastLevelReads.insert(&re);
+      //re.dump();
+    }
+    return Action::doChildren();
+  }
+};
+#endif
+
+#if 0
+class IndirReadCntVisitor : public ExprVisitor {
+private:
+  int readLevel = 0;
+public:
+  Action visitExpr(const Expr &e) {
+    int nkids = e.getNumKids();
+    for (int i = 0; i < nkids; i++) {
+      ref<Expr> kid = e.getKid(i);
+      if (kid->indirectReadRefCount < readLevel) {
+        kid->indirectReadRefCount = readLevel;
+      }
+    }
+    return Action::doChildren();
+  }
+
+  Action visitRead(const ReadExpr &re) {
+    readLevel++;
+    visit(re.index);
+    const UpdateNode *un = re.updates.head;
+    for (; un != nullptr; un = un->next) {
+      visit(un->index);
+      visit(un->value);
+    }
+    readLevel--;
+    return Action::skipChildren();
+  }
+};
+#endif
+
+#if 0
+bool isDeepExpr(const ref<Expr> &e, int level) {
+  if (e->indirectReadRefCount >= level)
+    return true;
+
+  int nkids = e->getNumKids();
+  for (int i = 0; i < nkids; i++) {
+    ref<Expr> kid = e->getKid(i);
+    if (isDeepExpr(kid, level))
+      return true;
+  }
+
+  if (e->getKind() == Expr::Read) {
+    const ref<ReadExpr> &re = dyn_cast<ReadExpr>(e);
+    const UpdateNode *un = re->updates.head;
+    for (; un != nullptr; un = un->next) {
+      if (isDeepExpr(un->index, level) || isDeepExpr(un->index, level))
+        return true;
+    }
+  }
+
+  return false;
+}
+
+int assignIndirReadCnt(int idx, std::string pre, const ref<Expr> &e,
+        int readLevel, llvm::raw_string_ostream &os) {
+  int initialLevel = e->indirectReadRefCount;
+
+  if (initialLevel >= readLevel) {
+    os << pre << idx << " " << e->getKind() << " old=" << initialLevel
+            << " arg=" << readLevel << " ret\n";
+    return initialLevel;
+  }
+  e->indirectReadRefCount = readLevel;
+
+  int m = readLevel;
+
+  bool shouldIncrease = false;
+  if (e->getKind() == Expr::Read) {
+    const ref<ReadExpr> &re = dyn_cast<ReadExpr>(e);
+    if (re->index->getKind() != Expr::Constant) {
+      shouldIncrease = true;
+    }
+    else {
+      for (auto un = re->updates.head; un; un = un->next) {
+        if (un->index->getKind() != Expr::Constant) {
+          shouldIncrease = true;
+          break;
+        }
+      }
+    }
+
+    isTargetReadExpr(*re.get());
+  }
+
+  int nkids = e->getNumKids();
+  for (int i = 0; i < nkids; i++) {
+    ref<Expr> kid = e->getKid(i);
+    int m1;
+    if (shouldIncrease) {
+      m1 = assignIndirReadCnt(idx, pre+" ", kid, readLevel+1, os);
+    }
+    else {
+      m1 = assignIndirReadCnt(idx, pre+" ", kid, readLevel, os);
+    }
+    if (m1 > m) m = m1;
+  }
+
+  if (e->getKind() == Expr::Read) {
+    const ref<ReadExpr> &re = dyn_cast<ReadExpr>(e);
+    const UpdateNode *un = re->updates.head;
+    for (; un != nullptr; un = un->next) {
+      int m2 = assignIndirReadCnt(idx, pre+" ", un->index, readLevel+1, os);
+      int m3 = assignIndirReadCnt(idx, pre+" ", un->value, readLevel, os);
+      if (m2 > m) m = m2;
+      if (m3 > m) m = m3;
+    }
+  }
+
+  os << pre << idx << " " << e->getKind() << " " << "kids: ";
+  for (int i = 0; i < nkids; i++) {
+    ref<Expr> kid = e->getKid(i);
+    os << kid->getKind() << " ";
+  }
+
+  if (e->getKind() == Expr::Read) {
+    const ref<ReadExpr> &re = dyn_cast<ReadExpr>(e);
+    os << "updates: ";
+    for (auto un = re->updates.head; un; un = un->next) {
+      os << un->index->getKind() << "," << un->value->getKind() << " ";
+    }
+  }
+
+  os << " old=" << initialLevel << " arg=" << readLevel
+        << " m=" << m << "\n";
+
+  return m;
+}
+
+void cleanUpIndirReadCnt(const ref<Expr> &e, std::set<const Expr *> &s) {
+  e->indirectReadRefCount = -1;
+
+  int nkids = e->getNumKids();
+  for (int i = 0; i < nkids; i++) {
+    ref<Expr> kid = e->getKid(i);
+    cleanUpIndirReadCnt(kid, s);
+  }
+
+  if (e->getKind() == Expr::Read) {
+    const ref<ReadExpr> &re = dyn_cast<ReadExpr>(e);
+    const UpdateNode *un = re->updates.head;
+    for (; un; un = un->next) {
+      cleanUpIndirReadCnt(un->index, s);
+      cleanUpIndirReadCnt(un->value, s);
+    }
+  }
+
+  if (e->getKind() == Expr::Read) {
+    const ref<ReadExpr> &re = dyn_cast<ReadExpr>(e);
+    if (re->index->getKind() == Expr::Constant && re->updates.head == nullptr) {
+      if (s.find(e.get()) == s.end()) {
+        s.insert(e.get());
+      }
+    }
+  }
+}
+
+void checkIndirReadCntCleaned(const ref<Expr> &e, llvm::raw_string_ostream &os) {
+  if (e->indirectReadRefCount != -1) {
+    klee_warning("should be -1, now %d", e->indirectReadRefCount);
+    e->dump();
+    return;
+  }
+
+  int nkids = e->getNumKids();
+  for (int i = 0; i < nkids; i++) {
+    ref<Expr> kid = e->getKid(i);
+    checkIndirReadCntCleaned(kid, os);
+  }
+
+  if (e->getKind() == Expr::Read) {
+    const ref<ReadExpr> &re = dyn_cast<ReadExpr>(e);
+    const UpdateNode *un = re->updates.head;
+    for (; un; un = un->next) {
+      checkIndirReadCntCleaned(un->index, os);
+      checkIndirReadCntCleaned(un->value, os);
+    }
+  }
+}
+
+void debugDumpReadsCnt(std::set<const Expr *> reads) {
+  for (auto it = reads.begin(); it != reads.end(); it++) {
+    (*it)->print(errs());
+    llvm::errs() << " : " << (*it)->indirectReadRefCount << ": ";
+    if ((*it)->kinst != nullptr) {
+      debugDumpLLVMIR((*it)->kinst->inst);
+    }
+    else {
+      llvm::errs() << "\n";
+    }
+  }
+}
+#endif
+
+#if 0
+std::set<const Expr *> cleanUpIndirCnt(ConstraintManager &constraints) {
+  IndirReadCleanUpVisitor cleanup;
+  std::set<const Expr *> s;
+  std::string str;
+  llvm::raw_string_ostream os(str);
+  std::ofstream ofs("cleancheck.txt");
+  for (auto it = constraints.begin(), ie = constraints.end(); it != ie; it++) {
+    const ref<Expr> &e = *it;
+    //cleanUpIndirReadCnt(e, s);
+    cleanup.visit(e);
+  }
+  ///*
+  for (auto it = constraints.begin(), ie = constraints.end(); it != ie; it++) {
+    const ref<Expr> &e = *it;
+    checkIndirReadCntCleaned(e, os);
+    //break;
+  }
+  //*/
+
+  s = cleanup.getLastLevelReads();
+  ofs << os.str();
+
+  return s;
+}
+
+int calculateIndirCnt(ConstraintManager &constraints, std::string filename) {
+  std::string str;
+  llvm::raw_string_ostream os(str);
+  std::ofstream ofs(filename);
+  int m = 0;
+  int i = 0;
+  for (auto it = constraints.begin(), ie = constraints.end(); it != ie; it++) {
+    i++;
+    const ref<Expr> &e = *it;
+    int m1 = assignIndirReadCnt(i, "", e, 0, os);
+    if (m1 > m) m = m1;
+  }
+  ofs << os.str();
+  return m;
+}
+#endif
+
+#if 0
+class EmulatedRecordingEvaluator : public OracleEvaluator {
+private:
+  std::set<std::pair<std::string, unsigned>> concretizedValues;
+  std::map<const UpdateNode *, const UpdateNode *> old2new;
+
+protected:
+  ref<Expr> getInitialValue(const Array &mo, unsigned index) {
+    std::pair<std::string, unsigned> k = {mo.name, index};
+    if (concretizedValues.find(k) != concretizedValues.end()) {
+      return OracleEvaluator::getInitialValue(mo, index);
+    }
+    else {
+      return klee::ReadExpr::create(UpdateList(&mo, 0),
+                            klee::ConstantExpr::alloc(index, mo.getDomain()));
+    }
+  }
+
+  ExprVisitor::Action visitRead(const ReadExpr &re) {
+    isTargetReadExpr(re);
+
+    std::vector<const UpdateNode *> updateNodeArray;
+    const UpdateNode *originHead = nullptr;
+    for (const UpdateNode *un = re.updates.head; un; un = un->next) {
+      if (old2new.find(un) == old2new.end()) {
+        updateNodeArray.push_back(un);
+      }
+      else {
+        originHead = old2new[un];
+        break;
+      }
+    }
+
+    UpdateList ul(re.updates.root, originHead);
+
+    while (updateNodeArray.size() != 0) {
+      const UpdateNode *un = updateNodeArray[updateNodeArray.size()-1];
+      updateNodeArray.pop_back();
+      assert(old2new.find(un) == old2new.end());
+      ul.extend(visit(un->index), visit(un->value), Expr::FLAG_INTERNAL, un->kinst);
+      assert(old2new.find(un) == old2new.end());
+      old2new.insert({un, ul.head});
+    }
+
+    ref<Expr> v = visit(re.index);
+
+    if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(v)) {
+        return OracleEvaluator::evalRead(ul, CE->getZExtValue());
+    } else {
+        return Action::changeTo(ReadExpr::create(ul, v));
+    }
+  }
+
+public:
+  EmulatedRecordingEvaluator(std::string KTestPath)
+        :OracleEvaluator(KTestPath) {}
+
+  void addConcretizedValue(std::string arrayName, unsigned index) {
+    std::pair<std::string, unsigned> k = {arrayName, index};
+    if (concretizedValues.find(k) == concretizedValues.end()) {
+      concretizedValues.insert(k);
+    }
+  }
+
+};
+#endif
+
+#if 0
+ConstraintManager assignConcreteInputValue(ConstraintManager &constraints,
+                std::map<ref<Expr>) {
+  if (OracleKTest == "") {
+    klee_message("no OracleKTest file");
+    abort();
+  }
+
+  std::vector<ref<Expr>> new_constraints;
+
+  EmulatedRecordingEvaluator emu(OracleKTest);
+  emu.addConcretizedValue("A-data", 13);
+
+  for (auto it = constraints.begin(), ie = constraints.end(); it != ie; it++) {
+    const ref<Expr> &e = *it;
+    auto new_e = emu.visit(e);
+    new_constraints.push_back(new_e);
+  }
+
+  return ConstraintManager(new_constraints);
+}
+#endif
+
+void debugDumpConstraintsToFile(ConstraintManager &cm, std::string filename) {
+  std::ofstream ofs(filename);
+  std::string str;
+  llvm::raw_string_ostream os(str);
+  int i = 0;
+
+  for (auto it = cm.begin(), ie = cm.end(); it != ie; it++) {
+    const ref<Expr> &e = *it;
+    os << i << "\n";
+    i++;
+    e->print(os);
+    os << "\n";
+  }
+
+  ofs << os.str();
+}
+
+void debugAnalyzeIndirectMemoryAccess(ExecutionState &state) {
+  ConstraintManager &constraints = state.constraints;
+
+  IndirectReadDepthCalculator c1(constraints);
+  auto lastLevelReads = c1.getLastLevelReads();
+  for (auto it = lastLevelReads.begin(), ie = lastLevelReads.end();
+            it != ie; it++) {
+    const ref<Expr> &e = *it;
+    e->print(llvm::errs());
+    llvm::errs() << " : " << c1.query(e) << "\n";
+  }
+  llvm::errs() << "max : " << c1.getMax() << "\n";
+
+  ArrayConcretizationEvaluator ace(OracleKTest);
+  ace.addConcretizedValue("A-data", 13);
+  auto newConstraints = ace.evaluate(constraints);
+
+  IndirectReadDepthCalculator c2(newConstraints);
+  lastLevelReads = c2.getLastLevelReads();
+  for (auto it = lastLevelReads.begin(), ie = lastLevelReads.end();
+            it != ie; it++) {
+    const ref<Expr> &e = *it;
+    e->print(llvm::errs());
+    llvm::errs() << " : " << c2.query(e) << "\n";
+  }
+  llvm::errs() << "max : " << c2.getMax() << "\n";
 }
 
 /// Dump constraints to a file, used inside gdb

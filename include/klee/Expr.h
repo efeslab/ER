@@ -176,7 +176,8 @@ public:
   };
 
   unsigned refCount;
-  int maxIndirDep;
+  int indirectReadRefCount = 0;
+  int maxIndirDep = 0;
 
   enum {
     FLAG_INSTRUCTION_ROOT = 1<<0,
@@ -184,8 +185,8 @@ public:
     FLAG_INTERNAL = 1<<2,
     FLAG_INITIALIZATION = 1<<3
   };
-  uint64_t flags;
-  KInstruction *kinst;
+  uint64_t flags = 0;
+  KInstruction *kinst = nullptr;
 
 protected:  
   unsigned hashValue;

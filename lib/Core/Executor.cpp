@@ -4352,8 +4352,12 @@ size_t Executor::getAllocationAlignment(const llvm::Value *allocSite) const {
     }
   }
 
-  // Currently we require alignment be a power of 2
-  if (!bits64::isPowerOfTwo(alignment)) {
+  if (alignment < sizeof(void*)) {
+    // force alignment to >= minimum alignment unit (sizeof(void*))
+    alignment = sizeof(void*);
+  }
+  else if (!bits64::isPowerOfTwo(alignment)) {
+    // Otherwise, we require alignment be a power of 2
     klee_warning_once(allocSite, "Alignment of %zu requested for %s but this "
                                  "not supported. Using alignment of %zu",
                       alignment, allocSite->getName().str().c_str(),
@@ -4362,6 +4366,8 @@ size_t Executor::getAllocationAlignment(const llvm::Value *allocSite) const {
   }
   assert(bits64::isPowerOfTwo(alignment) &&
          "Returned alignment must be a power of two");
+  assert(alignment >= sizeof(void*) &&
+         "Alignment should be a multiple of pointer size");
   return alignment;
 }
 

@@ -13,6 +13,9 @@
 #include <cstddef>
 #include <set>
 #include <cstdint>
+#include <malloc.h>
+
+#include "dlmalloc.h"
 
 namespace llvm {
 class Value;
@@ -28,9 +31,7 @@ private:
   objects_ty objects;
   ArrayCache *const arrayCache;
 
-  char *deterministicSpace;
-  char *nextFreeSlot;
-  size_t spaceSize;
+  mspace msp;
 
 public:
   MemoryManager(ArrayCache *arrayCache);

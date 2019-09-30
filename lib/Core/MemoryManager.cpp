@@ -19,7 +19,6 @@
 
 #include <inttypes.h>
 #include <sys/mman.h>
-#include <malloc.h>
 
 using namespace klee;
 
@@ -32,12 +31,6 @@ llvm::cl::opt<bool> DeterministicAllocation(
     "allocate-determ",
     llvm::cl::desc("Allocate memory deterministically (default=false)"),
     llvm::cl::init(false), llvm::cl::cat(MemoryCat));
-
-llvm::cl::opt<unsigned> DeterministicAllocationSize(
-    "allocate-determ-size",
-    llvm::cl::desc(
-        "Preallocated memory for deterministic allocation in MB (default=100)"),
-    llvm::cl::init(100), llvm::cl::cat(MemoryCat));
 
 llvm::cl::opt<bool> NullOnZeroMalloc(
     "return-null-on-zero-malloc",
@@ -60,26 +53,11 @@ llvm::cl::opt<unsigned long long> DeterministicStartAddress(
 
 /***/
 MemoryManager::MemoryManager(ArrayCache *_arrayCache)
-    : arrayCache(_arrayCache), deterministicSpace(0), nextFreeSlot(0),
-      spaceSize(DeterministicAllocationSize.getValue() * 1024 * 1024) {
+    : arrayCache(_arrayCache) {
   if (DeterministicAllocation) {
     // Page boundary
     void *expectedAddress = (void *)DeterministicStartAddress.getValue();
-
-    char *newSpace =
-        (char *)mmap(expectedAddress, spaceSize, PROT_READ | PROT_WRITE,
-                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-
-    if (newSpace == MAP_FAILED) {
-      klee_error("Couldn't mmap() memory for deterministic allocations");
-    }
-    if (expectedAddress != newSpace && expectedAddress != 0) {
-      klee_error("Could not allocate memory deterministically");
-    }
-
-    klee_message("Deterministic memory allocation starting from %p", newSpace);
-    deterministicSpace = newSpace;
-    nextFreeSlot = newSpace;
+    msp = create_mspace(0, 1, expectedAddress);
   }
 }
 
@@ -92,8 +70,10 @@ MemoryManager::~MemoryManager() {
     delete mo;
   }
 
-  if (DeterministicAllocation)
-    munmap(deterministicSpace, spaceSize);
+  if (DeterministicAllocation) {
+    destroy_mspace(msp);
+    msp = NULL;
+  }
 }
 
 MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
@@ -115,31 +95,33 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
   }
 
   uint64_t address = 0;
+  size_t allocated_size = 0;
   if (DeterministicAllocation) {
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 9)
-    address = llvm::alignTo((uint64_t)nextFreeSlot + alignment - 1, alignment);
-#else
-    address = llvm::RoundUpToAlignment((uint64_t)nextFreeSlot + alignment - 1,
-                                       alignment);
-#endif
-
     // Handle the case of 0-sized allocations as 1-byte allocations.
     // This way, we make sure we have this allocation between its own red zones
     size_t alloc_size = std::max(size, (uint64_t)1);
-    if ((char *)address + alloc_size < deterministicSpace + spaceSize) {
-      nextFreeSlot = (char *)address + alloc_size + RedzoneSize;
-    } else {
-      klee_warning_once(0, "Couldn't allocate %" PRIu64
-                           " bytes. Not enough deterministic space left.",
-                        size);
+    // use dlmalloc to allocate in preserved virtual address space.
+    int ret = mspace_posix_memalign(msp, (void **)&address, alignment, alloc_size);
+    if (ret) { // non-zero means error appears, let us check error value
+      if (ret == EINVAL) {
+        klee_warning("Could not allocate %lu bytes with alignment %lu: EINVAL", size, alignment);
+      }
+      else if (ret == ENOMEM) {
+        klee_warning("Could not allocate %lu bytes with alignment %lu: ENOMEN", size, alignment);
+      }
       address = 0;
+    }
+    else {
+      // TODO: FIX malloc_usable_size; add a new special function handler to
+      // make malloc_usable_size return the exactly requested size
+      allocated_size = mspace_usable_size((void*)(address));
     }
   } else {
     // Use malloc for the standard case
     if (alignment <= 8) {
       address = (uint64_t)malloc(size);
       if (address) {
-        size = malloc_usable_size((void*)(address));
+        allocated_size = malloc_usable_size((void*)(address));
       }
     }
     else {
@@ -156,7 +138,7 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
   }
 
   ++stats::allocations;
-  MemoryObject *res = new MemoryObject(address, size, isLocal, isGlobal, false,
+  MemoryObject *res = new MemoryObject(address, allocated_size, isLocal, isGlobal, false,
                                        allocSite, this);
   objects.insert(res);
   return res;
@@ -184,12 +166,21 @@ void MemoryManager::deallocate(const MemoryObject *mo) { assert(0); }
 
 void MemoryManager::markFreed(MemoryObject *mo) {
   if (objects.find(mo) != objects.end()) {
-    if (!mo->isFixed && !DeterministicAllocation)
-      free((void *)mo->address);
+    if (!mo->isFixed) {
+      if (DeterministicAllocation) {
+        // managed by dlmalloc
+        mspace_free(msp, (void *)mo->address);
+      }
+      else {
+        // managed by system malloc
+        free((void *)mo->address);
+      }
+    }
     objects.erase(mo);
   }
 }
 
 size_t MemoryManager::getUsedDeterministicSize() {
-  return nextFreeSlot - deterministicSpace;
+  struct mallinfo mi = mspace_mallinfo(msp);
+  return mi.uordblks + mi.hblkhd;
 }

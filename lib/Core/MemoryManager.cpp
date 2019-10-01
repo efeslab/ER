@@ -95,7 +95,6 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
   }
 
   uint64_t address = 0;
-  size_t allocated_size = 0;
   if (DeterministicAllocation) {
     // Handle the case of 0-sized allocations as 1-byte allocations.
     // This way, we make sure we have this allocation between its own red zones
@@ -111,18 +110,10 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
       }
       address = 0;
     }
-    else {
-      // TODO: FIX malloc_usable_size; add a new special function handler to
-      // make malloc_usable_size return the exactly requested size
-      allocated_size = mspace_usable_size((void*)(address));
-    }
   } else {
     // Use malloc for the standard case
     if (alignment <= 8) {
       address = (uint64_t)malloc(size);
-      if (address) {
-        allocated_size = malloc_usable_size((void*)(address));
-      }
     }
     else {
       int res = posix_memalign((void **)&address, alignment, size);
@@ -138,7 +129,7 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
   }
 
   ++stats::allocations;
-  MemoryObject *res = new MemoryObject(address, allocated_size, isLocal, isGlobal, false,
+  MemoryObject *res = new MemoryObject(address, size, isLocal, isGlobal, false,
                                        allocSite, this);
   objects.insert(res);
   return res;

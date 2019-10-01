@@ -3734,6 +3734,10 @@ void Executor::executeFree(ExecutionState &state,
       bindLocal(target, *zeroPointer.first, Expr::createPointer(0));
   }
   if (zeroPointer.second) { // address != 0
+    //typedef std::vector< std::pair<
+    //          std::pair<const MemoryObject*, const ObjectState*>,
+    //          ExecutionState*>
+    //        > ExactResolutionList;
     ExactResolutionList rl;
     resolveExact(*zeroPointer.second, address, rl, "free");
 
@@ -3753,6 +3757,40 @@ void Executor::executeFree(ExecutionState &state,
       }
     }
   }
+}
+
+void Executor::executeMallocUsableSize(ExecutionState &state,
+                           ref<Expr> address,
+                           KInstruction *target) {
+  address = optimizer.optimizeExpr(address, true);
+  StatePair zeroPointer = fork(state, Expr::createIsZero(address), true);
+  if (zeroPointer.first) {
+    terminateStateOnError(state, "call usable_size on zero address", Unhandled);
+  }
+  if (zeroPointer.second) { // address != 0
+    //typedef std::vector< std::pair<
+    //          std::pair<const MemoryObject*, const ObjectState*>,
+    //          ExecutionState*>
+    //        > ExactResolutionList;
+    ExactResolutionList rl;
+    resolveExact(*zeroPointer.second, address, rl, "usable_size");
+    if (rl.size() != 1) {
+    terminateStateOnError(state, "wrong number of resolved obj", Unhandled, NULL, getAddressInfo(state, address));
+    }
+    Executor::ExactResolutionList::iterator it = rl.begin();
+    const MemoryObject *mo = it->first.first;
+    if (mo->isLocal) {
+      terminateStateOnError(*it->second, "usable_size of alloca", Free, NULL,
+          getAddressInfo(*it->second, address));
+    } else if (mo->isGlobal) {
+      terminateStateOnError(*it->second, "usable_size of global", Free, NULL,
+          getAddressInfo(*it->second, address));
+    } else {
+      bindLocal(target, state, ConstantExpr::create(mo->size, Expr::Int64));
+      return;
+    }
+  }
+  bindLocal(target, state, ConstantExpr::create(0, Expr::Int64));
 }
 
 void Executor::resolveExact(ExecutionState &state,

@@ -151,6 +151,8 @@ static void klee_concretize(char *concretize_cfg) {
         printf("sym_files[%u][%d] = %#x\n", k, off, val & 0xff);
       }
     }
+
+    fclose(cctz_cfg_file);
   }
 }
 

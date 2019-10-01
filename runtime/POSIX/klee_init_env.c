@@ -101,6 +101,7 @@ void klee_init_env(int *argcPtr, char ***argvPtr) {
   char sym_arg_name[6] = "arg";
   unsigned sym_arg_num = 0;
   int k = 0, i;
+  char *concretize_cfg = 0;
 
   sym_arg_name[5] = '\0';
 
@@ -121,6 +122,7 @@ usage: (klee_init_env) [options] [program arguments]\n\
                               writes exceeding the initial file size are discarded.\n\
                               Note: file offset is always incremented.\n\
   -max-fail <N>             - Allow up to N injected failures\n\
+  -concretize_cfg <FILE>    - Replace specific inputs with concretized value\n\
   -fd-fail                  - Shortcut for '-max-fail 1'\n\n");
   }
 
@@ -231,6 +233,13 @@ usage: (klee_init_env) [options] [program arguments]\n\
         __emit_error(msg);
 
       fd_fail = __str_to_int(argv[k++], msg);
+    } else if (__streq(argv[k], "--concretize-cfg") ||
+               __streq(argv[k], "-concretize-cfg")) {
+      const char *msg = "--concretization-config expects an string argument <filename>";
+      if (++k == argc)
+        __emit_error(msg);
+
+      concretize_cfg = argv[k++];
     } else {
       /* simply copy arguments */
       __add_arg(&new_argc, new_argv, argv[k++], 1024);
@@ -250,7 +259,7 @@ usage: (klee_init_env) [options] [program arguments]\n\
   *argvPtr = final_argv;
 
   klee_init_fds(sym_files, sym_file_len, sym_stdin_len, sym_file_stdin_flag, sym_stdout_flag,
-                save_all_writes_flag, fd_fail);
+                save_all_writes_flag, fd_fail, concretize_cfg);
 }
 
 /* The following function represents the main function of the user application

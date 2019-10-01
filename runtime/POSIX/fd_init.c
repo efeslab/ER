@@ -100,6 +100,61 @@ static unsigned __sym_uint32(const char *name) {
   return x;
 }
 
+/* Add concrete value to a symbolic input. User should
+ * specify a configuration file to use this function.
+ * Each line in the configuration file should be of one
+ * of the following types.
+ *  <array name> <offset> <integer value>
+ *  e.g. `B 10 54`
+ *  <array name> c<offset> <char value>
+ *  e.g. `A c13 (`
+ */
+static void klee_concretize(char *concretize_cfg) {
+  printf("concretizing...\n");
+  if (concretize_cfg != NULL) {
+    printf("cfg=%s\n", concretize_cfg);
+    FILE *cctz_cfg_file = fopen(concretize_cfg, "r");
+    if (!cctz_cfg_file) {
+      const char *msg = "cannot find concretize_cfg file";
+      klee_report_error(__FILE__, __LINE__, msg, "user.err");
+    }
+
+    char name[64], offset[64], value[64];
+    unsigned k;
+    while (fscanf(cctz_cfg_file, "%s %s %s", name, offset, value) == 3) {
+      if (strcmp(name, "stdin") == 0) {
+        int off, val;
+        if (offset[0] == 'c') {
+          off = atoi(offset+1);
+          __exe_fs.sym_stdin->contents[off] = value[0];
+          printf("sym_files[%u][%d] = %c\n", k, off, value[0]);
+        }
+        else {
+          off = atoi(offset);
+          val = atoi(value);
+          __exe_fs.sym_stdin->contents[off] = val & 0xff;
+          printf("sym_files[%u][%d] = %#x\n", k, off, val & 0xff);
+        }
+        continue;
+      }
+      k = name[0] - 'A';
+      int off, val;
+      if (offset[0] == 'c') {
+        off = atoi(offset+1);
+        __exe_fs.sym_files[k].contents[off] = value[0];
+        printf("sym_files[%u][%d] = %c\n", k, off, value[0]);
+      }
+      else {
+        off = atoi(offset);
+        val = atoi(value);
+        __exe_fs.sym_files[k].contents[off] = val & 0xff;
+        printf("sym_files[%u][%d] = %#x\n", k, off, val & 0xff);
+      }
+    }
+  }
+}
+
+
 /* n_files: number of symbolic input files, excluding stdin
    file_length: size in bytes of each symbolic file, including stdin
    sym_stdout_flag: 1 if stdout should be symbolic, 0 otherwise
@@ -110,7 +165,8 @@ static unsigned __sym_uint32(const char *name) {
 void klee_init_fds(unsigned n_files, unsigned file_length,
                    unsigned stdin_length, int sym_file_stdin_flag,
                    int sym_stdout_flag,
-                   int save_all_writes_flag, unsigned max_failures) {
+                   int save_all_writes_flag, unsigned max_failures,
+                   char *concretize_cfg) {
   unsigned k;
   char name[7] = "?-data";
   struct stat64 s;
@@ -140,6 +196,8 @@ void klee_init_fds(unsigned n_files, unsigned file_length,
     }
   }
   else __exe_fs.sym_stdin = NULL;
+
+  klee_concretize(concretize_cfg);
 
   __exe_fs.max_failures = max_failures;
   if (__exe_fs.max_failures) {

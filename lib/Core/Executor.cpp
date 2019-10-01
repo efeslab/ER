@@ -4458,6 +4458,9 @@ void debugDumpLLVMIR(llvm::Instruction *llvmir) {
     llvmir->print(llvm::errs());
     llvm::errs() << '\n';
 }
+void debugDumpLLVMValue(llvm::Value *V) {
+  V->print(llvm::errs(), true);
+}
 
 void debugAnalyzeIndirectMemoryAccess(ExecutionState &state) {
   ConstraintManager &constraints = state.constraints;

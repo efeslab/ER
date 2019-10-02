@@ -59,6 +59,9 @@ MemoryManager::MemoryManager(ArrayCache *_arrayCache)
     void *expectedAddress = (void *)DeterministicStartAddress.getValue();
     msp = create_mspace(0, 1, expectedAddress);
   }
+  else {
+    msp = NULL;
+  }
 }
 
 MemoryManager::~MemoryManager() {
@@ -172,6 +175,11 @@ void MemoryManager::markFreed(MemoryObject *mo) {
 }
 
 size_t MemoryManager::getUsedDeterministicSize() {
-  struct mallinfo mi = mspace_mallinfo(msp);
-  return mi.uordblks + mi.hblkhd;
+  if (DeterministicAllocation) {
+    struct mallinfo mi = mspace_mallinfo(msp);
+    return mi.uordblks + mi.hblkhd;
+  }
+  else {
+    return 0;
+  }
 }

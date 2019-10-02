@@ -24,6 +24,8 @@
 #include "StatsTracker.h"
 #include "TimingSolver.h"
 #include "UserSearcher.h"
+#include "ExecutorDebugHelper.h"
+#include "ExecutorCmdLine.h"
 
 #include "klee/Common.h"
 #include "klee/Config/Version.h"
@@ -411,10 +413,14 @@ cl::opt<bool> DoOutofBoundaryCheck(
     "oob-check", cl::init(true),
     cl::desc("Disable out of boundary check during memory operations"),
     cl::cat(HASECat));
-cl::opt<std::string> OracleKTest( "oracle-KTest", cl::init(""),
-		cl::desc(""), cl::cat(HASECat));
 } // namespace
 
+
+// exported command line options
+namespace klee {
+  cl::opt<std::string> OracleKTest( "oracle-KTest", cl::init(""),
+      cl::desc(""), cl::cat(HASECat));
+} // namespace klee
 namespace klee {
   RNG theRNG;
 }
@@ -1234,7 +1240,6 @@ const Cell& Executor::eval(KInstruction *ki, unsigned index,
   }
 }
 
-void debugDumpLLVMIR(llvm::Instruction *llvmir);
 void Executor::bindLocal(KInstruction *target, ExecutionState &state,
                          ref<Expr> value) {
   getDestCell(state, target).value = value;
@@ -1675,7 +1680,6 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
   }
 }
 
-void debugAnalyzeIndirectMemoryAccess(ExecutionState &);
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
@@ -4492,86 +4496,6 @@ Interpreter *Interpreter::create(LLVMContext &ctx, const InterpreterOptions &opt
   return new Executor(ctx, opts, ih);
 }
 
-void debugDumpLLVMIR(llvm::Instruction *llvmir) {
-    llvmir->print(llvm::errs());
-    llvm::errs() << '\n';
-}
-void debugDumpLLVMValue(llvm::Value *V) {
-  V->print(llvm::errs(), true);
-}
-
-void debugAnalyzeIndirectMemoryAccess(ExecutionState &state) {
-  ConstraintManager &constraints = state.constraints;
-
-  IndirectReadDepthCalculator c1(constraints);
-  auto lastLevelReads = c1.getLastLevelReads();
-  for (auto it = lastLevelReads.begin(), ie = lastLevelReads.end();
-            it != ie; it++) {
-    const ref<Expr> &e = *it;
-    e->print(llvm::errs());
-    llvm::errs() << " : " << c1.query(e) << "\n";
-  }
-  llvm::errs() << "max : " << c1.getMax() << "\n";
-
-  ArrayConcretizationEvaluator ace(OracleKTest);
-  ace.addConcretizedValue("A-data", 13);
-  auto newConstraints = ace.evaluate(constraints);
-
-  IndirectReadDepthCalculator c2(newConstraints);
-  lastLevelReads = c2.getLastLevelReads();
-  for (auto it = lastLevelReads.begin(), ie = lastLevelReads.end();
-            it != ie; it++) {
-    const ref<Expr> &e = *it;
-    e->print(llvm::errs());
-    llvm::errs() << " : " << c2.query(e) << "\n";
-  }
-  llvm::errs() << "max : " << c2.getMax() << "\n";
-}
-
-/// Dump constraints to a file, used inside gdb
-///
-/// \param[in] state Contains all symbolic variables we are interested in.
-/// \param[in] cm Contains all constraints, not necessary to be state.constraints
-/// \param[in] expr If non-null, it's the expr you want to evaluate and
-///   the dumped query will not ask for symbolic values' assignment.
-///   If null, the query will evalute `false` and ask for assignment.
-/// \param[in] filename The path and name of the dumped file. Default is "constraints.txt"
-static ref<Expr> debugExpr = ref<Expr>(0);
-void debugDumpConstraints(ExecutionState &state, ConstraintManager &cm, ref<Expr> expr, const char *filename) {
-  std::string str;
-  llvm::raw_string_ostream os(str);
-  std::ofstream ofs(filename);
-  if (!ofs.good()) {
-    llvm::errs() << "open file " << filename << "failed\n";
-    return;
-  }
-  const ref<Expr> *evalExprsBegin = nullptr;
-  const ref<Expr> *evalExprsEnd = nullptr;
-  const Array *const *evalArraysBegin = nullptr;
-  const Array *const *evalArraysEnd = nullptr;
-  std::vector<const Array*> symbolic_objs;
-  if (expr.isNull()) { // no query expr, dumping for initial assigment
-    for (auto s: state.symbolics) {
-      symbolic_objs.push_back(s.second);
-    }
-    if (!symbolic_objs.empty()) {
-      evalArraysBegin = &(symbolic_objs[0]);
-      evalArraysEnd = evalArraysBegin + symbolic_objs.size();
-    }
-  }
-  else { // has query expr, dumping for evaluation
-    evalExprsBegin = &expr;
-    evalExprsEnd = evalExprsBegin + 1;
-  }
-  ExprPPrinter::printQuery(os, cm, klee::ConstantExpr::alloc(false, Expr::Bool),
-      evalExprsBegin, evalExprsEnd,
-      evalArraysBegin, evalArraysEnd, true);
-  ofs << os.str();
-  ofs.close();
-}
-
-static llvm::raw_ostream &debugLLVMErrs = llvm::errs();
-
 /*
 void Executor::writeStackKQueries(std::string& buf) {
   solver->writeStackKQueries(buf);
@@ -4624,3 +4548,4 @@ void Executor::getNextBranchConstraint(ExecutionState &state, ref<Expr> conditio
       klee_error("Wrong recorded branch type");
   }
 }
+static void (*dummy_include_debug_helper)(llvm::raw_ostream &) __attribute__((unused)) = printDebugLibVersion;

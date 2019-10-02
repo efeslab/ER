@@ -4429,6 +4429,7 @@ void Executor::printInfo(llvm::raw_ostream &os) {
        << "  ReplayPosition: " << (replayPath?std::to_string(s->replayPosition):"N/A") << '\n'
        << "  Stack:\n";
     s->dumpStack(os);
+    ++i;
   }
   os << "======== Statistics =============\n";
   dumpStatisticsToLLVMrawos(os);

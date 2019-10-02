@@ -3111,7 +3111,7 @@ void Executor::run(ExecutionState &initialState) {
 
   // Delay init till now so that ticks don't accrue during
   // optimization and such.
-  initTimers();
+  // initTimers();
 
   states.insert(&initialState);
 

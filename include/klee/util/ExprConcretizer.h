@@ -32,10 +32,16 @@ namespace klee {
   class ExprConcretizer : public OracleEvaluator {
   private:
     std::set<std::pair<std::string, unsigned>> concretizedInputs;
+    std::vector<ref<Expr>> additionalConstraints;
     ExprHashMap<uint64_t> concretizedExprs;
     ExprHashMap<bool> foundExprs;
     std::unordered_map<const UpdateNode *, const UpdateNode *> old2new;
     std::unordered_map<std::string, UpdateList *> farthestUpdates;
+
+    void cleanUp();
+    std::vector<ref<Expr>> doEvaluate(
+            const std::vector<ref<Expr>>::const_iterator ib,
+            const std::vector<ref<Expr>>::const_iterator ie);
 
   protected:
     ref<Expr> getInitialValue(const Array &mo, unsigned index);
@@ -47,11 +53,12 @@ namespace klee {
 
   public:
     ExprConcretizer(std::string KTestPath)
-          :OracleEvaluator(KTestPath) {}
+          :OracleEvaluator(KTestPath, true) {}
     void addConcretizedInputValue(std::string arrayName, unsigned index);
     /* TODO test addConcretizedExprValue */
     void addConcretizedExprValue(ref<Expr> e, uint64_t val);
     ConstraintManager evaluate(ConstraintManager &cm);
+    std::vector<ref<Expr>> evaluate(const std::vector<ref<Expr>> &cm);
   };
 
   class IndirectReadDepthCalculator {

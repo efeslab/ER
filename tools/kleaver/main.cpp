@@ -16,6 +16,7 @@
 #include "klee/Expr.h"
 #include "klee/ExprBuilder.h"
 #include "klee/Internal/Support/PrintVersion.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/OptionCategories.h"
 #include "klee/Solver.h"
 #include "klee/SolverCmdLine.h"
@@ -24,6 +25,7 @@
 #include "klee/util/ExprPPrinter.h"
 #include "klee/util/ExprSMTLIBPrinter.h"
 #include "klee/util/ExprVisitor.h"
+#include "klee/util/ExprConcretizer.h"
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
@@ -45,6 +47,12 @@ namespace {
 llvm::cl::opt<std::string> InputFile(llvm::cl::desc("<input query log>"),
                                      llvm::cl::Positional, llvm::cl::init("-"),
                                      llvm::cl::cat(klee::ExprCat));
+
+llvm::cl::opt<std::string> AdditionalConcreteValuesConfig(
+    "additional-concrete-values-cfg",
+    llvm::cl::init(""),
+    llvm::cl::desc("specify additional concretize values in a file"),
+    llvm::cl::cat(klee::HASECat));
 
 enum ToolActions { PrintTokens, PrintAST, PrintSMTLIBv2, Evaluate };
 
@@ -184,6 +192,30 @@ static bool PrintInputAST(const char *Filename,
   return success;
 }
 
+static void getAdditionalConcreteValues(std::string Filename,
+                std::set<std::pair<std::string, unsigned>> &concretizedInputs) {
+  if (AdditionalConcreteValuesConfig == "")
+    return;
+
+  std::ifstream ifs(Filename);
+  if (!ifs.is_open()) {
+    klee_error("cannot open %s", Filename.c_str());
+    exit(1);
+  }
+
+  while (ifs) {
+    std::string arr;
+    unsigned off;
+    ifs >> arr >> off;
+    if (ifs) {
+      std::pair<std::string, unsigned> k = {arr, off};
+      concretizedInputs.insert(k);
+    }
+  }
+
+  ifs.close();
+}
+
 static bool EvaluateInputAST(const char *Filename,
                              const MemoryBuffer *MB,
                              ExprBuilder *Builder) {
@@ -217,6 +249,9 @@ static bool EvaluateInputAST(const char *Filename,
                                    getQueryLogPath(ALL_QUERIES_KQUERY_FILE_NAME),
                                    getQueryLogPath(SOLVER_QUERIES_KQUERY_FILE_NAME));
 
+  std::set<std::pair<std::string, unsigned>> concretizedInputs;
+  getAdditionalConcreteValues(AdditionalConcreteValuesConfig, concretizedInputs);
+
   unsigned Index = 0;
   for (std::vector<Decl*>::iterator it = Decls.begin(),
          ie = Decls.end(); it != ie; ++it) {
@@ -224,10 +259,24 @@ static bool EvaluateInputAST(const char *Filename,
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
       llvm::outs() << "Query " << Index << ":\t";
 
+      /* replace some inputs with concrete value */
+      std::vector<ExprHandle> constraints;
+      if (!concretizedInputs.empty()) {
+        ExprConcretizer ec(OracleKTest);
+        for (auto ciit = concretizedInputs.begin(), ciie = concretizedInputs.end();
+                    ciit != ciie; ciit++) {
+          ec.addConcretizedInputValue(ciit->first, ciit->second);
+        }
+        constraints = ec.evaluate(QC->Constraints);
+      }
+      else {
+        constraints = QC->Constraints;
+      }
+
       assert("FIXME: Support counterexample query commands!");
       if (QC->Values.empty() && QC->Objects.empty()) {
         bool result;
-        if (S->mustBeTrue(Query(ConstraintManager(QC->Constraints), QC->Query),
+        if (S->mustBeTrue(Query(ConstraintManager(constraints), QC->Query),
                           result)) {
           llvm::outs() << (result ? "VALID" : "INVALID");
         } else {
@@ -243,7 +292,7 @@ static bool EvaluateInputAST(const char *Filename,
         assert(QC->Query->isFalse() &&
                "FIXME: Support counterexamples with non-trivial query!");
         ref<ConstantExpr> result;
-        if (S->getValue(Query(ConstraintManager(QC->Constraints), 
+        if (S->getValue(Query(ConstraintManager(constraints), 
                               QC->Values[0]),
                         result)) {
           llvm::outs() << "INVALID\n";
@@ -256,7 +305,7 @@ static bool EvaluateInputAST(const char *Filename,
       } else {
         std::vector< std::vector<unsigned char> > result;
         
-        if (S->getInitialValues(Query(ConstraintManager(QC->Constraints), 
+        if (S->getInitialValues(Query(ConstraintManager(constraints), 
                                       QC->Query),
                                 QC->Objects, result)) {
           llvm::outs() << "INVALID\n";

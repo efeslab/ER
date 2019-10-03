@@ -26,11 +26,13 @@ ref<Expr> OracleEvaluator::getInitialValue(const Array &array, unsigned index) {
     assert(array.getRange() == Expr::Int8 && "Current implementation only supports byte array");
     return ConstantExpr::alloc(kobj.bytes[index], array.getRange());
 }
-OracleEvaluator::OracleEvaluator(std::string KTestPath) {
+OracleEvaluator::OracleEvaluator(std::string KTestPath, bool silent) {
     ktest = kTest_fromFile(KTestPath.c_str());
     assert(ktest && "Open KTestFile error");
     for (unsigned int i=0; i < ktest->numObjects; ++i) {
-        klee_message("Loading %s from OracleKTest", ktest->objects[i].name);
+        if (!silent) {
+            klee_message("Loading %s from OracleKTest", ktest->objects[i].name);
+        }
         arrayname2idx[ktest->objects[i].name] = i;
     }
 }

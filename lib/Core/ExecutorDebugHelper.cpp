@@ -81,7 +81,7 @@ void debugAnalyzeIndirectMemoryAccess(ExecutionState &state, llvm::raw_ostream &
 
 #if 0
   ExprConcretizer ace(OracleKTest);
-  ace.addConcretizedValue("A-data", 13);
+  ace.addConcretizedInputValue("A-data", 13);
   auto newConstraints = ace.evaluate(constraints);
 
   IndirectReadDepthCalculator c2(newConstraints);

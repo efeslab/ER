@@ -12,6 +12,7 @@ add_executable(kleaver
 
 set(KLEE_LIBS
   kleaverSolver
+  kleaverExpr
 )
 
 target_link_libraries(kleaver ${KLEE_LIBS})

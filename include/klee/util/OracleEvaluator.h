@@ -20,7 +20,7 @@ namespace klee {
     ref<Expr> getInitialValue(const Array &mo, unsigned index);
 
     public:
-    OracleEvaluator(std::string KTestPath);
+    OracleEvaluator(std::string KTestPath, bool silent = false);
   };
 }
 #endif

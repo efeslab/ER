@@ -28,11 +28,23 @@
 using namespace llvm;
 using namespace klee;
 
+void ExprConcretizer::cleanUp() {
+  additionalConstraints.clear();
+  foundExprs.clear();
+  old2new.clear();
+  farthestUpdates.clear();
+}
+
 ref<Expr> ExprConcretizer::getInitialValue
                             (const Array &mo, unsigned index) {
   std::pair<std::string, unsigned> k = {mo.name, index};
   if (concretizedInputs.find(k) != concretizedInputs.end()) {
-    return OracleEvaluator::getInitialValue(mo, index);
+    ref<Expr> rd = klee::ReadExpr::create(UpdateList(&mo, 0),
+                          klee::ConstantExpr::alloc(index, mo.getDomain()));
+    ref<Expr> cval = OracleEvaluator::getInitialValue(mo, index);
+    ref<Expr> eq = klee::EqExpr::create(rd, cval);
+    additionalConstraints.push_back(eq);
+    return cval;
   }
   else {
     return klee::ReadExpr::create(UpdateList(&mo, 0),
@@ -152,16 +164,24 @@ void ExprConcretizer::addConcretizedExprValue
   foundExprs.insert({e, false});
 }
 
-ConstraintManager ExprConcretizer::evaluate(ConstraintManager &cm) {
+std::vector<ref<Expr>> ExprConcretizer::doEvaluate(
+    const std::vector<ref<Expr>>::const_iterator ib,
+    const std::vector<ref<Expr>>::const_iterator ie) {
+
   std::vector<ref<Expr>> newCm;
 
   /* for all constraints:
    * 1. replace all exprs in concretizedExprs to a concrete value
    * 2. replace all inputs in concretizedInputs to a concrete value */
-  for (auto it = cm.begin(), ie = cm.end(); it != ie; it++) {
+  for (auto it = ib; it != ie; it++) {
     const ref<Expr> &e = *it;
     auto newExpr = visit(e);
     newCm.push_back(newExpr);
+  }
+
+  for (auto it = additionalConstraints.begin(),
+          ie = additionalConstraints.end(); it != ie; it++) {
+    newCm.push_back(*it);
   }
 
   /* after replacing a concretized Expr, we need to add a new
@@ -177,7 +197,17 @@ ConstraintManager ExprConcretizer::evaluate(ConstraintManager &cm) {
     }
   }
 
-  return ConstraintManager(newCm);
+  cleanUp();
+
+  return newCm;
+}
+
+ConstraintManager ExprConcretizer::evaluate(ConstraintManager &cm) {
+  return ConstraintManager(doEvaluate(cm.begin(), cm.end()));
+}
+
+std::vector<ref<Expr>> ExprConcretizer::evaluate(const std::vector<ref<Expr>> &cm) {
+  return doEvaluate(cm.begin(), cm.end());
 }
 
 int IndirectReadDepthCalculator::getLevel(const ref<Expr> &e) {

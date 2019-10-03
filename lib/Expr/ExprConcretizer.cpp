@@ -2,6 +2,7 @@
 #include "klee/Config/Version.h"
 #include "klee/Expr.h"
 #include "klee/Internal/Module/KInstruction.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/util/ExprPPrinter.h"
 #include "klee/util/ExprUtil.h"
 #include "klee/util/ExprVisitor.h"
@@ -57,11 +58,12 @@ ExprVisitor::Action ExprConcretizer::visitRead
   std::vector<const UpdateNode *> updateNodeArray;
   const UpdateNode *originHead = nullptr;
   for (const UpdateNode *un = re.updates.head; un; un = un->next) {
-    if (old2new.find(un) == old2new.end()) {
+    auto it = old2new.find(un);
+    if (it == old2new.end()) {
       updateNodeArray.push_back(un);
     }
     else {
-      originHead = old2new[un];
+      originHead = it->second;
       break;
     }
   }
@@ -75,15 +77,24 @@ ExprVisitor::Action ExprConcretizer::visitRead
   }
   else {
     ul = farthest->second;
-    if (ul->head && originHead)
-      assert(ul->head->getSize() >= originHead->getSize());
+    // FIXME: on going debate.
+    // Note that there should be no divergence in any updatelist.
+    // So either:
+    //   1. originHead is the farthest and we are extending the farthest (updateNodeArray non-empty)
+    //   2. originHead is not the farthest. we meet a ReadExpr referencing a shorter updateList (an older version of memory state of the root array)
+    if (ul->head != originHead && !updateNodeArray.empty()) {
+      klee_warning("farthest != originHead but updateNodeArray is not empty. violating case 2");
+    }
   }
 
-  for (int i = updateNodeArray.size()-1; i >= 0; i--) {
-    const UpdateNode *un = updateNodeArray[i];
+  for (auto it = updateNodeArray.rbegin(); it != updateNodeArray.rend(); ++it) {
+    const UpdateNode *un = *it;
     updateNodeArray.pop_back();
     auto idx = visit(un->index);
     auto val = visit(un->value);
+    // FIXME: on going debate
+    // Due to recursion, the updateNodeArray we are processing here might already be processed inside recursion.
+    // We currently just check if such repeated updates happen to old2new map.
     assert(old2new.find(un) == old2new.end());
     ul->extend(idx, val, Expr::FLAG_INTERNAL, un->kinst);
     assert(old2new.find(un) == old2new.end());
@@ -98,9 +109,9 @@ ExprVisitor::Action ExprConcretizer::visitRead
     old2new.insert({un, ul->head});
   }
 
-  ref<Expr> v = visit(re.index);
+  ref<Expr> idx = visit(re.index);
 
-  if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(v)) {
+  if (klee::ConstantExpr *CE = dyn_cast<klee::ConstantExpr>(idx)) {
     uint64_t index = CE->getZExtValue();
 
     /* Iterate on the update list and search for a match,
@@ -111,17 +122,31 @@ ExprVisitor::Action ExprConcretizer::visitRead
           return Action::changeTo(un->value);
       }
       else {
+        // we meet a symbolic index in the update list, stop matching concrete update nodes
+        // return a ReadExpr from this symbolic update node instead.
         return Action::changeTo(ReadExpr::create(UpdateList(ul->root, un),
                         ConstantExpr::alloc(index, ul->root->getDomain())));
       }
     }
 
-    if (ul->root->isConstantArray() && index < ul->root->size)
-      return Action::changeTo(ul->root->constantValues[index]);
+    // we can not find a matching concrete update, but all updates are concrete
+    // let us match the root Array behind the update list for a concrete match.
+    if (ul->root->isConstantArray()) {
+      if (index < ul->root->size) {
+        return Action::changeTo(ul->root->constantValues[index]);
+      }
+      else {
+        klee_warning("out of bound access (index %lu) to constant Array %s (size %u)", index, ul->root->name.c_str(), ul->root->size);
+      }
+    }
 
+    // there is no symbolic update but the root Array is symbolic.
+    // we want to query its initial value, additonal concretized value hold
+    // by this evaluator could be applied here.
     return Action::changeTo(getInitialValue(*ul->root, index));
   } else {
-    return Action::changeTo(ReadExpr::create(UpdateList(ul->root, ul->head), v));
+    // symbolic index, there seems to be nothing we can do
+    return Action::changeTo(ReadExpr::create(UpdateList(ul->root, ul->head), idx));
   }
 }
 
@@ -151,6 +176,9 @@ ExprVisitor::Action ExprConcretizer::visitExprPost(const Expr &e) {
 
 void ExprConcretizer::addConcretizedInputValue
                             (std::string arrayName, unsigned index) {
+  if (arrayname2idx.find(arrayName) == arrayname2idx.end()) {
+    klee_warning("Trying to concretize non-exist symbolic obj: %s", arrayName.c_str());
+  }
   std::pair<std::string, unsigned> k = {arrayName, index};
   assert(concretizedInputs.find(k) == concretizedInputs.end());
   concretizedInputs.insert(k);
@@ -226,7 +254,7 @@ void IndirectReadDepthCalculator::putLevel(const ref<Expr> &e, int level) {
   auto it = depthStore.find(e);
   assert(it != depthStore.end());
 
-  depthStore[e] = level;
+  it->second = level;
 }
 
 int IndirectReadDepthCalculator::assignDepth(const ref<Expr> &e, int readLevel) {
@@ -239,14 +267,13 @@ int IndirectReadDepthCalculator::assignDepth(const ref<Expr> &e, int readLevel) 
 
   int m = readLevel;
   bool shouldIncrease = false;
-  if (e->getKind() == Expr::Read) {
-    const ref<ReadExpr> &re = dyn_cast<ReadExpr>(e);
-    if (re->index->getKind() != Expr::Constant) {
+  if (const ReadExpr *re = dyn_cast<ReadExpr>(e)) {
+    if (!isa<ConstantExpr>(re->index)) {
       shouldIncrease = true;
     }
     else {
       for (auto un = re->updates.head; un; un = un->next) {
-        if (un->index->getKind() != Expr::Constant) {
+        if (!isa<ConstantExpr>(un->index)) {
           shouldIncrease = true;
           break;
         }
@@ -267,8 +294,7 @@ int IndirectReadDepthCalculator::assignDepth(const ref<Expr> &e, int readLevel) 
     if (m1 > m) m = m1;
   }
 
-  if (e->getKind() == Expr::Read) {
-    const ref<ReadExpr> &re = dyn_cast<ReadExpr>(e);
+  if (const ReadExpr *re = dyn_cast<ReadExpr>(e)) {
     const UpdateNode *un = re->updates.head;
     for (; un; un = un->next) {
       int m2 = assignDepth(un->index, readLevel+1);
@@ -278,8 +304,7 @@ int IndirectReadDepthCalculator::assignDepth(const ref<Expr> &e, int readLevel) 
     }
   }
 
-  if (e->getKind() == Expr::Read) {
-    const ref<ReadExpr> &re = dyn_cast<ReadExpr>(e);
+  if (const ReadExpr *re = dyn_cast<ReadExpr>(e)) {
     if (re->index->getKind() == Expr::Constant &&
             re->updates.head == nullptr) {
       auto it = lastLevelReads.find(e);

@@ -11,7 +11,6 @@
 #include "klee/util/OracleEvaluator.h"
 
 #include "llvm/IR/Instructions.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
@@ -31,11 +30,23 @@ using namespace klee;
 namespace klee {
   class ExprConcretizer : public OracleEvaluator {
   private:
+    // concretizedInputs has the symbolic obj name and corresponding index you want to concretize.
+    // The actual concrete value is hold by the ktest loaded by super class (OracleEvaluator)
     std::set<std::pair<std::string, unsigned>> concretizedInputs;
+    // additionalConstraints contains the additional constraints added while performing the
+    // evaluation. For example, while replacing an Expr e with a concrete value x, a constraint
+    // (e == x) will be added here.
     std::vector<ref<Expr>> additionalConstraints;
+    // concretizedExprs contains the Exprs which need to be concretized, as well as the concrete
+    // values to replace them.
     ExprHashMap<uint64_t> concretizedExprs;
+    // foundExprs contains the information whether a Expr is replaced or not.
     ExprHashMap<bool> foundExprs;
+    // old2new maps update nodes referenced in original constraints to
+    // new update nodes processed by this Evaluator.
     std::unordered_map<const UpdateNode *, const UpdateNode *> old2new;
+    // farthestUpdates maps symbolic array names to the longest corresponding
+    // update list reconstructed by this evaluator.
     std::unordered_map<std::string, UpdateList *> farthestUpdates;
 
     void cleanUp();
@@ -57,6 +68,7 @@ namespace klee {
     void addConcretizedInputValue(std::string arrayName, unsigned index);
     /* TODO test addConcretizedExprValue */
     void addConcretizedExprValue(ref<Expr> e, uint64_t val);
+    // Try to concretize every constraints in the given constraint manager
     ConstraintManager evaluate(ConstraintManager &cm);
     std::vector<ref<Expr>> evaluate(const std::vector<ref<Expr>> &cm);
   };

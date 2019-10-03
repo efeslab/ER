@@ -36,28 +36,3 @@ OracleEvaluator::OracleEvaluator(std::string KTestPath, bool silent) {
         arrayname2idx[ktest->objects[i].name] = i;
     }
 }
-/*
-class OracleSolver : public SolverImpl {
-    Solver *solver;
-    OracleEvaluator oracle_eval;
-    public:
-    OracleSolver(Solver *_solver, std::string KTestPath): solver(_solver), ktest_ev(KTestPath) {}
-    ~OracleSolver() {
-        kTest_free(ktest);
-    }
-    bool computeTruth(const Query&, bool &isValid);
-    bool computeValidity(const Query&, Solver::Validity &result);
-    bool computeValue(const Query&, ref<Expr> &result);
-    bool computeInitialValues(const Query&,
-            const std::vector<const Array*> &objects,
-            std::vector<std::vector<unsigned char> > &values,
-            bool &hasSolution);
-    SolverRunStatus getOperationStatusCode();
-    char *getConstraintLog(const Query&);
-    void setCoreSolverTimeout(time::Span timeout) {};
-}
-
-bool OracleSolver::computeTruth(const Query &query, bool &isValid) {
-    ref<Expr> result = ktest_ev.visit(query.expr);
-}
-*/

@@ -66,7 +66,7 @@ void printDebugLibVersion(llvm::raw_ostream &os) {
      << "\tdebugDumpLLVMValue: " << reinterpret_cast<void*>(&debugDumpLLVMValue) << '\n';
 }
 
-void debugAnalyzeIndirectMemoryAccess(ExecutionState &state) {
+void debugAnalyzeIndirectMemoryAccess(ExecutionState &state, llvm::raw_ostream &os) {
   ConstraintManager &constraints = state.constraints;
 
   IndirectReadDepthCalculator c1(constraints);
@@ -74,12 +74,13 @@ void debugAnalyzeIndirectMemoryAccess(ExecutionState &state) {
   for (auto it = lastLevelReads.begin(), ie = lastLevelReads.end();
             it != ie; it++) {
     const ref<Expr> &e = *it;
-    e->print(llvm::errs());
-    llvm::errs() << " : " << c1.query(e) << "\n";
+    e->print(os);
+    os << " : " << c1.query(e) << "\n";
   }
-  llvm::errs() << "max : " << c1.getMax() << "\n";
+  os << "max : " << c1.getMax() << "\n";
 
-  ArrayConcretizationEvaluator ace(OracleKTest);
+#if 0
+  ExprConcretizer ace(OracleKTest);
   ace.addConcretizedValue("A-data", 13);
   auto newConstraints = ace.evaluate(constraints);
 
@@ -88,8 +89,9 @@ void debugAnalyzeIndirectMemoryAccess(ExecutionState &state) {
   for (auto it = lastLevelReads.begin(), ie = lastLevelReads.end();
             it != ie; it++) {
     const ref<Expr> &e = *it;
-    e->print(llvm::errs());
-    llvm::errs() << " : " << c2.query(e) << "\n";
+    e->print(os);
+    os << " : " << c2.query(e) << "\n";
   }
-  llvm::errs() << "max : " << c2.getMax() << "\n";
+  os << "max : " << c2.getMax() << "\n";
+#endif
 }

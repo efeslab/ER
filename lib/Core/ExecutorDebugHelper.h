@@ -12,5 +12,5 @@ extern ref<Expr> debugExpr;
 void debugDumpConstraints(ExecutionState &state, ConstraintManager &cm, ref<Expr> expr, const char *filename);
 extern raw_ostream &debugLLVMErrs;
 void printDebugLibVersion(llvm::raw_ostream &os);
-void debugAnalyzeIndirectMemoryAccess(ExecutionState &);
+void debugAnalyzeIndirectMemoryAccess(ExecutionState &, llvm::raw_ostream &);
 #endif

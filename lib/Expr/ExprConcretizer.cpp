@@ -1,6 +1,3 @@
-#include "ExprConcretizer.h"
-#include "OracleEvaluator.h"
-
 #include "klee/Common.h"
 #include "klee/Config/Version.h"
 #include "klee/Expr.h"
@@ -8,6 +5,8 @@
 #include "klee/util/ExprPPrinter.h"
 #include "klee/util/ExprUtil.h"
 #include "klee/util/ExprVisitor.h"
+#include "klee/util/ExprConcretizer.h"
+#include "klee/util/OracleEvaluator.h"
 
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/ErrorHandling.h"

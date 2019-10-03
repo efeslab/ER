@@ -9,6 +9,8 @@
 using namespace klee;
 
 namespace klee {
+  extern llvm::cl::opt<std::string> OracleKTest;
+
   class OracleEvaluator : public ExprEvaluator {
     KTest *ktest;
     typedef std::unordered_map<std::string, unsigned int> arrayname2idx_ty;

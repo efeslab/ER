@@ -1,6 +1,14 @@
-#include "OracleEvaluator.h"
+#include "klee/util/OracleEvaluator.h"
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/SolverImpl.h"
+#include "klee/OptionCategories.h"
+
+using namespace llvm;
+
+namespace klee {
+  cl::opt<std::string> OracleKTest( "oracle-KTest", cl::init(""),
+      cl::desc(""), cl::cat(HASECat));
+} // namespace klee
 
 ref<Expr> OracleEvaluator::getInitialValue(const Array &array, unsigned index) {
     // it.first == array name, it.second == index at ktest->objects

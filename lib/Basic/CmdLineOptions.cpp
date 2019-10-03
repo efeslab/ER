@@ -24,6 +24,9 @@ using namespace llvm;
 
 namespace klee {
 
+cl::OptionCategory HASECat("HASE additional options",
+                              "These are additional options related to extended features for HASE");
+
 cl::extrahelp TimeFormatInfo(
     "\nTime format used by KLEE's options\n"
     "\n"

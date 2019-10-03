@@ -107,8 +107,6 @@ cl::OptionCategory
 cl::OptionCategory TestGenCat("Test generation options",
                               "These options impact test generation.");
 
-cl::OptionCategory HASECat("HASE additional options",
-                              "These are additional options related to extended features for HASE");
 } // namespace klee
 
 namespace {
@@ -418,8 +416,7 @@ cl::opt<bool> DoOutofBoundaryCheck(
 
 // exported command line options
 namespace klee {
-  cl::opt<std::string> OracleKTest( "oracle-KTest", cl::init(""),
-      cl::desc(""), cl::cat(HASECat));
+  extern cl::opt<std::string> OracleKTest;
 } // namespace klee
 namespace klee {
   RNG theRNG;

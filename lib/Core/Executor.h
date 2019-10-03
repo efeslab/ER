@@ -22,6 +22,7 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/System/Time.h"
 #include "klee/util/ArrayCache.h"
+#include "klee/util/OracleEvaluator.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "../Solver/QueryLoggingSolver.h"
@@ -29,7 +30,6 @@
 #include "llvm/ADT/Twine.h"
 
 #include "../Expr/ArrayExprOptimizer.h"
-#include "../Expr/OracleEvaluator.h"
 #include <map>
 #include <memory>
 #include <set>

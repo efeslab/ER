@@ -30,19 +30,28 @@
 using namespace klee;
 
 namespace klee {
-  class ArrayConcretizationEvaluator : public OracleEvaluator {
+  class ExprConcretizer : public OracleEvaluator {
   private:
-    std::set<std::pair<std::string, unsigned>> concretizedValues;
+    std::set<std::pair<std::string, unsigned>> concretizedInputs;
+    ExprHashMap<uint64_t> concretizedExprs;
+    ExprHashMap<bool> foundExprs;
     std::unordered_map<const UpdateNode *, const UpdateNode *> old2new;
     std::unordered_map<std::string, UpdateList *> farthestUpdates;
+
   protected:
     ref<Expr> getInitialValue(const Array &mo, unsigned index);
     ExprVisitor::Action visitRead(const ReadExpr &re);
 
+    /* TODO test visitExpr and visitExprPost */
+    ExprVisitor::Action visitExpr(const Expr &re);
+    ExprVisitor::Action visitExprPost(const Expr &re);
+
   public:
-    ArrayConcretizationEvaluator(std::string KTestPath)
+    ExprConcretizer(std::string KTestPath)
           :OracleEvaluator(KTestPath) {}
-    void addConcretizedValue(std::string arrayName, unsigned index);
+    void addConcretizedInputValue(std::string arrayName, unsigned index);
+    /* TODO test addConcretizedExprValue */
+    void addConcretizedExprValue(ref<Expr> e, uint64_t val);
     ConstraintManager evaluate(ConstraintManager &cm);
   };
 

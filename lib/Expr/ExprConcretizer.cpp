@@ -29,10 +29,10 @@
 using namespace llvm;
 using namespace klee;
 
-ref<Expr> ArrayConcretizationEvaluator::getInitialValue
+ref<Expr> ExprConcretizer::getInitialValue
                             (const Array &mo, unsigned index) {
   std::pair<std::string, unsigned> k = {mo.name, index};
-  if (concretizedValues.find(k) != concretizedValues.end()) {
+  if (concretizedInputs.find(k) != concretizedInputs.end()) {
     return OracleEvaluator::getInitialValue(mo, index);
   }
   else {
@@ -41,7 +41,7 @@ ref<Expr> ArrayConcretizationEvaluator::getInitialValue
   }
 }
 
-ExprVisitor::Action ArrayConcretizationEvaluator::visitRead
+ExprVisitor::Action ExprConcretizer::visitRead
                             (const ReadExpr &re) {
   std::vector<const UpdateNode *> updateNodeArray;
   const UpdateNode *originHead = nullptr;
@@ -110,25 +110,74 @@ ExprVisitor::Action ArrayConcretizationEvaluator::visitRead
 
     return Action::changeTo(getInitialValue(*ul->root, index));
   } else {
-      return Action::changeTo(ReadExpr::create(UpdateList(ul->root, ul->head), v));
+    return Action::changeTo(ReadExpr::create(UpdateList(ul->root, ul->head), v));
   }
 }
 
-void ArrayConcretizationEvaluator::addConcretizedValue
+ExprVisitor::Action ExprConcretizer::visitExpr(const Expr &e) {
+  for (auto it = concretizedExprs.begin(), ie = concretizedExprs.end();
+        it != ie; it++) {
+    if (e == *it->first.get()) {
+      foundExprs[it->first] = true;
+      ref<Expr> val = ConstantExpr::alloc(it->second, e.getWidth());
+      return Action::changeTo(val);
+    }
+  }
+  return Action::doChildren();
+}
+
+ExprVisitor::Action ExprConcretizer::visitExprPost(const Expr &e) {
+  for (auto it = concretizedExprs.begin(), ie = concretizedExprs.end();
+        it != ie; it++) {
+    if (e == *it->first.get()) {
+      foundExprs[it->first] = true;
+      ref<Expr> val = ConstantExpr::alloc(it->second, e.getWidth());
+      return Action::changeTo(val);
+    }
+  }
+  return Action::doChildren();
+}
+
+void ExprConcretizer::addConcretizedInputValue
                             (std::string arrayName, unsigned index) {
   std::pair<std::string, unsigned> k = {arrayName, index};
-  if (concretizedValues.find(k) == concretizedValues.end()) {
-    concretizedValues.insert(k);
-  }
+  assert(concretizedInputs.find(k) == concretizedInputs.end());
+  concretizedInputs.insert(k);
 }
 
-ConstraintManager ArrayConcretizationEvaluator::evaluate(ConstraintManager &cm) {
+void ExprConcretizer::addConcretizedExprValue
+                            (ref<Expr> e, uint64_t val) {
+  assert(concretizedExprs.find(e) == concretizedExprs.end());
+  assert(foundExprs.find(e) == foundExprs.end());
+  concretizedExprs.insert({e, val});
+  foundExprs.insert({e, false});
+}
+
+ConstraintManager ExprConcretizer::evaluate(ConstraintManager &cm) {
   std::vector<ref<Expr>> newCm;
+
+  /* for all constraints:
+   * 1. replace all exprs in concretizedExprs to a concrete value
+   * 2. replace all inputs in concretizedInputs to a concrete value */
   for (auto it = cm.begin(), ie = cm.end(); it != ie; it++) {
     const ref<Expr> &e = *it;
     auto newExpr = visit(e);
     newCm.push_back(newExpr);
   }
+
+  /* after replacing a concretized Expr, we need to add a new
+   * constraint */
+  for (auto it = foundExprs.begin(), ie = foundExprs.end();
+        it != ie; it++) {
+    if (it->second) {
+      ref<Expr> ori = it->first;
+      uint64_t val = concretizedExprs[ori];
+      ref<Expr> v = ConstantExpr::create(val, ori->getWidth());
+      ref<Expr> eq = EqExpr::create(v, ori);
+      newCm.push_back(eq);
+    }
+  }
+
   return ConstraintManager(newCm);
 }
 
@@ -240,5 +289,4 @@ int IndirectReadDepthCalculator::query(const ref<Expr> &e) {
     return it->second;
   }
 }
-
 

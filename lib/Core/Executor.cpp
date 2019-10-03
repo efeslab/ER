@@ -450,7 +450,7 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
       specialFunctionHandler(0), processTree(0), replayKTest(0),
 	  oracle_eval(0), replayPath(0), symIndex(0),
       usingSeeds(0), atMemoryLimit(false), inhibitForking(false), haltExecution(false),
-      ivcEnabled(false), debugLogBuffer(debugBufferString) {
+      ivcEnabled(false), debugLogBuffer(debugBufferString), info_requested(false) {
 
 
   const time::Span maxCoreSolverTime(MaxCoreSolverTime);
@@ -3191,6 +3191,10 @@ void Executor::run(ExecutionState &initialState) {
   searcher->update(0, newStates, std::vector<ExecutionState *>());
 
   while (!states.empty() && !haltExecution) {
+    if (info_requested) {
+      info_requested = false;
+      printInfo(llvm::errs());
+    }
     ExecutionState &state = searcher->selectState();
     KInstruction *ki = state.pc;
     stepInstruction(state);

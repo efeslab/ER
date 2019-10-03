@@ -1246,12 +1246,11 @@ static void interrupt_handle_watchdog() {
 }
 
 static void info_signal_handle(int signum) {
-  static llvm::raw_ostream &os = llvm::errs();
   switch (signum) {
     case SIGINT:
     case SIGUSR1:
       if (theInterpreter) {
-        theInterpreter->printInfo(os);
+        theInterpreter->requestInfo();
       }
       break;
     case SIGQUIT:

@@ -162,7 +162,10 @@ public:
 
   virtual void prepareForEarlyExit() = 0;
 
-  virtual void printInfo(llvm::raw_ostream &os) = 0;
+  /// request the Interpreter to dump information for debug purpose
+  /// The information may not be dumpped right after requested.
+  /// When will the request be served depends on derived class implementation.
+  virtual void requestInfo() = 0;
 
   /*** State accessor methods ***/
 

@@ -252,6 +252,9 @@ private:
   // @brief buffer to store logs before flushing to file
   llvm::raw_string_ostream debugLogBuffer;
 
+  // @brief if printInfo is requested
+  bool info_requested;
+
   /// Optimizes expressions
   ExprOptimizer optimizer;
 
@@ -522,6 +525,8 @@ private:
     }
   }
 
+  void printInfo(llvm::raw_ostream &os);
+
 public:
 
   Executor(llvm::LLVMContext &ctx, const InterpreterOptions &opts,
@@ -584,7 +589,12 @@ public:
 
   void prepareForEarlyExit() override;
 
-  void printInfo(llvm::raw_ostream &os) override;
+  /// called outside, request the Interpreter to dump information
+  /// the request will be served after current instruction executed.
+  ///   (before executing next instruction)
+  void requestInfo() override {
+    info_requested = true;
+  }
 
   /*** State accessor methods ***/
 

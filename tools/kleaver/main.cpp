@@ -35,6 +35,8 @@
 
 #include <sys/stat.h>
 #include <unistd.h>
+#include <ctime>
+#include <cstdlib>
 
 
 #include "llvm/Support/Signals.h"
@@ -51,7 +53,19 @@ llvm::cl::opt<std::string> InputFile(llvm::cl::desc("<input query log>"),
 llvm::cl::opt<std::string> AdditionalConcreteValuesConfig(
     "additional-concrete-values-cfg",
     llvm::cl::init(""),
-    llvm::cl::desc("specify additional concretize values in a file"),
+    llvm::cl::desc("Specify additional concretize values in a file"),
+    llvm::cl::cat(klee::HASECat));
+
+llvm::cl::opt<bool> AdditionalConcreteValuesRandom(
+    "additional-concrete-values-random",
+    llvm::cl::init(false),
+    llvm::cl::desc("Randomly choose which input values to be concretized"),
+    llvm::cl::cat(klee::HASECat));
+
+llvm::cl::opt<unsigned> AdditionalConcreteValuesRandomRatio(
+    "additional-concrete-values-random-ratio",
+    llvm::cl::desc("Specify how much percentage of the input values should be concretized"),
+    llvm::cl::init(5),
     llvm::cl::cat(klee::HASECat));
 
 enum ToolActions { PrintTokens, PrintAST, PrintSMTLIBv2, Evaluate };
@@ -192,28 +206,51 @@ static bool PrintInputAST(const char *Filename,
   return success;
 }
 
-static void getAdditionalConcreteValues(std::string Filename,
-                std::set<std::pair<std::string, unsigned>> &concretizedInputs) {
-  if (AdditionalConcreteValuesConfig == "")
-    return;
+static void getAdditionalConcreteValues(std::vector<Decl*> &Decls,
+        std::set<std::pair<std::string, unsigned>> &concretizedInputs) {
+  if (AdditionalConcreteValuesRandom) {
+    unsigned ratio = AdditionalConcreteValuesRandomRatio;
 
-  std::ifstream ifs(Filename);
-  if (!ifs.is_open()) {
-    klee_error("cannot open %s", Filename.c_str());
-    exit(1);
-  }
-
-  while (ifs) {
-    std::string arr;
-    unsigned off;
-    ifs >> arr >> off;
-    if (ifs) {
-      std::pair<std::string, unsigned> k = {arr, off};
-      concretizedInputs.insert(k);
+    srand(std::time(NULL));
+    for (auto it = Decls.begin(), ie = Decls.end(); it != ie; it++) {
+      Decl *D = *it;
+      if (ArrayDecl *AD = dyn_cast<ArrayDecl>(D)) {
+        const Array *root = AD->Root;
+        if (root->isSymbolicArray()) {
+          for (unsigned i = 0; i < root->size; i++) {
+            unsigned r = rand() % 100;
+            if (r < ratio) {
+              concretizedInputs.insert({root->name, i});
+              llvm::errs() << root->name << "[" << i << "]" << "\n";
+            }
+          }
+        }
+      }
     }
   }
+  else {
+    std::string Filename = AdditionalConcreteValuesConfig;
+    if (Filename == "")
+      return;
 
-  ifs.close();
+    std::ifstream ifs(Filename);
+    if (!ifs.is_open()) {
+      klee_error("cannot open %s", Filename.c_str());
+      exit(1);
+    }
+
+    while (ifs) {
+      std::string arr;
+      unsigned off;
+      ifs >> arr >> off;
+      if (ifs) {
+        std::pair<std::string, unsigned> k = {arr, off};
+        concretizedInputs.insert(k);
+      }
+    }
+
+    ifs.close();
+  }
 }
 
 static bool EvaluateInputAST(const char *Filename,
@@ -250,15 +287,13 @@ static bool EvaluateInputAST(const char *Filename,
                                    getQueryLogPath(SOLVER_QUERIES_KQUERY_FILE_NAME));
 
   std::set<std::pair<std::string, unsigned>> concretizedInputs;
-  getAdditionalConcreteValues(AdditionalConcreteValuesConfig, concretizedInputs);
+  getAdditionalConcreteValues(Decls, concretizedInputs);
 
   unsigned Index = 0;
   for (std::vector<Decl*>::iterator it = Decls.begin(),
          ie = Decls.end(); it != ie; ++it) {
     Decl *D = *it;
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
-      llvm::outs() << "Query " << Index << ":\t";
-
       /* replace some inputs with concrete value */
       std::vector<ExprHandle> constraints;
       if (!concretizedInputs.empty()) {
@@ -272,6 +307,8 @@ static bool EvaluateInputAST(const char *Filename,
       else {
         constraints = QC->Constraints;
       }
+
+      llvm::outs() << "Query " << Index << ":\t";
 
       assert("FIXME: Support counterexample query commands!");
       if (QC->Values.empty() && QC->Objects.empty()) {

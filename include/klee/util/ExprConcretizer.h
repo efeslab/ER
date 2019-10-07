@@ -73,17 +73,58 @@ namespace klee {
     std::vector<ref<Expr>> evaluate(const std::vector<ref<Expr>> &cm);
   };
 
+  /// Here we define the notion of Indirect Depth
+  /// We define that each constraint itself has indirect depth 0.
+  /// Note each constraint is an expression as well.
+  /// The indirect depth of an expression's children (e and e.kids) is defined recursively:
+  /// 1. If e is not a ReadExpr, then e.kids have the same indirect depth as e.
+  /// 2. If e is a ReadExpr, then we detail e.kids as:
+  ///      (e.index, e.updates = { un[(0.idx=0.value), (1.idx=1.value), ...] @ Array})
+  ///    e.index and un[i].idx have 1 more indirect depth then e
+  ///    un[i].value have the same indirect depth as e
+  ///
+  /// Example constraint:
+  ///  Eq( 0
+  ///      Add( 1
+  ///            Read(
+  ///              Read(1 objA ) // read index
+  ///              [ Read(1 objB ) = Read(1 objC) ] // update list
+  ///                @ objD // root Array
+  ///            )
+  ///      )
+  ///  )
+  /// Then we say that:
+  ///   1. Eq and Add both have indirect depth 0.
+  ///   2. The outermost Read has indirect depth 1.
+  ///   3. Read(1 objA), Read(1 objB) have indirect depth 2.
+  ///   4. Read(1 objC) has indirect depth 1.
+  ///
+  ///  Note that all Read will end up with some
+  ///    Read(constant index, symbolic array), which is called "Last Level Reads".
+  ///
+  /// We are interested in the distribution of indirect depth, constant index, symbolic array of last level reads.
   class IndirectReadDepthCalculator {
   private:
+    // the set of all last level reads
     std::set<ref<Expr>> lastLevelReads;
+    // map Expr(by their hash) to indirect depth
     ExprHashMap<int> depthStore;
+    // the maximum indirect depth across all constraints
     int maxLevel;
 
+    // return the indirect depth of a given Expr if found
+    // init not found Expr with default indirect depth -1
     int getLevel(const ref<Expr> &e);
     void putLevel(const ref<Expr> &e, int level);
+    /// assert that Expr `e` occurs in a certain constaint with indirect depth `level` 
+    /// \return the maximum indirect depth encountered when recursively analysing the kids of e.
+    ///   Note that this is mostly for recursively get the max indirect depth.
+    ///
+    /// TODO: enrich this framework to analyse more statistics than just maximum.
     int assignDepth(const ref<Expr> &e, int readLevel);
 
   public:
+    // all calculation is done in the constructor
     IndirectReadDepthCalculator(ConstraintManager &cm);
     int getMax();
     std::set<ref<Expr>>& getLastLevelReads();

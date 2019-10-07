@@ -265,7 +265,9 @@ int IndirectReadDepthCalculator::assignDepth(const ref<Expr> &e, int readLevel) 
   }
   putLevel(e, readLevel);
 
+  // m means the maximum indirect depth which is maintained recursively
   int m = readLevel;
+  // shouldIncrease == true iif either the ReadExpr has symbolic index or its update list has updates with symbolic index.
   bool shouldIncrease = false;
   if (const ReadExpr *re = dyn_cast<ReadExpr>(e)) {
     if (!isa<ConstantExpr>(re->index)) {
@@ -281,6 +283,7 @@ int IndirectReadDepthCalculator::assignDepth(const ref<Expr> &e, int readLevel) 
     }
   }
 
+  // note that ReadExpr only has one kid (update list is not considered as kid)
   int nkids = e->getNumKids();
   for (int i = 0; i < nkids; i++) {
     ref<Expr> kid = e->getKid(i);

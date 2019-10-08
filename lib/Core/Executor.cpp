@@ -1092,6 +1092,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     // res is still Solver::Unknown in this branch, which means current state
     // should fork here.
     ExecutionState *falseState, *trueState = &current;
+    if (replayPath) {
+      klee_warning("ExecutionState forks in replay mode:");
+      current.dumpStack();
+    }
 
     ++stats::forks;
     

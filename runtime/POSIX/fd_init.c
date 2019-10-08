@@ -110,8 +110,8 @@ static unsigned __sym_uint32(const char *name) {
  *  e.g. `A c13 (`
  */
 static void klee_concretize(char *concretize_cfg) {
-  printf("concretizing...\n");
   if (concretize_cfg != NULL) {
+    printf("concretizing...\n");
     printf("cfg=%s\n", concretize_cfg);
     FILE *cctz_cfg_file = fopen(concretize_cfg, "r");
     if (!cctz_cfg_file) {

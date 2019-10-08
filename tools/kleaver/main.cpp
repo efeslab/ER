@@ -68,7 +68,7 @@ llvm::cl::opt<unsigned> AdditionalConcreteValuesRandomRatio(
     llvm::cl::init(5),
     llvm::cl::cat(klee::HASECat));
 
-enum ToolActions { PrintTokens, PrintAST, PrintSMTLIBv2, Evaluate };
+enum ToolActions { PrintTokens, PrintAST, PrintSMTLIBv2, Evaluate, Analyze };
 
 static llvm::cl::opt<ToolActions> ToolAction(
     llvm::cl::desc("Tool actions:"), llvm::cl::init(Evaluate),
@@ -79,7 +79,9 @@ static llvm::cl::opt<ToolActions> ToolAction(
                      clEnumValN(PrintAST, "print-ast",
                                 "Print parsed AST nodes from the input file."),
                      clEnumValN(Evaluate, "evaluate",
-                                "Evaluate parsed AST nodes from the input file.")
+                                "Evaluate parsed AST nodes from the input file."),
+                     clEnumValN(Analyze, "analyze",
+                                "Analyze parsed AST nodes from the input file")
                          KLEE_LLVM_CL_VAL_END),
     llvm::cl::cat(klee::SolvingCat));
 
@@ -402,6 +404,40 @@ static bool EvaluateInputAST(const char *Filename,
   return success;
 }
 
+static bool AnalyzeInputAST(const char *Filename,
+                            const MemoryBuffer *MB,
+                            ExprBuilder *Builder) {
+  std::vector<Decl*> Decls;
+  llvm::raw_ostream &os = llvm::errs();
+  Parser *P = Parser::Create(Filename, MB, Builder, ClearArrayAfterQuery);
+  P->SetMaxErrors(20);
+  while (Decl *D = P->ParseTopLevelDecl()) {
+    Decls.push_back(D);
+  }
+
+  bool success = true;
+  if (unsigned N = P->GetNumErrors()) {
+    llvm::errs() << Filename << ": parse failure: " << N << " errors.\n";
+    success = false;
+  }
+
+  if (!success)
+    return false;
+  for (Decl *D: Decls) {
+    if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
+      ConstraintManager cm(QC->Constraints);
+      IndirectReadDepthCalculator IDCalc(cm);
+      std::set<ref<Expr>> lastLevelReads = IDCalc.getLastLevelReads();
+      for (ref<Expr> e: lastLevelReads) {
+        e->print(os);
+        os << " : " << IDCalc.query(e) << '\n';
+      }
+      os << "max : " << IDCalc.getMax() << '\n';
+    }
+  }
+  return true;
+}
+
 static bool printInputAsSMTLIBv2(const char *Filename,
                              const MemoryBuffer *MB,
                              ExprBuilder *Builder)
@@ -527,6 +563,10 @@ int main(int argc, char **argv) {
     break;
   case PrintSMTLIBv2:
     success = printInputAsSMTLIBv2(InputFile=="-"? "<stdin>" : InputFile.c_str(), MB.get(),Builder);
+    break;
+  case Analyze:
+    success = AnalyzeInputAST(InputFile=="-"? "<stdin>" : InputFile.c_str(),
+        MB.get(), Builder);
     break;
   default:
     llvm::errs() << argv[0] << ": error: Unknown program action!\n";

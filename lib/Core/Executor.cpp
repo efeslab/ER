@@ -3933,6 +3933,13 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     const ObjectState *os = i->second;
     ref<Expr> inBounds = mo->getBoundsCheckPointer(address, bytes);
 
+    // TODO: I feel like the fork here is unnecessary.
+    // Considering the symbolic address can already be mapped to multiple
+    //   memory objects, it of course will be "out of bound" when you only consider
+    //   one possible mapping. (unless the objects overlap or
+    //   the addressSpace.resolve is not accurate.
+    // I am considering only forking one more ExecutionState per iteration,
+    //   which represents the in bound case.
     StatePair branches = fork(*unbound, inBounds, true);
     ExecutionState *bound = branches.first;
 

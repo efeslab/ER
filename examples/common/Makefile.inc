@@ -1,15 +1,20 @@
 default: klee.bc noklee.bc
-KLEE_CMD= klee -solver-backend=z3 \
+KLEE_CMD= klee \
 		-write-kqueries \
 		-write-paths \
-		-write-sym-paths \
 		--libc=uclibc \
 		--posix-runtime \
-		-write-cons-paths \
-		-write-stats-paths \
 		-env-file=env_file \
-		-output-source=false
-		# -use-query-log=solver:kquery \
+		-output-source=false \
+		-ignore-posix-path=true \
+		-pathrec-entry-point="__klee_posix_wrapped_main" \
+		-output-stats=false \
+		-output-istats=false
+		#-write-sym-paths \
+		#-solver-backend=z3 \
+		#-write-cons-paths \
+		#-write-stats-paths \
+		#-use-query-log=solver:kquery \
 		#-debug-z3-dump-queries=z3queries \
 		#-debug-z3-dump-queries-stats \
 		#-debug-z3-log-api-interaction=z3-api

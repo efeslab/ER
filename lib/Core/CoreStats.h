@@ -58,6 +58,11 @@ namespace stats {
   extern Statistic allocaTime;
   extern Statistic dummy3;
   extern Statistic dataRecLoadedEffective;
+  // ** internal stats
+  extern Statistic switch_prepare;
+  extern Statistic switch_concrete;
+  extern Statistic switch_symbolic;
+  extern Statistic dummy4;
 
   extern Statistic instMain;
   extern Statistic instLibc;

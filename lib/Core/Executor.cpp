@@ -2100,7 +2100,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     break;
   }
   case Instruction::Switch: {
-    TimerStatIncrementer timer(stats::switchTime);
+    TimerStatIncrementer switch_total_timer(stats::switchTime);
+    TimerStatIncrementer prepare_timer(stats::switch_prepare);
     SwitchInst *si = cast<SwitchInst>(i);
     ref<Expr> cond = eval(ki, 0, state).value;
     BasicBlock *parentbb = si->getParent();
@@ -2159,8 +2160,10 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       cond = toUnique(state, cond);
     }
 
+    prepare_timer.check();
     // concrete switch condition
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(cond)) {
+      TimerStatIncrementer concrete_timer(stats::switch_concrete);
       // Somewhat gross to create these all the time, but fine till we
       // switch to an internal rep.
       llvm::IntegerType *Ty = cast<IntegerType>(si->getCondition()->getType());
@@ -2188,6 +2191,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       }
       transferToBasicBlock(succbb, parentbb, state);
     } else {
+      TimerStatIncrementer symbolic_timer(stats::switch_symbolic);
       // Handle possible different (symbolic) branch targets
 
       // We have the following assumptions:

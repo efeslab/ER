@@ -19,7 +19,12 @@ namespace klee {
   };
   // The unit of path recording
   struct PathEntry {
-    enum PathEntry_t: unsigned char {FORK, SWITCH, INDIRECTBR};
+    enum PathEntry_t: unsigned char {
+      FORK,              // For Instruction::Branch
+      SWITCH_EXPIDX,     // For Instruction::Switch, used when switch condition is concrete (can be mapped to unique case expression).
+      SWITCH_BBIDX,      // For Instruction::Switch, used when switch condition is symbolic (only destination basicblock can be determined)
+      INDIRECTBR,        // For Instruction::IndirectBr
+    };
     typedef uint16_t switchIndex_t;
     typedef uint8_t indirectbrIndex_t;
     typedef uint8_t numKids_t;

@@ -1789,10 +1789,10 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     const auto numDestinations = bi->getNumDestinations();
     // bbindexMap map each feasible succeeding basicblock to a unique index
     std::map<const BasicBlock*, PathEntry::indirectbrIndex_t> bbindexMap;
-    // index2bb map each possible unique index (not necessarily feasible) to
+    // BBindex2bb map each possible unique index (not necessarily feasible) to
     // the corresponding succeeding basicblock pointer (NULL if the successor is unfeasible)
-    std::vector<const BasicBlock *> index2bb;
-    index2bb.reserve(numDestinations);
+    std::vector<const BasicBlock *> BBindex2bb;
+    BBindex2bb.reserve(numDestinations);
     // index2exp map each possible unique index (not necessarily feasible) to
     // the corresponding constraint expression (NULL if the successor is unfeasible)
     std::vector<ref<Expr>> index2exp;
@@ -1822,16 +1822,16 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       assert(success && "FIXME: Unhandled solver failure");
       if (result) {
         bbindexMap[d] = bbindex;
-        index2bb.push_back(d);
+        BBindex2bb.push_back(d);
         index2exp.push_back(e);
       }
       else {
-        index2bb.push_back(NULL);
+        BBindex2bb.push_back(NULL);
         index2exp.push_back(NULL);
       }
       ++bbindex;
     }
-    assert((index2bb.size() == bbindex) && (index2exp.size() == bbindex) && "bb or expr size mismatch");
+    assert((BBindex2bb.size() == bbindex) && (index2exp.size() == bbindex) && "bb or expr size mismatch");
     // check errorCase feasibility
     bool isErrorCaseFeasible;
     bool success __attribute__ ((unused)) = solver->mayBeTrue(state, errorCase, isErrorCaseFeasible);
@@ -1871,12 +1871,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       assert((pe.t == PathEntry::INDIRECTBR) &&
           "When replaying Instruction::IndirectBr symbolic address, wrong PathEntry Type");
       PathEntry::indirectbrIndex_t index = pe.body.indirectbrIndex;
-      assert((index < bbindex) && (index2bb[index]) &&
+      assert((index < bbindex) && (BBindex2bb[index]) &&
           "When replaying Instruction::IndirectBr symbolic address, recorded index is invalid");
       branch(state, std::vector<ref<Expr>>{index2exp[index]}, branches);
       assert((branches.size() > 0) && (branches[0] != NULL));
       dumpStateAtBranch(state, pe, index2exp[index]);
-      transferToBasicBlock(index2bb[index], parentbb, *branches[0]);
+      transferToBasicBlock(BBindex2bb[index], parentbb, *branches[0]);
     }
     else {
       std::vector<ref<Expr>> expressions;
@@ -1903,8 +1903,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       auto state_it = branches.begin();
       // iterate all feasible succeeding basicblocks by index, because we need to fill the index to PathEntry
       for (std::vector<const BasicBlock*>::size_type bbidx=0;
-          (bbidx < index2bb.size()) && (exp_it != expressions.end()); ++bbidx) {
-        if (index2bb[bbidx]) {
+          (bbidx < BBindex2bb.size()) && (exp_it != expressions.end()); ++bbidx) {
+        if (BBindex2bb[bbidx]) {
           pe.body.indirectbrIndex = bbidx;
           dumpStateAtBranch(**state_it, pe, *exp_it);
           ++exp_it;
@@ -1915,7 +1915,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       state_it = branches.begin();
       assert(bbindexMap.size() == branches.size());
       // iterate all succeeding basicblock again since `branches` is corresponding to feasible successors only.
-      for (auto bbp: index2bb) {
+      for (auto bbp: BBindex2bb) {
         if (bbp) { // BasicBlock * != NULL
           if (*state_it) { // ExecutionState * != NULL
             transferToBasicBlock(bbp, parentbb, **state_it);
@@ -1933,27 +1933,32 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> cond = eval(ki, 0, state).value;
     BasicBlock *parentbb = si->getParent();
     //**** parse the switch instruction ****//
-    // only used to construct its following data structures. tracks mapping from cases condition to succeeding basicblocks
-    std::map<ref<Expr>, const BasicBlock *> expressionOrder;
+
+    // We use CaseIt->getSuccessorIndex as the unique case expression index
+    // it maps default case, case_begin()..case_end() to
+    // 0, 1 ... si->getNumCases()
+    // Note that getNumCases() == getNumSuccesors() - 1
+    // Note that even though the function name contains Successor,
+    //   a distinct case value (expression) still has a unique SuccessorIndex.
+    // Though, SwitchIndex::getSuccessor may return the same basicblock for
+    //   distinct SuccessorIndex (multiple cases are mapped to the same
+    //   successive BB).
 
     // map basicblocks (regardless of feasibility) to corresponding unique index
     std::map<const BasicBlock*, PathEntry::switchIndex_t> bbindexMap;
     // map unique index to corresponding basicblocks (regardless of feasibility), no NULL here
-    std::vector<const BasicBlock *> index2bb;
+    std::vector<const BasicBlock *> BBindex2bb;
 
     // Iterate through all non-default cases and order them by expressions
     PathEntry::switchIndex_t bbindex = 0;
     for (auto i : si->cases()) {
-      ref<Expr> value = evalConstant(i.getCaseValue());
-
       BasicBlock *caseSuccessor = i.getCaseSuccessor();
-      expressionOrder.insert(std::make_pair(value, caseSuccessor));
       std::pair<std::map<const BasicBlock*, PathEntry::switchIndex_t>::iterator, bool>
         insert_res = bbindexMap.insert(std::make_pair(
               caseSuccessor, bbindex));
       if (insert_res.second) { // first time see a BB
         ++bbindex;
-        index2bb.push_back(caseSuccessor);
+        BBindex2bb.push_back(caseSuccessor);
       }
     }
     { // handle default destination separately
@@ -1963,13 +1968,20 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
               defaultDest, bbindex));
       if (insert_res.second) {
         ++bbindex;
-        index2bb.push_back(defaultDest);
+        BBindex2bb.push_back(defaultDest);
       }
     }
-    assert(index2bb.size() == bbindex);
+    assert(BBindex2bb.size() == bbindex);
 
-    //**** deal with the condition ****//
-    cond = toUnique(state, cond);
+    if (state.shouldRecord() && replayPath) {
+      ; // replaying, do not try to simplify cond
+    }
+    else {
+      // concretize the condition Expr to a unique ConstExpr if possbile.
+      // possible means the Expr provably only has a single value.
+      cond = toUnique(state, cond);
+    }
+
     // concrete switch condition
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(cond)) {
       // Somewhat gross to create these all the time, but fine till we
@@ -1977,52 +1989,180 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       llvm::IntegerType *Ty = cast<IntegerType>(si->getCondition()->getType());
       ConstantInt *ci = ConstantInt::get(Ty, CE->getZExtValue());
 #if LLVM_VERSION_CODE >= LLVM_VERSION(5, 0)
-      BasicBlock *succbb = si->findCaseValue(ci)->getCaseSuccessor();
+      SwitchInst::CaseIt caseit = si->findCaseValue(ci);
+      BasicBlock* succbb = caseit->getCaseSuccessor();
+      PathEntry::switchIndex_t exp_idx = caseit->getSuccessorIndex();
 #else
+#error "Haven't tried SwitchInst::CaseIt in llvm < 5.0"
       BasicBlock *succbb = si->findCaseValue(ci).getCaseSuccessor();
 #endif
-      auto find_it = bbindexMap.find(succbb);
-      assert((find_it != bbindexMap.end()) && "When replaying Instruction::Switch concrete condition, succeeding basicblock doesn't exist");
       if (state.shouldRecord()) { // need to consider record/replay
         PathEntry pe;
         if (replayPath) { // replaying
           getNextPathEntry(state, pe);
-          assert((pe.t == PathEntry::SWITCH) && "When replaying Instruction::Switch concrete condition, wrong PathEntry Type");
-          assert((pe.body.switchIndex == find_it->second) && "When replaying Instruction::Switch concrete condition, recorded index mismatch");
+          assert((pe.t == PathEntry::SWITCH_EXPIDX) && "When replaying Instruction::Switch concrete condition, wrong PathEntry Type");
+          assert((pe.body.switchIndex == exp_idx) && "When replaying Instruction::Switch concrete condition, recorded index mismatch");
         }
         else { // not replaying
-          pe.t = PathEntry::SWITCH;
-          pe.body.switchIndex = static_cast<PathEntry::switchIndex_t>(find_it->second);
+          pe.t = PathEntry::SWITCH_EXPIDX;
+          pe.body.switchIndex = exp_idx;
         }
         dumpStateAtBranch(state, pe, CE);
       }
-      transferToBasicBlock(succbb, si->getParent(), state);
+      transferToBasicBlock(succbb, parentbb, state);
     } else {
       // Handle possible different (symbolic) branch targets
 
       // We have the following assumptions:
-      // - each case value is mutual exclusive to all other values including the
-      //   default value
+      // - each case value is mutual exclusive to all other values, the
+      //   default case represents value excluding all case values.
       // - order of case branches is based on the order of the expressions of
       //   the scase values, still default is handled last
 
-      // tracking all feasible basicblocks, its order is not guaranteed to follow the unique index
-      std::vector<const BasicBlock *> bbOrder;
-      // tracking the constraints expression associated with each feasible basicblock
-      std::map<const BasicBlock *, ref<Expr> > branchTargets;
+      // constraints of each case (default case included)
+      std::vector<ref<Expr>> cases_constraints(si->getNumSuccessors(), ref<Expr>());
+      // default constraint, initialized to true
+      // it will be the conjunction of cond != each case value
+      SwitchInst::CaseIt defaultit = si->case_default();
+      ref<Expr> &defaultConstraint = cases_constraints[defaultit->getSuccessorIndex()];
+      defaultConstraint = ConstantExpr::alloc(1, Expr::Bool);
 
-      // Track default branch values
-      ref<Expr> defaultValue = ConstantExpr::alloc(1, Expr::Bool);
+      for (auto caseit: si->cases()) {
+        ref<Expr> value = evalConstant(caseit.getCaseValue());
+        ref<Expr> match = EqExpr::create(cond, value);
+        match = optimizer.optimizeExpr(match, false);
+        cases_constraints[caseit.getSuccessorIndex()] = match;
+        defaultConstraint = AndExpr::create(defaultConstraint, Expr::createIsZero(match));
+      }
+
+      for (auto i: cases_constraints) {
+        assert(!i.isNull() && "cases_constraints uninitialized");
+      }
+
+      // constraints of all derived states, they may come from
+      //   each case expression or the constraint of each possible succ BB
+      std::vector<ref<Expr>> conditions;
+      // used to store the forked state(s) returned by Executor::branch
+      std::vector<ExecutionState*> branches;
+      if (state.shouldRecord() && replayPath) {
+        // replay
+        PathEntry pe;
+        getNextPathEntry(state, pe);
+        if (pe.t == PathEntry::SWITCH_EXPIDX) {
+          // replay a concrete switch decision, the cond should equal
+          //   the corresponding case value
+          PathEntry::switchIndex_t index = pe.body.switchIndex;
+          assert(index < si->getNumSuccessors() && "invalid recorded EXPIDX");
+          conditions.push_back(cases_constraints[index]);
+          branch(state, conditions, branches);
+          dumpStateAtBranch(state, pe, conditions[0]);
+          transferToBasicBlock(si->getSuccessor(index), parentbb, *(branches[0]));
+        }
+        else if (pe.t == PathEntry::SWITCH_BBIDX) {
+          // replay a symbolic switch decision, the cond could equal any
+          //   case value (disjunction of equations)
+          //   having the corresponding successor basicblock
+          PathEntry::switchIndex_t index = pe.body.switchIndex;
+          assert(index < BBindex2bb.size() &&  "Invalid recorded BBIDX");
+          const BasicBlock *targetBB = BBindex2bb[index];
+          // init this disjunction form to false
+          ref<Expr> new_constraint = ConstantExpr::alloc(0, Expr::Bool);
+          // "default" is also taken cared in this loop.
+          // Even though a case value (case1) could have the same successor BB
+          // as the default case, the generated condition is also valid:
+          //   (cond == case1) || (cond != case1 && cond != case2 && ...)
+          for (unsigned int succ_idx = 0;
+              succ_idx < si->getNumSuccessors(); ++succ_idx) {
+            SwitchInst::CaseIt caseit =
+              SwitchInst::CaseIt::fromSuccessorIndex(si, succ_idx);
+            if (caseit->getCaseSuccessor() == targetBB) {
+              new_constraint = OrExpr::create(
+                  new_constraint,
+                  cases_constraints[caseit->getSuccessorIndex()]
+              );
+            }
+          }
+          conditions.push_back(new_constraint);
+          branch(state, conditions, branches);
+          dumpStateAtBranch(state, pe, conditions[0]);
+          transferToBasicBlock(targetBB, parentbb, *(branches[0]));
+        }
+        else {
+          klee_error("When replaying Instruction::Switch symbolic condition, wrong PathEntry type: %d", pe.t);
+          terminateStateOnError(state, "Wrong PathEntry type", ReplayPath);
+          break;
+        }
+      }
+      else {
+        // require symbolic execution, i.e. fork for each possible successive BB
+
+        // tracking the constraints expression associated with each feasible basicblock
+        std::map<const BasicBlock *, ref<Expr> > branchTargets;
+        for (unsigned int succ_idx = 0;
+            succ_idx < si->getNumSuccessors(); ++succ_idx) {
+          SwitchInst::CaseIt caseit =
+            SwitchInst::CaseIt::fromSuccessorIndex(si, succ_idx);
+          bool result;
+          ref<Expr> &match = cases_constraints[caseit->getSuccessorIndex()];
+          bool success = solver->mayBeTrue(state, match, result);
+          assert(success && "FIXME: Unhandled solver failure");
+          (void) success;
+          if (result) {
+            const BasicBlock *caseSuccessor = caseit->getCaseSuccessor();
+            // Handle the case that a basic block might be the target of multiple
+            // switch cases.
+            // Currently we generate a disjunctive form of all switch-case
+            // values with the same target basic block. We spare us forking too
+            // many times but we generate more complex condition expressions
+            // TODO Add option to allow to choose between those behaviors
+            std::pair<std::map<const BasicBlock *, ref<Expr> >::iterator, bool> insret =
+              branchTargets.insert(std::make_pair(
+                    caseSuccessor, ConstantExpr::alloc(0, Expr::Bool)));
+            insret.first->second = OrExpr::create(insret.first->second, match);
+          }
+        }
+        // call branch to fork on all possbile targets
+        // note that iterator of branchTargets consists of:
+        //   (target BB*, target constraint)
+        for (auto t: branchTargets) {
+          conditions.push_back(t.second);
+        }
+        branch(state, conditions, branches);
+        PathEntry pe;
+        pe.t = PathEntry::SWITCH_BBIDX;
+        auto target = branchTargets.begin();
+        auto forked_state = branches.begin();
+        for (; (target != branchTargets.end()) && (forked_state != branches.end())
+             ; target++, forked_state++) {
+          if (*forked_state) { // Executor::branch returned valid state
+            auto find_it = bbindexMap.find(target->first);
+            assert(find_it != bbindexMap.end() && "invalid target BB*");
+            pe.body.switchIndex = find_it->second;
+            dumpStateAtBranch(**forked_state, pe, target->second);
+            transferToBasicBlock(target->first, parentbb, **forked_state);
+          }
+        }
+      }
+/*
+      // TODO: CLEANUP
+      // map cases condition to succeeding basicblocks
+      // Note that multiple switch-case value could be mapped to the same BB
+      for (auto i: si->cases()) {
+        ref<Expr> value = evalConstant(i.getCaseValue());
+        BasicBlock *caseSuccessor = i.getCaseSuccessor();
+        expression2succBB.insert(std::make_pair(value, caseSuccessor));
+        ref<Expr> match = EqExpr::create(cond, value);
+        // Make sure that the default value does not contain this target's value
+        defaultValue = AndExpr::create(defaultValue, Expr::createIsZero(match));
+      }
+
 
       // iterate through all non-default cases but in order of the expressions
       for (std::map<ref<Expr>, const BasicBlock *>::iterator
-               it = expressionOrder.begin(),
-               itE = expressionOrder.end();
+               it = expression2succBB.begin(),
+               itE = expression2succBB.end();
            it != itE; ++it) {
         ref<Expr> match = EqExpr::create(cond, it->first);
-
-        // Make sure that the default value does not contain this target's value
-        defaultValue = AndExpr::create(defaultValue, Expr::createIsZero(match));
 
         // Check if control flow could take this case
         bool result;
@@ -2035,8 +2175,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
           // Handle the case that a basic block might be the target of multiple
           // switch cases.
-          // Currently we generate an expression containing all switch-case
-          // values for the same target basic block. We spare us forking too
+          // Currently we generate a disjunctive form of all switch-case
+          // values with the same target basic block. We spare us forking too
           // many times but we generate more complex condition expressions
           // TODO Add option to allow to choose between those behaviors
           std::pair<std::map<const BasicBlock *, ref<Expr> >::iterator, bool> res =
@@ -2077,19 +2217,19 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       if (state.shouldRecord() && replayPath) {
         PathEntry pe;
         getNextPathEntry(state, pe);
-        assert((pe.t == PathEntry::SWITCH) && "When replaying Instruction::Switch symbolic condition, wrong PathEntry type");
+        assert((pe.t == PathEntry::SWITCH_BBIDX) && "When replaying Instruction::Switch symbolic condition, wrong PathEntry type");
         PathEntry::switchIndex_t index = pe.body.switchIndex;
         assert(
             (index < bbindex) &&
-            (branchTargets.count(index2bb[index]) != 0) &&
+            (branchTargets.count(BBindex2bb[index]) != 0) &&
             "When replaying Instruction::Switch symbolic condition, recorded index is out of boudnary"
         );
-        conditions.push_back(branchTargets[index2bb[index]]);
+        conditions.push_back(branchTargets[BBindex2bb[index]]);
         // only fork recorded branch
         branch(state, conditions, branches);
         assert((branches.size() > 0) && (branches[0] != NULL));
         dumpStateAtBranch(state, pe, conditions[0]);
-        transferToBasicBlock(index2bb[index], parentbb, *branches[0]);
+        transferToBasicBlock(BBindex2bb[index], parentbb, *branches[0]);
       }
       else {
         for (std::vector<const BasicBlock *>::iterator it = bbOrder.begin(),
@@ -2101,7 +2241,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         branch(state, conditions, branches);
         // dump PathEntry
         PathEntry pe;
-        pe.t = PathEntry::SWITCH;
+        pe.t = PathEntry::SWITCH_BBIDX;
         for (std::vector<const BasicBlock*>::size_type i=0; i < bbOrder.size(); ++i) {
           if (branches[i]) {
             auto find_it = bbindexMap.find(bbOrder[i]);
@@ -2118,7 +2258,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
           }
           ++state_it;
         }
-      }
+      }*/
     }
     break;
   }

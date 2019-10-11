@@ -18,30 +18,18 @@ namespace klee {
     std::string str;
   };
   // The unit of path recording
-  struct PathEntryBase {
-    enum PathEntry_t: unsigned char {FORK, SWITCH, INDIRECTBR, FORKREC};
+  struct PathEntry {
+    enum PathEntry_t: unsigned char {FORK, SWITCH, INDIRECTBR};
     typedef uint16_t switchIndex_t;
     typedef uint8_t indirectbrIndex_t;
     typedef uint8_t numKids_t;
-    typedef struct {
-      numKids_t numKids:7;
-      bool br:1;
-    } rec_t;
-    typedef uint64_t ConstantType;
-    constexpr static unsigned int ConstantBits = sizeof(ConstantType) * 8;
     PathEntry_t t;
     union {
       bool br;
       // Here assume the number of branches won't exceed 256
       switchIndex_t switchIndex;
       indirectbrIndex_t indirectbrIndex;
-      rec_t rec;
     } body;
-  };
-  struct PathEntry: public PathEntryBase {
-    // Special Care required when serializing/deserializing
-    // we assume (numKids == Kids.size())
-    std::vector<ConstantType> Kids;
   };
 }
 #endif

@@ -4520,9 +4520,6 @@ void Executor::AssertNextBranchTaken(ExecutionState &state, bool br) {
   if (pe.t == PathEntry::FORK) {
     recorded_br = pe.body.br;
   }
-  else if (pe.t == PathEntry::FORKREC) {
-    recorded_br = pe.body.rec.br;
-  }
   else {
     klee_error("Wrong PathEntry_t during asserting next branch");
   }
@@ -4542,23 +4539,11 @@ void Executor::AssertNextBranchTaken(ExecutionState &state, bool br) {
 void Executor::getNextBranchConstraint(ExecutionState &state, ref<Expr> condition,
     ref<Expr> &new_constraint, Solver::Validity &res) {
   PathEntry pe = (*replayPath)[state.replayPosition++];
-  switch (pe.t) {
-    case PathEntry::FORK:
-      getConstraintFromBool(condition, new_constraint, res, pe.body.br);
-      break;
-    case PathEntry::FORKREC:
-      new_constraint = ConstantExpr::alloc(1, Expr::Bool);
-      assert(condition->getNumKids() == pe.body.rec.numKids);
-      for (PathEntry::numKids_t i=0; i < pe.body.rec.numKids; ++i) {
-        ref<ConstantExpr> v = ConstantExpr::alloc(pe.Kids[i], condition->getKid(i)->getWidth());
-        new_constraint = AndExpr::create(
-            new_constraint,
-            EqExpr::create(condition->getKid(i), v));
-      }
-      res = pe.body.rec.br?Solver::True:Solver::False;
-      break;
-    default:
-      klee_error("Wrong recorded branch type");
+  if (pe.t == PathEntry::FORK) {
+    getConstraintFromBool(condition, new_constraint, res, pe.body.br);
+  }
+  else {
+    klee_error("Wrong recorded branch type");
   }
 }
 static void (*dummy_include_debug_helper)(llvm::raw_ostream &) __attribute__((unused)) = printDebugLibVersion;

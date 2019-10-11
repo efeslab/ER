@@ -62,32 +62,6 @@ namespace klee {
     is.seekg(sizeof(uit), std::ios::cur);
   }
 
-  // vector recording related serializer
-  template <typename T, typename V> // ostream
-  inline static void serialize(T &os, const std::vector<V> &v) {
-    serialize(os, v.size());
-    for (auto i: v) {
-      serialize(os, i);
-    }
-  }
-  template <typename T, typename V> // istream
-  inline static void deserialize(T &is, std::vector<V> &v) {
-    typename std::vector<V>::size_type size;
-    deserialize(is, size);
-    v.resize(size);
-    for (typename std::vector<V>::size_type i=0; i < size; ++i) {
-      deserialize(is, v[i]);
-    }
-  }
-  template <typename T, typename V> // istream
-  inline static void skip(T &is, const std::vector<V> &v) {
-    typename std::vector<V>::size_type size;
-    deserialize(is, size);
-    for (typename std::vector<V>::size_type i=0; i < size; ++i) {
-      skip(is, V());
-    }
-  }
-
   // Execution Statistics related serializer
   template <typename T> // ostream
   inline static void serialize(T &os, const struct ExecutionStats &exstats) {
@@ -117,7 +91,6 @@ namespace klee {
     skip(is, exstats.queryCost_increment_us);
   }
 
-  // One string one instruction counter Statistics related serializer
   template <typename T> // ostream
   inline static void serialize(T &os, const struct StringInstStats &stris) {
     serialize(os, stris.instcnt);
@@ -137,35 +110,15 @@ namespace klee {
   // Path recording related serializer
   template <typename T> // ostream
   inline static void serialize(T &os, const struct PathEntry &pe) {
-    os.write(reinterpret_cast<const char*>(&pe),
-        sizeof(PathEntryBase));
-    if (pe.t == PathEntry::FORKREC) {
-      for (auto i: pe.Kids) {
-        serialize(os, i);
-      }
-    }
+    os.write(reinterpret_cast<const char*>(&pe), sizeof(pe));
   }
-
   template <typename T> // istream
   inline static void deserialize(T &is, struct PathEntry &pe) {
-    is.read(reinterpret_cast<char*>(&pe),
-        sizeof(PathEntryBase));
-    if (pe.t == PathEntry::FORKREC) {
-      pe.Kids.resize(pe.body.rec.numKids);
-      for (PathEntry::numKids_t i=0; i < pe.body.rec.numKids; ++i) {
-        deserialize(is, pe.Kids[i]);
-      }
-    }
+    is.read(reinterpret_cast<char*>(&pe), sizeof(pe));
   }
-
   template <typename T> // istream
   inline static void skip(T &is, const struct PathEntry &pe) {
-    struct PathEntry _pe;
-    is.read(reinterpret_cast<char*>(&_pe),
-        sizeof(PathEntryBase));
-    for (PathEntry::numKids_t i=0; i < _pe.body.rec.numKids; ++i) {
-      skip(is, PathEntry::ConstantType());
-    }
+    is.seekg(sizeof(pe), std::ios::cur);
   }
 }
 #endif

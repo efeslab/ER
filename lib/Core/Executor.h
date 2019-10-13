@@ -567,6 +567,13 @@ public:
     replayPath = path;
   }
 
+  // Read next PathEntry using (and advancing) the cursor in state
+  void getNextPathEntry(ExecutionState &state, PathEntry &pe) {
+    assert(replayPath && "Trying to get next PathEntry without a valud replayPath");
+    assert(state.replayPosition < replayPath->size() && "replayPath exhausts too early");
+    pe = (*replayPath)[state.replayPosition++];
+  }
+
   void setSymIndex(const std::vector<unsigned int> *_symIndex) override {
     symIndex = _symIndex;
   }

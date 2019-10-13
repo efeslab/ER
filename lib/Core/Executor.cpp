@@ -1847,7 +1847,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         PathEntry pe;
         if (replayPath) {
           // replaying, check
-          pe = (*replayPath)[state.replayPosition++];
+          getNextPathEntry(state, pe);
           assert((pe.t == PathEntry::INDIRECTBR) &&
               "When replaying Instruction::IndirectBr concrete address, wrong PathEntry Type");
           assert((pe.body.indirectbrIndex == bbindex_find_it->second) &&
@@ -1867,7 +1867,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     std::vector<ExecutionState *> branches;
     if (state.shouldRecord()) {
       PathEntry pe;
-      pe = (*replayPath)[state.replayPosition++];
+      getNextPathEntry(state, pe);
       assert((pe.t == PathEntry::INDIRECTBR) &&
           "When replaying Instruction::IndirectBr symbolic address, wrong PathEntry Type");
       PathEntry::indirectbrIndex_t index = pe.body.indirectbrIndex;
@@ -1986,7 +1986,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       if (state.shouldRecord()) { // need to consider record/replay
         PathEntry pe;
         if (replayPath) { // replaying
-          pe = (*replayPath)[state.replayPosition++];
+          getNextPathEntry(state, pe);
           assert((pe.t == PathEntry::SWITCH) && "When replaying Instruction::Switch concrete condition, wrong PathEntry Type");
           assert((pe.body.switchIndex == find_it->second) && "When replaying Instruction::Switch concrete condition, recorded index mismatch");
         }
@@ -2076,7 +2076,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       // Since the construction of bbOrder does not involve runtime info, the order of succeeding basicblocks should be fixed
       if (state.shouldRecord() && replayPath) {
         PathEntry pe;
-        pe = (*replayPath)[state.replayPosition++];
+        getNextPathEntry(state, pe);
         assert((pe.t == PathEntry::SWITCH) && "When replaying Instruction::Switch symbolic condition, wrong PathEntry type");
         PathEntry::switchIndex_t index = pe.body.switchIndex;
         assert(
@@ -4515,7 +4515,8 @@ void Executor::writeStackKQueries(std::string& buf) {
 };
 */
 void Executor::AssertNextBranchTaken(ExecutionState &state, bool br) {
-  PathEntry pe = (*replayPath)[state.replayPosition++];
+  PathEntry pe;
+  getNextPathEntry(state, pe);
   bool recorded_br;
   if (pe.t == PathEntry::FORK) {
     recorded_br = pe.body.br;
@@ -4538,7 +4539,8 @@ void Executor::AssertNextBranchTaken(ExecutionState &state, bool br) {
 
 void Executor::getNextBranchConstraint(ExecutionState &state, ref<Expr> condition,
     ref<Expr> &new_constraint, Solver::Validity &res) {
-  PathEntry pe = (*replayPath)[state.replayPosition++];
+  PathEntry pe;
+  getNextPathEntry(state, pe);
   if (pe.t == PathEntry::FORK) {
     getConstraintFromBool(condition, new_constraint, res, pe.body.br);
   }

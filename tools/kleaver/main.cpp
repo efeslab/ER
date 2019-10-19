@@ -56,6 +56,12 @@ llvm::cl::opt<std::string> AdditionalConcreteValuesConfig(
     llvm::cl::desc("Specify additional concretize values in a file"),
     llvm::cl::cat(klee::HASECat));
 
+llvm::cl::opt<std::string> DumpConcretizedConstraints(
+    "dump-concretized-constraints",
+    llvm::cl::init(""),
+    llvm::cl::desc("Dump the concretized constraints to a file"),
+    llvm::cl::cat(klee::HASECat));
+
 llvm::cl::opt<bool> AdditionalConcreteValuesRandom(
     "additional-concrete-values-random",
     llvm::cl::init(false),
@@ -305,6 +311,21 @@ static bool EvaluateInputAST(const char *Filename,
           ec.addConcretizedInputValue(ciit->first, ciit->second);
         }
         constraints = ec.evaluate(QC->Constraints);
+        ConstraintManager cm(constraints);
+        IndirectReadDepthCalculator ic(cm);
+        llvm::outs() << "Concretized Depth: " << ic.getMax() << "\n";
+
+        if (DumpConcretizedConstraints != "") {
+          std::string str;
+          llvm::raw_string_ostream os(str);
+          std::ofstream ofs(DumpConcretizedConstraints);
+          if (ofs.good()) {
+            ExprPPrinter::printQuery(os, cm, ConstantExpr::alloc(false, Expr::Bool),
+                    0, 0, 0, 0, true);
+            ofs << os.str();
+            ofs.close();
+          }
+        }
       }
       else {
         constraints = QC->Constraints;

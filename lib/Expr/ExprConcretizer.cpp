@@ -239,10 +239,10 @@ std::vector<ref<Expr>> ExprConcretizer::evaluate(const std::vector<ref<Expr>> &c
 }
 
 int IndirectReadDepthCalculator::getLevel(const ref<Expr> &e) {
-  auto it = depthStore.find(e);
+  auto it = depthStore.find(e.get());
 
   if (it == depthStore.end()) {
-    depthStore.insert(std::make_pair(e, -1));
+    depthStore.insert(std::make_pair(e.get(), -1));
     return -1;
   }
   else {
@@ -251,7 +251,7 @@ int IndirectReadDepthCalculator::getLevel(const ref<Expr> &e) {
 }
 
 void IndirectReadDepthCalculator::putLevel(const ref<Expr> &e, int level) {
-  auto it = depthStore.find(e);
+  auto it = depthStore.find(e.get());
   assert(it != depthStore.end());
 
   it->second = level;
@@ -338,7 +338,7 @@ std::set<ref<Expr>>& IndirectReadDepthCalculator::getLastLevelReads() {
 }
 
 int IndirectReadDepthCalculator::query(const ref<Expr> &e) {
-  auto it = depthStore.find(e);
+  auto it = depthStore.find(e.get());
   if (it == depthStore.end()) {
     return -1;
   }

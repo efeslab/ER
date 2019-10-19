@@ -107,8 +107,8 @@ namespace klee {
   private:
     // the set of all last level reads
     std::set<ref<Expr>> lastLevelReads;
-    // map Expr(by their hash) to indirect depth
-    ExprHashMap<int> depthStore;
+    // map Expr(by their pointer) to indirect depth
+    std::unordered_map<Expr *, int> depthStore;
     // the maximum indirect depth across all constraints
     int maxLevel;
 

@@ -41,6 +41,7 @@ typedef struct {
   unsigned size;  /* in bytes */
   char* contents;
   struct stat64* stat;
+  char* filename;
 } exe_disk_file_t;
 
 typedef enum {
@@ -59,6 +60,11 @@ typedef struct {
   exe_disk_file_t* dfile;   /* ptr to file on disk, if symbolic */
 } exe_file_t;
 
+enum sym_file_type {
+  STANDALONE,
+  UNITED
+};
+
 typedef struct {
   unsigned n_sym_files; /* number of symbolic input files, excluding stdin */
   exe_disk_file_t *sym_stdin, *sym_stdout;
@@ -71,6 +77,8 @@ typedef struct {
   /* Which read, write etc. call should fail */
   int *read_fail, *write_fail, *close_fail, *ftruncate_fail, *getcwd_fail;
   int *chmod_fail, *fchmod_fail;
+
+  enum sym_file_type type;
 } exe_file_system_t;
 
 #define MAX_FDS 32
@@ -95,7 +103,8 @@ void klee_init_fds(unsigned n_files, unsigned file_length,
                    unsigned stdin_length, int sym_file_stdin_flag,
                    int sym_stdout_flag,
                    int do_all_writes_flag, unsigned max_failures,
-                   char *concretize_cfg);
+                   char *concretize_cfg,
+                   char **sym_file_names, unsigned *sym_file_lens);
 void klee_init_env(int *argcPtr, char ***argvPtr);
 
 /* *** */

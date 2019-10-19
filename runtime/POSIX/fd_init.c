@@ -56,8 +56,12 @@ static void __create_new_dfile(exe_disk_file_t *dfile, unsigned size,
 
   dfile->size = size;
   dfile->contents = malloc(dfile->size);
+
+  dfile->filename = malloc(64);
+  memset(dfile->filename, 0, 64);
+  strcpy(dfile->filename, name);
+
   klee_make_symbolic(dfile->contents, dfile->size, name);
-  
   klee_make_symbolic(s, sizeof(*s), sname);
 
   /* For broken tests */
@@ -137,18 +141,22 @@ static void klee_concretize(char *concretize_cfg) {
         }
         continue;
       }
-      k = name[0] - 'A';
-      int off, val;
-      if (offset[0] == 'c') {
-        off = atoi(offset+1);
-        __exe_fs.sym_files[k].contents[off] = value[0];
-        printf("sym_files[%u][%d] = %c\n", k, off, value[0]);
-      }
-      else {
-        off = atoi(offset);
-        val = atoi(value);
-        __exe_fs.sym_files[k].contents[off] = val & 0xff;
-        printf("sym_files[%u][%d] = %#x\n", k, off, val & 0xff);
+
+      for (k = 0; k < __exe_fs.n_sym_files; k++) {
+        if (strcmp(__exe_fs.sym_files[k].filename, name) == 0) {
+          int off, val;
+          if (offset[0] == 'c') {
+            off = atoi(offset+1);
+            __exe_fs.sym_files[k].contents[off] = value[0];
+            printf("%s[%d] = %c\n", __exe_fs.sym_files[k].filename, off, value[0]);
+          }
+          else {
+            off = atoi(offset);
+            val = atoi(value);
+            __exe_fs.sym_files[k].contents[off] = val & 0xff;
+            printf("%s[%d] = %#x\n", __exe_fs.sym_files[k].filename, off, val & 0xff);
+          }
+        }
       }
     }
 
@@ -168,7 +176,8 @@ void klee_init_fds(unsigned n_files, unsigned file_length,
                    unsigned stdin_length, int sym_file_stdin_flag,
                    int sym_stdout_flag,
                    int save_all_writes_flag, unsigned max_failures,
-                   char *concretize_cfg) {
+                   char *concretize_cfg,
+                   char **sym_file_names, unsigned *sym_file_lens) {
   unsigned k;
   char name[7] = "?-data";
   struct stat64 s;
@@ -177,12 +186,28 @@ void klee_init_fds(unsigned n_files, unsigned file_length,
 
   __exe_fs.n_sym_files = n_files;
   __exe_fs.sym_files = malloc(sizeof(*__exe_fs.sym_files) * n_files);
-  for (k=0; k < n_files; k++) {
-    name[0] = 'A' + k;
-    __create_new_dfile(&__exe_fs.sym_files[k], file_length, name, &s);
-    /* FIXME: This is a workaround since currently we don't record the path
-     * of libc. */
-    klee_assume(!S_ISCHR(__exe_fs.sym_files[k].stat->st_mode));
+
+  if (file_length != 0) {
+    __exe_fs.type = UNITED;
+    for (k=0; k < n_files; k++) {
+      name[0] = 'A' + k;
+      __create_new_dfile(&__exe_fs.sym_files[k], file_length, name, &s);
+      /* FIXME: This is a workaround since currently we don't record the path
+       * of libc. */
+      klee_assume(!S_ISCHR(__exe_fs.sym_files[k].stat->st_mode));
+    }
+  }
+  else if (n_files > 0) {
+    __exe_fs.type = STANDALONE;
+    printf("using customized names for sym-files\n");
+    for (k=0; k < n_files; k++) {
+      char *filename = malloc(64);
+      memset(filename, 0, 64);
+      strcpy(filename, sym_file_names[k]);
+      printf("[%d] name: %s, size: %u\n", k, filename, sym_file_lens[k]);
+      __create_new_dfile(&__exe_fs.sym_files[k], sym_file_lens[k], filename, &s);
+      klee_assume(!S_ISCHR(__exe_fs.sym_files[k].stat->st_mode));
+    }
   }
 
   /* setting symbolic stdin */

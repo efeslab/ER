@@ -53,6 +53,9 @@ public:
   bool isFixed;
 
   bool isUserSpecified;
+  // if (isGlobal == false), this field means if this object was allocated
+  // deterministically
+  bool isDeterm;
 
   MemoryManager *parent;
 
@@ -80,12 +83,13 @@ public:
       address(_address),
       size(0),
       isFixed(true),
+      isDeterm(false),
       parent(NULL),
       allocSite(0) {
   }
 
   MemoryObject(uint64_t _address, unsigned _size, 
-               bool _isLocal, bool _isGlobal, bool _isFixed,
+               bool _isLocal, bool _isGlobal, bool _isFixed, bool _isDeterm,
                const llvm::Value *_allocSite,
                MemoryManager *_parent)
     : refCount(0), 
@@ -97,6 +101,7 @@ public:
       isGlobal(_isGlobal),
       isFixed(_isFixed),
       isUserSpecified(false),
+      isDeterm(_isDeterm),
       parent(_parent), 
       allocSite(_allocSite) {
   }

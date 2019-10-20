@@ -203,6 +203,9 @@ void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
   if (!isInUserMain && (kf->function->getName() == PathRecordingEntryPoint)) {
     isInUserMain = true;
   }
+  // NOTE: when enabling POSIX runtime, the entire application will be wrapped
+  // into a POSIX function call (i.e. the entry point func belongs to POSIX)
+  // So we should only reason about prop "InPOSIX" inside UserMain
   if (isInUserMain && IgnorePOSIXPath && kf->function->hasFnAttribute("InPOSIX")) {
     if(POSIXDepth == 0) {
       isInPOSIX=true;

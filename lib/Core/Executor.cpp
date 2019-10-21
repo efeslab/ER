@@ -443,9 +443,9 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
                    InterpreterHandler *ih)
     : Interpreter(opts), interpreterHandler(ih), searcher(0),
       externalDispatcher(new ExternalDispatcher(ctx)), statsTracker(0), pathWriter(0),
-      symPathWriter(0), stackPathWriter(0), consPathWriter(0), statsPathWriter(0), symIndexWriter(0),
+      symPathWriter(0), stackPathWriter(0), consPathWriter(0), statsPathWriter(0),
       specialFunctionHandler(0), processTree(0), replayKTest(0),
-	  oracle_eval(0), replayPath(0), symIndex(0),
+      oracle_eval(0), replayPath(0),
       usingSeeds(0), atMemoryLimit(false), inhibitForking(false), haltExecution(false),
       ivcEnabled(false), debugLogBuffer(debugBufferString), info_requested(false) {
 
@@ -1002,12 +1002,6 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         assert(current.isInUserMain && "We assumed that during replay, uClibc doesn't need recorded path, wrong!");
         assert(!current.isInPOSIX && "We assumed that no constraints will be added inside POSIX runtime, wrong!");
         getNextBranchConstraint(current, condition, new_constraint, res);
-        // at this point, replayPosition points to the index of next branch
-        // while current branch hasn't been recorded
-        assert(current.nbranches_rec == current.replayPosition - 1);
-        if (symIndexWriter) {
-          current.symIndexOS << current.replayPosition - 1;
-        }
       }
     } else if (res==Solver::Unknown) {
       assert(!replayKTest && "in replay mode, only one branch can be true.");
@@ -4262,8 +4256,6 @@ void Executor::runFunctionAsMain(Function *f,
     state->consPathOS = consPathWriter->open();
   if (statsPathWriter)
     state->statsPathOS = statsPathWriter->open();
-  if (symIndexWriter)
-    state->symIndexOS = symIndexWriter->open();
 
   if (statsTracker)
     statsTracker->framePushed(*state, 0);
@@ -4341,11 +4333,6 @@ unsigned Executor::getConsPathStreamID(const ExecutionState &state) {
 unsigned Executor::getStatsPathStreamID(const ExecutionState &state) {
   assert(statsPathWriter);
   return state.statsPathOS.getID();
-}
-
-unsigned Executor::getSymIndexStreamID(const ExecutionState &state) {
-  assert(symIndexWriter);
-  return state.symIndexOS.getID();
 }
 
 void Executor::getConstraintLog(const ExecutionState &state, std::string &res,

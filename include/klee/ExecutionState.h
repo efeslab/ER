@@ -151,10 +151,6 @@ public:
   //  when each brach decision (both concrete and symbolic) is made
   TreeOStream statsPathOS;
 
-  /// @brief History of indices of all symbolic branches during replay
-  //  when a branch decision depends on recorded info
-  TreeOStream symIndexOS;
-
   /// @brief Counts how many instructions were executed since the last new
   /// instruction was covered.
   unsigned instsSinceCovNew;
@@ -168,8 +164,6 @@ public:
   /// The index into the current \ref replayKTest or \ref replayPath
   /// object.
   unsigned replayPosition;
-  /// The index info the current \ref symIndex object
-  unsigned symIndexPosition;
   /// The number of branches recorded
   /// regardless of fork or switch or indirectbr, symbolic or concrete
   ///   should record or not (isInPosix, isInUserMain)
@@ -200,7 +194,7 @@ public:
   std::uint64_t steppedInstructions;
 
 private:
-  ExecutionState() : replayPosition(0), symIndexPosition(0), nbranches_rec(0), ptreeNode(0) {}
+  ExecutionState() : replayPosition(0), nbranches_rec(0), ptreeNode(0) {}
 
 public:
   ExecutionState(KFunction *kf);

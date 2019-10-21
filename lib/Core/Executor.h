@@ -146,7 +146,7 @@ private:
   std::set<ExecutionState*> states;
   StatsTracker *statsTracker;
   TreeStreamWriter *pathWriter, *symPathWriter;
-  TreeStreamWriter *stackPathWriter, *consPathWriter, *statsPathWriter, *symIndexWriter;
+  TreeStreamWriter *stackPathWriter, *consPathWriter, *statsPathWriter;
   SpecialFunctionHandler *specialFunctionHandler;
   std::vector<TimerInfo*> timers;
   PTree *processTree;
@@ -208,7 +208,6 @@ private:
 
   /// When non-null a list of branch decisions to be used for replay.
   const std::vector<PathEntry> *replayPath;
-  const std::vector<unsigned int> *symIndex;
 
   /// The index into the current \ref replayKTest or \ref replayPath
   /// object. (moved inside ExecutionState, since we might replay multiple states at the same time)
@@ -553,10 +552,6 @@ public:
     statsPathWriter = tsw; 
   }
 
-  void setSymIndexWriter(TreeStreamWriter *tsw) override {
-    symIndexWriter = tsw;
-  }
-
   void setReplayKTest(const struct KTest *out) override {
     assert(!replayPath && "cannot replay both buffer and path");
     replayKTest = out;
@@ -572,10 +567,6 @@ public:
     assert(replayPath && "Trying to get next PathEntry without a valud replayPath");
     assert(state.replayPosition < replayPath->size() && "replayPath exhausts too early");
     pe = (*replayPath)[state.replayPosition++];
-  }
-
-  void setSymIndex(const std::vector<unsigned int> *_symIndex) override {
-    symIndex = _symIndex;
   }
 
   llvm::Module *setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
@@ -614,8 +605,6 @@ public:
   unsigned getConsPathStreamID(const ExecutionState &state) override;
   
   unsigned getStatsPathStreamID(const ExecutionState &state) override;
-
-  unsigned getSymIndexStreamID(const ExecutionState &state) override;
 
   void getConstraintLog(const ExecutionState &state, std::string &res,
                         Interpreter::LogType logFormat =

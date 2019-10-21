@@ -19,9 +19,10 @@ ref<Expr> OracleEvaluator::getInitialValue(const Array &array, unsigned index) {
     }
     KTestObject &kobj = ktest->objects[it->second];
     if (index >= kobj.numBytes) {
-        klee_message("Array %s requested index (%u) >= numBytes (%u)",
-                array.name.c_str(), index, kobj.numBytes);
-        abort();
+        // FIXME: klee does not support symbolic malloc and symbolic file size,
+        // and memcpy is not recorded. It is possible that an "invalid" position
+        // is referenced here. However, the program won't use it.
+        return ConstantExpr::alloc(0, array.getRange());
     }
     assert(array.getRange() == Expr::Int8 && "Current implementation only supports byte array");
     return ConstantExpr::alloc(kobj.bytes[index], array.getRange());

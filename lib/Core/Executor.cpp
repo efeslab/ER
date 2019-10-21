@@ -3342,7 +3342,7 @@ void Executor::run(ExecutionState &initialState) {
 
     //processTimers(&state, maxInstructionTime);
 
-    checkMemoryUsage();
+    //checkMemoryUsage();
 
     updateStates(&state);
   }

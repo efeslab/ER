@@ -181,37 +181,47 @@ static void PrintInputTokens(const MemoryBuffer *MB) {
   } while (T.kind != Token::EndOfFile);
 }
 
+class InputAST {
+  Parser *P;
+  std::vector<Decl*> Decls;
+  bool valid;
+  public:
+  InputAST(const char *Filename, const MemoryBuffer *MB, ExprBuilder *Builder) {
+    P = Parser::Create(Filename, MB, Builder, ClearArrayAfterQuery);
+    P->SetMaxErrors(20);
+    while (Decl *D = P->ParseTopLevelDecl()) {
+      Decls.push_back(D);
+    }
+    valid = true;
+    if (unsigned N = P->GetNumErrors()) {
+      llvm::errs() << Filename << ": parse failure: " << N << " errors.\n";
+      valid = false;
+    }
+  }
+  ~InputAST() {
+    for (auto it=Decls.begin(), ie=Decls.end(); it != ie; ++it) {
+      delete *it;
+    }
+    delete P;
+  }
+  inline bool isValid() { return valid; }
+  inline std::vector<Decl*> &getDecls() { return Decls; }
+};
+
 static bool PrintInputAST(const char *Filename,
                           const MemoryBuffer *MB,
                           ExprBuilder *Builder) {
-  std::vector<Decl*> Decls;
-  Parser *P = Parser::Create(Filename, MB, Builder, ClearArrayAfterQuery);
-  P->SetMaxErrors(20);
-
-  unsigned NumQueries = 0;
-  while (Decl *D = P->ParseTopLevelDecl()) {
-    if (!P->GetNumErrors()) {
-      if (isa<QueryCommand>(D))
+  InputAST ast(Filename, MB, Builder);
+  if (ast.isValid()) {
+    unsigned NumQueries = 0;
+    for (Decl *D: ast.getDecls()) {
+      if (isa<QueryCommand>(D)) {
         llvm::outs() << "# Query " << ++NumQueries << "\n";
-
+      }
       D->dump();
     }
-    Decls.push_back(D);
   }
-
-  bool success = true;
-  if (unsigned N = P->GetNumErrors()) {
-    llvm::errs() << Filename << ": parse failure: " << N << " errors.\n";
-    success = false;
-  }
-
-  for (std::vector<Decl*>::iterator it = Decls.begin(),
-         ie = Decls.end(); it != ie; ++it)
-    delete *it;
-
-  delete P;
-
-  return success;
+  return ast.isValid();
 }
 
 static void getAdditionalConcreteValues(std::vector<Decl*> &Decls,
@@ -264,22 +274,12 @@ static void getAdditionalConcreteValues(std::vector<Decl*> &Decls,
 static bool EvaluateInputAST(const char *Filename,
                              const MemoryBuffer *MB,
                              ExprBuilder *Builder) {
-  std::vector<Decl*> Decls;
-  Parser *P = Parser::Create(Filename, MB, Builder, ClearArrayAfterQuery);
-  P->SetMaxErrors(20);
-  while (Decl *D = P->ParseTopLevelDecl()) {
-    Decls.push_back(D);
-  }
+  InputAST ast(Filename, MB, Builder);
 
-  bool success = true;
-  if (unsigned N = P->GetNumErrors()) {
-    llvm::errs() << Filename << ": parse failure: " << N << " errors.\n";
-    success = false;
-  }  
-
-  if (!success)
+  if (!ast.isValid())
     return false;
 
+  std::vector<Decl *> &Decls = ast.getDecls();
   Solver *coreSolver = klee::createCoreSolver(CoreSolverToUse);
 
   if (CoreSolverToUse != DUMMY_SOLVER) {
@@ -401,11 +401,6 @@ static bool EvaluateInputAST(const char *Filename,
     }
   }
 
-  for (std::vector<Decl*>::iterator it = Decls.begin(),
-         ie = Decls.end(); it != ie; ++it)
-    delete *it;
-  delete P;
-
   delete S;
 
   if (uint64_t queries = *theStatisticManager->getStatisticByName("Queries")) {
@@ -422,28 +417,20 @@ static bool EvaluateInputAST(const char *Filename,
       << *theStatisticManager->getStatisticByName("QueriesCEX") << "\n";
   }
 
-  return success;
+  return true;
 }
 
 static bool AnalyzeInputAST(const char *Filename,
                             const MemoryBuffer *MB,
                             ExprBuilder *Builder) {
-  std::vector<Decl*> Decls;
-  llvm::raw_ostream &os = llvm::errs();
-  Parser *P = Parser::Create(Filename, MB, Builder, ClearArrayAfterQuery);
-  P->SetMaxErrors(20);
-  while (Decl *D = P->ParseTopLevelDecl()) {
-    Decls.push_back(D);
-  }
+  InputAST ast(Filename, MB, Builder);
 
-  bool success = true;
-  if (unsigned N = P->GetNumErrors()) {
-    llvm::errs() << Filename << ": parse failure: " << N << " errors.\n";
-    success = false;
-  }
-
-  if (!success)
+  if (!ast.isValid())
     return false;
+
+  std::vector<Decl*> &Decls = ast.getDecls();
+
+  llvm::raw_ostream &os = llvm::errs();
   for (Decl *D: Decls) {
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
       ConstraintManager cm(QC->Constraints);
@@ -456,6 +443,7 @@ static bool AnalyzeInputAST(const char *Filename,
       os << "max : " << IDCalc.getMax() << '\n';
     }
   }
+
   return true;
 }
 
@@ -464,24 +452,12 @@ static bool printInputAsSMTLIBv2(const char *Filename,
                              ExprBuilder *Builder)
 {
 	//Parse the input file
-	std::vector<Decl*> Decls;
-        Parser *P = Parser::Create(Filename, MB, Builder, ClearArrayAfterQuery);
-        P->SetMaxErrors(20);
-	while (Decl *D = P->ParseTopLevelDecl())
-	{
-		Decls.push_back(D);
-	}
+	InputAST ast(Filename, MB, Builder);
 
-	bool success = true;
-	if (unsigned N = P->GetNumErrors())
-	{
-		llvm::errs() << Filename << ": parse failure: "
-				   << N << " errors.\n";
-		success = false;
-	}
+	if (!ast.isValid())
+		return false;
 
-	if (!success)
-	return false;
+	std::vector<Decl *> &Decls = ast.getDecls();
 
 	ExprSMTLIBPrinter printer;
 	printer.setOutput(llvm::outs());
@@ -520,12 +496,6 @@ static bool printInputAsSMTLIBv2(const char *Filename,
 			queryNumber++;
 		}
 	}
-
-	//Clean up
-	for (std::vector<Decl*>::iterator it = Decls.begin(),
-			ie = Decls.end(); it != ie; ++it)
-		delete *it;
-	delete P;
 
 	return true;
 }

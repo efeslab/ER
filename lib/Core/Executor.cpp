@@ -3358,6 +3358,10 @@ std::string Executor::getAddressInfo(ExecutionState &state,
   std::string Str;
   llvm::raw_string_ostream info(Str);
   info << "\taddress: " << address << "\n";
+  // hack: I do not care detailed AddressInfo for now and I want to get rid of
+  //   the expensive solver call bellow.
+  // So just return the address itself here.
+  return info.str();
   uint64_t example;
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(address)) {
     example = CE->getZExtValue();

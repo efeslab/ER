@@ -265,6 +265,8 @@ public:
   /// isFalse - Is this the false expression.
   bool isFalse() const;
 
+  const char *getKindStr() const { return getKindStr(getKind()); }
+
   /* Static utility methods */
 
   static void printKind(llvm::raw_ostream &os, Kind k);
@@ -296,6 +298,7 @@ public:
   static bool needsResultType() { return false; }
 
   static bool classof(const Expr *) { return true; }
+  static const char *getKindStr(enum Kind k);
 
 private:
   typedef llvm::DenseSet<std::pair<const Expr *, const Expr *> > ExprEquivSet;

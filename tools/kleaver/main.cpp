@@ -41,6 +41,8 @@
 
 #include "llvm/Support/Signals.h"
 
+#include "GraphvizDOTDrawer.h"
+
 using namespace llvm;
 using namespace klee;
 using namespace klee::expr;
@@ -74,7 +76,7 @@ llvm::cl::opt<unsigned> AdditionalConcreteValuesRandomRatio(
     llvm::cl::init(5),
     llvm::cl::cat(klee::HASECat));
 
-enum ToolActions { PrintTokens, PrintAST, PrintSMTLIBv2, Evaluate, Analyze };
+enum ToolActions { PrintTokens, PrintAST, PrintSMTLIBv2, Evaluate, Analyze, Draw};
 
 static llvm::cl::opt<ToolActions> ToolAction(
     llvm::cl::desc("Tool actions:"), llvm::cl::init(Evaluate),
@@ -87,7 +89,9 @@ static llvm::cl::opt<ToolActions> ToolAction(
                      clEnumValN(Evaluate, "evaluate",
                                 "Evaluate parsed AST nodes from the input file."),
                      clEnumValN(Analyze, "analyze",
-                                "Analyze parsed AST nodes from the input file")
+                                "Analyze parsed AST nodes from the input file"),
+                     clEnumValN(Draw, "draw",
+                                "Draw AST nodes in Graphviz DOT file")
                          KLEE_LLVM_CL_VAL_END),
     llvm::cl::cat(klee::SolvingCat));
 
@@ -447,6 +451,28 @@ static bool AnalyzeInputAST(const char *Filename,
   return true;
 }
 
+static bool DrawInputAST(const char *Filename,
+                         const MemoryBuffer *MB,
+                         ExprBuilder *Builder) {
+  InputAST ast(Filename, MB, Builder);
+  if (!ast.isValid())
+    return false;
+
+  std::vector<Decl*> &Decls = ast.getDecls();
+  std::ofstream of(std::string(Filename) + ".dot");
+  GraphvizDOTDrawer drawer(of);
+  for (Decl *D: Decls) {
+    if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
+      for (const ref<Expr> &e: QC->Constraints) {
+        drawer.addConstraint(e.get());
+      }
+    }
+  }
+  drawer.draw();
+
+  return true;
+}
+
 static bool printInputAsSMTLIBv2(const char *Filename,
                              const MemoryBuffer *MB,
                              ExprBuilder *Builder)
@@ -557,6 +583,10 @@ int main(int argc, char **argv) {
     break;
   case Analyze:
     success = AnalyzeInputAST(InputFile=="-"? "<stdin>" : InputFile.c_str(),
+        MB.get(), Builder);
+    break;
+  case Draw:
+    success = DrawInputAST(InputFile=="-"? "<stdin>" : InputFile.c_str(),
         MB.get(), Builder);
     break;
   default:

@@ -51,9 +51,9 @@ namespace klee {
       } else if (const ConstantFP *cf = dyn_cast<ConstantFP>(c)) {
         return ConstantExpr::alloc(cf->getValueAPF().bitcastToAPInt());
       } else if (const GlobalValue *gv = dyn_cast<GlobalValue>(c)) {
-        return globalAddresses.find(gv)->second;
+        return globalAddresses.find(gv)->second->toConstantExpr();
       } else if (isa<ConstantPointerNull>(c)) {
-        return Expr::createPointer(0);
+        return Expr::createPointer(0)->toConstantExpr();
       } else if (isa<UndefValue>(c) || isa<ConstantAggregateZero>(c)) {
         if (getWidthForLLVMType(c->getType()) == 0) {
           if (isa<llvm::LandingPadInst>(ki->inst)) {

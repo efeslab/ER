@@ -77,6 +77,9 @@ bool AddressSpace::resolveOne(ExecutionState &state,
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(address)) {
     success = resolveOne(CE, result);
     return true;
+  } else if (PointerExpr *PE = dyn_cast<PointerExpr>(address)) {
+    success = resolveOne(PE->toConstantExpr(), result);
+    return true;
   } else {
     TimerStatIncrementer timerCheapGetValue(stats::resolveTimeCheapGetValue);
 

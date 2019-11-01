@@ -656,16 +656,16 @@ void Executor::initializeGlobals(ExecutionState &state) {
   // since reading/writing via a function pointer is unsupported anyway.
   for (Module::iterator i = m->begin(), ie = m->end(); i != ie; ++i) {
     Function *f = &*i;
-    ref<ConstantExpr> addr(0);
+    ref<PointerExpr> addr(0);
 
     // If the symbol has external weak linkage then it is implicitly
     // not defined in this module; if it isn't resolvable then it
     // should be null.
     if (f->hasExternalWeakLinkage() &&
         !externalDispatcher->resolveSymbol(f->getName())) {
-      addr = Expr::createPointer(0);
+      addr = Expr::createFunctionPointer(0);
     } else {
-      addr = Expr::createPointer(reinterpret_cast<std::uint64_t>(f));
+      addr = Expr::createFunctionPointer(reinterpret_cast<std::uint64_t>(f));
       legalFunctions.insert(reinterpret_cast<std::uint64_t>(f));
     }
 
@@ -801,7 +801,15 @@ void Executor::initializeGlobals(ExecutionState &state) {
       alias = ga;
     }
 
-    globalAddresses.insert(std::make_pair(&*i, evalConstant(alias->getAliasee())));
+    ref<ConstantExpr> ce = evalConstant(alias->getAliasee());
+    if (isa<Function>(alias->getAliasee())) {
+      ref<PointerExpr> pe = Expr::createFunctionPointer(ce->getZExtValue());
+      globalAddresses.insert(std::make_pair(&*i, pe));
+    }
+    else {
+      ref<PointerExpr> pe = PointerExpr::fromConstantExpr(ce);
+      globalAddresses.insert(std::make_pair(&*i, pe));
+    }
   }
 
   // once all objects are allocated, do the actual initialization
@@ -2607,7 +2615,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     AllocaInst *ai = cast<AllocaInst>(i);
     unsigned elementSize =
       kmodule->targetData->getTypeStoreSize(ai->getAllocatedType());
-    ref<Expr> size = Expr::createPointer(elementSize);
+    ref<Expr> size = ConstantExpr::create(elementSize, Context::get().getPointerWidth());
     if (ai->isArrayAllocation()) {
       ref<Expr> count = eval(ki, 0, state).value;
       count = Expr::createZExtToPointerWidth(count);
@@ -2639,12 +2647,14 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       uint64_t elementSize = it->second;
       ref<Expr> index = eval(ki, it->first, state).value;
       base = AddExpr::create(base,
-                             MulExpr::create(Expr::createSExtToPointerWidth(index),
-                                             Expr::createPointer(elementSize)));
+                      MulExpr::create(Expr::createSExtToPointerWidth(index),
+                              ConstantExpr::create(elementSize,
+                                      Context::get().getPointerWidth())));
     }
     if (kgepi->offset)
       base = AddExpr::create(base,
-                             Expr::createPointer(kgepi->offset));
+                      ConstantExpr::create(kgepi->offset,
+                              Context::get().getPointerWidth()));
     bindLocal(ki, state, base);
     break;
   }
@@ -3586,7 +3596,21 @@ static std::set<std::string> okExternals(okExternalsList,
 void Executor::callExternalFunction(ExecutionState &state,
                                     KInstruction *target,
                                     Function *function,
-                                    std::vector< ref<Expr> > &arguments) {
+                                    std::vector< ref<Expr> > &_arguments) {
+#if 1
+  // FIXME: This is actually a workaround.
+  // Now we have PointerExpr, which is actually a tagged Constant but can
+  // not be optimized easily. Before external function calls, we need to
+  // replace PointerExpr to ConstantExpr.
+  std::vector<ref<Expr>> arguments;
+  for (std::vector<ref<Expr>>::iterator ai = _arguments.begin(),
+      ae = _arguments.end(); ai != ae; ai++) {
+    arguments.push_back(PointerRemover::removePointers(*ai));
+  }
+#else
+  std::vector<ref<Expr>> &arguments = _arguments;
+#endif
+
   // check if specialFunctionHandler wants it
   if (specialFunctionHandler->handle(state, function, target, arguments))
     return;
@@ -3649,7 +3673,12 @@ void Executor::callExternalFunction(ExecutionState &state,
   if (!resolved)
     klee_error("Could not resolve memory object for errno");
   ref<Expr> errValueExpr = result.second->read(0, sizeof(*errno_addr) * 8);
+#if 1
+  ref<Expr> errValueExprNoPointer = PointerRemover::removePointers(errValueExpr);
+  ConstantExpr *errnoValue = dyn_cast<ConstantExpr>(errValueExprNoPointer);
+#else
   ConstantExpr *errnoValue = dyn_cast<ConstantExpr>(errValueExpr);
+#endif
   if (!errnoValue) {
     terminateStateOnExecError(state,
                               "external call with errno value symbolic: " +
@@ -3993,6 +4022,9 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   ObjectPair op;
   bool success;
   solver->setTimeout(coreSolverTimeout);
+  if (!isa<PointerExpr>(address)) {
+    klee_warning("not a const address");
+  }
   if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
     address = toConstant(state, address, "resolveOne failure");
     success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);

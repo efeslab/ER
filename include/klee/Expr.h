@@ -36,6 +36,7 @@ namespace klee {
 class Array;
 class ArrayCache;
 class ConstantExpr;
+class PointerExpr;
 class ObjectState;
 
 template<class T> class ref;
@@ -165,7 +166,10 @@ public:
     Sgt, ///< Not used in canonical form
     Sge, ///< Not used in canonical form
 
-    LastKind=Sge,
+    // Pointer
+    Pointer,
+
+    LastKind=Pointer,
 
     CastKindFirst=ZExt,
     CastKindLast=SExt,
@@ -287,7 +291,8 @@ public:
   /// given object.
   static ref<Expr> createTempRead(const Array *array, Expr::Width w);
   
-  static ref<ConstantExpr> createPointer(uint64_t v);
+  static ref<PointerExpr> createPointer(uint64_t v);
+  static ref<PointerExpr> createFunctionPointer(uint64_t v);
 
   struct CreateArg;
   static ref<Expr> createFromKind(Kind k, std::vector<CreateArg> args);
@@ -1223,6 +1228,85 @@ inline bool Expr::isFalse() const {
     return CE->isFalse();
   return false;
 }
+
+class PointerExpr : public Expr {
+public:
+  static const Kind kind = Pointer;
+  static const unsigned numKids = 0;
+
+private:
+  llvm::APInt value;
+  int id;
+
+  PointerExpr(const llvm::APInt &v, unsigned _id) : value(v), id(_id) {
+    maxIndirDep = 0;
+  }
+
+public:
+  ~PointerExpr() {}
+
+  Width getWidth() const { return value.getBitWidth(); }
+  Kind getKind() const { return Pointer; }
+
+  unsigned getNumKids() const { return 0; }
+  ref<Expr> getKid(unsigned i) const {
+    assert(0 && "should not getKid from PointerExpr");
+    return 0;
+  }
+
+  const llvm::APInt &getAPValue() const { return value; }
+  int getId() const { return id; }
+
+  uint64_t getZExtValue(unsigned bits = 64) const {
+    assert(getWidth() <= bits && "Value may be out of range!");
+    return value.getZExtValue();
+  }
+
+  uint64_t getLimitedValue(uint64_t Limit = ~0ULL) const {
+    return value.getLimitedValue(Limit);
+  }
+
+  void toString(std::string &Res, unsigned radix = 10) const;
+
+  int compareContents(const Expr &b) const {
+    const PointerExpr &pb = static_cast<const PointerExpr &>(b);
+    assert(getWidth() == pb.getWidth());
+    if (value == pb.value)
+      return 0;
+    return value.ult(pb.value) ? -1 : 1;
+  }
+
+  virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
+    assert(0 && "rebuild() on PointerExpr");
+    return const_cast<PointerExpr *>(this);
+  }
+
+  ref<ConstantExpr> toConstantExpr() const;
+  static ref<PointerExpr> fromConstantExpr(ref<ConstantExpr> &ce);
+
+  virtual unsigned computeHash();
+
+  static bool classof(const Expr *E) {
+    return E->getKind() == Expr::Pointer;
+  }
+  static bool classof(const PointerExpr *) { return true; }
+
+  static ref<PointerExpr> alloc(const llvm::APInt &v, int id) {
+    //assert(v.getBitWidth() == 64);
+    ref<PointerExpr> r(new PointerExpr(v, id));
+    r->computeHash();
+    return r;
+  }
+
+  static ref<PointerExpr> alloc(uint64_t v, Width w, int id) {
+    return alloc(llvm::APInt(w, v), id);
+  }
+
+  static ref<PointerExpr> create(uint64_t v, Width w, int id) {
+    assert(v == 0 || v > 1000000);
+    return alloc(v, w, id);
+  }
+};
 
 } // End klee namespace
 

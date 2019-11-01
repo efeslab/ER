@@ -313,6 +313,14 @@ runAndGetCexForked(::VC vc, STPBuilder *builder, ::VCExpr q,
   }
 }
 
+void debugPrintQueryState(::VC &vc, klee::ExprHandle &e) {
+  char *buf;
+  unsigned long len;
+  vc_printQueryStateToBuffer(vc, e, &buf, &len, false);
+  klee_warning("STP query:\n%.*s\n", (unsigned)len, buf);
+  free(buf);
+}
+
 bool STPSolverImpl::computeInitialValues(
     const Query &query, const std::vector<const Array *> &objects,
     std::vector<std::vector<unsigned char>> &values, bool &hasSolution) {

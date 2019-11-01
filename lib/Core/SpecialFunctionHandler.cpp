@@ -758,7 +758,20 @@ void SpecialFunctionHandler::handleCheckMemoryAccess(ExecutionState &state,
       ref<Expr> chk = 
         op.first->getBoundsCheckPointer(address, 
                                         cast<ConstantExpr>(size)->getZExtValue());
-      if (!chk->isTrue()) {
+
+      if (chk->isTrue())
+        return;
+
+      Solver *S = klee::createCoreSolver(CoreSolverToUse);
+      bool result = false;
+
+      if (!S->mustBeTrue(Query(state.constraints, chk), result)) {
+        executor.terminateStateOnError(state,
+                                      "check_memory_access: solver error",
+                Executor::Ptr, NULL, executor.getAddressInfo(state, address));
+      }
+
+      if (!result) {
         executor.terminateStateOnError(state,
                                        "check_memory_access: memory error",
 				       Executor::Ptr, NULL,

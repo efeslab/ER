@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Context.h"
+#include "Memory.h"
 
 #include "klee/Expr.h"
 
@@ -43,6 +44,35 @@ ref<Expr> Expr::createZExtToPointerWidth(ref<Expr> e) {
   return ZExtExpr::create(e, Context::get().getPointerWidth());
 }
 
-ref<ConstantExpr> Expr::createPointer(uint64_t v) {
-  return ConstantExpr::create(v, Context::get().getPointerWidth());
+ref<PointerExpr> Expr::createPointer(uint64_t v) {
+  MemoryObject *mobj = MemoryObject::getMemoryObjectByAddress(v);
+  if (mobj) {
+    return PointerExpr::create(v, Context::get().getPointerWidth(), mobj->id);
+  } else if (v == 0) {
+    return PointerExpr::create(0,
+          Context::get().getPointerWidth(), MemoryObject::NULLPTR_MOBJ_HOLDER);
+  } else {
+    return PointerExpr::create(v,
+          Context::get().getPointerWidth(), MemoryObject::UNKNOWN_MOBJ_HOLDER);
+  }
+}
+
+ref<PointerExpr> Expr::createFunctionPointer(uint64_t v) {
+  return PointerExpr::create(v,
+        Context::get().getPointerWidth(), MemoryObject::FUNCTION_MOBJ_HOLDER);
+}
+
+ref<PointerExpr> PointerExpr::fromConstantExpr(ref<ConstantExpr> &ce) {
+  uint64_t value = ce->getZExtValue();
+  MemoryObject *mobj = MemoryObject::getMemoryObjectByAddress(value);
+  if (mobj) {
+    return PointerExpr::create(value, Context::get().getPointerWidth(), mobj->id);
+  }
+  else if (value == 0) {
+    return PointerExpr::create(0,
+          Context::get().getPointerWidth(), MemoryObject::NULLPTR_MOBJ_HOLDER);
+  } else {
+    return PointerExpr::create(value,
+          Context::get().getPointerWidth(), MemoryObject::UNKNOWN_MOBJ_HOLDER);
+  }
 }

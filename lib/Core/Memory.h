@@ -19,6 +19,7 @@
 
 #include <vector>
 #include <string>
+#include <map>
 
 namespace llvm {
   class Value;
@@ -74,6 +75,32 @@ public:
   MemoryObject(const MemoryObject &b);
   MemoryObject &operator=(const MemoryObject &b);
 
+  enum {
+    NULLPTR_MOBJ_HOLDER = -1,
+    FUNCTION_MOBJ_HOLDER = -2,
+    UNKNOWN_MOBJ_HOLDER = -3
+  };
+
+  static std::map<int, MemoryObject *> id2mobj;
+  static MemoryObject *getMemoryObjectById(int id) {
+    auto it = id2mobj.find(id);
+    if (it != id2mobj.end()) {
+      return it->second;
+    } else {
+      return nullptr;
+    }
+  }
+  static MemoryObject *getMemoryObjectByAddress(uint64_t addr) {
+    for (auto it = id2mobj.begin(), ie = id2mobj.end();
+          it != ie; it++) {
+      MemoryObject *mobj = it->second;
+      if (mobj->address <= addr && (mobj->address + mobj->size > addr)) {
+        return mobj;
+      }
+    }
+    return nullptr;
+  }
+
 public:
   // XXX this is just a temp hack, should be removed
   explicit
@@ -86,6 +113,7 @@ public:
       isDeterm(false),
       parent(NULL),
       allocSite(0) {
+    id2mobj.insert(std::make_pair(id, this));
   }
 
   MemoryObject(uint64_t _address, unsigned _size, 
@@ -104,6 +132,7 @@ public:
       isDeterm(_isDeterm),
       parent(_parent), 
       allocSite(_allocSite) {
+    id2mobj.insert(std::make_pair(id, this));
   }
 
   ~MemoryObject();
@@ -115,8 +144,8 @@ public:
     this->name = name;
   }
 
-  ref<ConstantExpr> getBaseExpr() const { 
-    return ConstantExpr::create(address, Context::get().getPointerWidth());
+  ref<PointerExpr> getBaseExpr() const { 
+    return PointerExpr::create(address, Context::get().getPointerWidth(), id);
   }
   ref<ConstantExpr> getSizeExpr() const { 
     return ConstantExpr::create(size, Context::get().getPointerWidth());

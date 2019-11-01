@@ -549,6 +549,19 @@ ExprHandle STPBuilder::constructActual(ref<Expr> e, int *width_out) {
     }
     return Res;
   }
+
+  case Expr::Pointer: {
+    PointerExpr *PE = cast<PointerExpr>(e);
+    *width_out = PE->getWidth();
+
+    if (*width_out <= 32)
+      return bvConst32(*width_out, PE->getZExtValue(32));
+    if (*width_out <= 64)
+      return bvConst64(*width_out, PE->getZExtValue());
+
+    assert("address should be either 32bit or 64bit");
+    return 0;
+  }
     
   // Special
   case Expr::NotOptimized: {

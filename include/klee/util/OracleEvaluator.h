@@ -21,6 +21,10 @@ namespace klee {
     typedef std::unordered_map<std::string, unsigned int> arrayname2idx_ty;
     arrayname2idx_ty arrayname2idx;
 
+    Action visitPointer(const PointerExpr& pe) {
+      return Action::changeTo(pe.toConstantExpr());
+    }
+
     public:
     OracleEvaluator(std::string KTestPath, bool silent = false);
   };

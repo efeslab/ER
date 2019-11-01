@@ -23,6 +23,7 @@
 #include "klee/Internal/System/Time.h"
 #include "klee/util/ArrayCache.h"
 #include "klee/util/OracleEvaluator.h"
+#include "klee/util/PointerRemover.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "../Solver/QueryLoggingSolver.h"
@@ -193,7 +194,7 @@ private:
 
   /// Map of globals to their bound address. This also includes
   /// globals that have no representative object (i.e. functions).
-  std::map<const llvm::GlobalValue*, ref<ConstantExpr> > globalAddresses;
+  std::map<const llvm::GlobalValue*, ref<PointerExpr> > globalAddresses;
 
   /// The set of legal function addresses, used to validate function
   /// pointers. We use the actual Function* address as the function address.

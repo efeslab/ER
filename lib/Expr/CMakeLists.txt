@@ -26,6 +26,7 @@ klee_add_component(kleaverExpr
   Updates.cpp
   OracleEvaluator.cpp
   ExprConcretizer.cpp
+  ExprDeepVisitor.cpp
 )
 
 set(LLVM_COMPONENTS

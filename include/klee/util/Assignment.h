@@ -60,6 +60,10 @@ namespace klee {
     ref<Expr> getInitialValue(const Array &mo, unsigned index) {
       return a.evaluate(&mo, index);
     }
+
+    Action visitPointer(const PointerExpr& pe) {
+      return Action::changeTo(pe.toConstantExpr());
+    }
     
   public:
     AssignmentEvaluator(const Assignment &_a) : a(_a) {}    

@@ -512,6 +512,19 @@ Z3ASTHandle Z3Builder::constructActual(ref<Expr> e, int *width_out) {
     return Res;
   }
 
+  case Expr::Pointer: {
+    PointerExpr *PE = cast<PointerExpr>(e);
+    *width_out = PE->getWidth();
+
+    if (*width_out <= 32)
+      return bvConst32(*width_out, PE->getZExtValue(32));
+    if (*width_out <= 64)
+      return bvConst64(*width_out, PE->getZExtValue());
+
+    assert(0 && "control should not readh here");
+    return bvConst64(*width_out, 0);
+  }
+
   // Special
   case Expr::NotOptimized: {
     NotOptimizedExpr *noe = cast<NotOptimizedExpr>(e);

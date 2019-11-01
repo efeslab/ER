@@ -133,6 +133,7 @@ void Expr::printKind(llvm::raw_ostream &os, Kind k) {
   switch(k) {
 #define X(C) case C: os << #C; break
     X(Constant);
+    X(Pointer);
     X(NotOptimized);
     X(Read);
     X(Select);
@@ -1228,3 +1229,17 @@ CMPCREATE(UltExpr, Ult)
 CMPCREATE(UleExpr, Ule)
 CMPCREATE(SltExpr, Slt)
 CMPCREATE(SleExpr, Sle)
+
+void PointerExpr::toString(std::string &Res, unsigned radix) const {
+  Res = "*" + value.toString(radix, false);
+}
+
+ref<ConstantExpr> PointerExpr::toConstantExpr() const {
+  return ConstantExpr::create(getZExtValue(), getWidth());
+}
+
+unsigned PointerExpr::computeHash() {
+  Expr::Width w = getWidth();
+  hashValue = value.getLimitedValue() ^ (w * MAGIC_HASH_CONSTANT);
+  return hashValue;
+}

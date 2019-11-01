@@ -63,10 +63,13 @@ ObjectHolder &ObjectHolder::operator=(const ObjectHolder &b) {
 /***/
 
 int MemoryObject::counter = 0;
+std::map<int, MemoryObject *> MemoryObject::id2mobj;
 
 MemoryObject::~MemoryObject() {
   if (parent)
     parent->markFreed(this);
+
+  id2mobj.erase(id);
 }
 
 void MemoryObject::getAllocInfo(std::string &result) const {

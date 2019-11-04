@@ -13,6 +13,9 @@
 #include "klee/OptionCategories.h"
 #include "klee/util/PrintContext.h"
 
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/DebugLoc.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -60,8 +63,9 @@ public:
   std::set<const Array*> usedArrays;
 private:
   std::map<ref<Expr>, unsigned> bindings;
+  std::map<unsigned, KInstruction *> debugInfoPrintList;
   std::map<const UpdateNode*, unsigned> updateBindings;
-  std::set< ref<Expr> > couldPrint, shouldPrint;
+  std::set< ref<Expr> > couldPrint, shouldPrint, shouldPrintInst;
   std::set<const UpdateNode*> couldPrintUpdates, shouldPrintUpdates;
   llvm::raw_ostream &os;
   unsigned counter;
@@ -134,6 +138,10 @@ private:
         }
       } else {
         shouldPrint.insert(e);
+      }
+
+      if (e->kinst) {
+        shouldPrintInst.insert(e);
       }
     }
   }
@@ -384,8 +392,10 @@ public:
       if (it!=bindings.end()) {
         PC << 'N' << it->second;
       } else {
-        if (!hasScan || shouldPrint.count(e)) {
+        if (!hasScan || shouldPrint.count(e) || shouldPrintInst.count(e)) {
           PC << 'N' << counter << ':';
+          if (e->kinst)
+            debugInfoPrintList.insert(std::make_pair(counter, e->kinst));
           bindings.insert(std::make_pair(e, counter++));
         }
 
@@ -397,21 +407,21 @@ public:
         // or they are (base + offset) and base will get printed with
         // a declaration.
         if (PCMultibyteReads && e->getKind() == Expr::Concat) {
-	  const ReadExpr *base = hasOrderedReads(e, -1);
-	  const bool isLSB = (base != nullptr);
-	  if (!isLSB)
-	    base = hasOrderedReads(e, 1);
-	  if (base) {
-	    PC << "(Read" << (isLSB ? "LSB" : "MSB");
-	    printWidth(PC, e);
-	    PC << ' ';
-	    printRead(base, PC, PC.pos);
-	    PC << ')';
-	    return;
-	  }
+          const ReadExpr *base = hasOrderedReads(e, -1);
+          const bool isLSB = (base != nullptr);
+          if (!isLSB)
+            base = hasOrderedReads(e, 1);
+          if (base) {
+            PC << "(Read" << (isLSB ? "LSB" : "MSB");
+            printWidth(PC, e);
+            PC << ' ';
+            printRead(base, PC, PC.pos);
+            PC << ')';
+            return;
+          }
         }
 
-	PC << '(' << e->getKind();
+        PC << '(' << e->getKind();
         printWidth(PC, e);
         PC << ' ';
 
@@ -423,8 +433,8 @@ public:
         } else if (const ExtractExpr *ee = dyn_cast<ExtractExpr>(e)) {
           printExtract(ee, PC, indent);
         } else if (e->getKind() == Expr::Concat || e->getKind() == Expr::SExt)
-	  printExpr(e.get(), PC, indent, true);
-	else
+          printExpr(e.get(), PC, indent, true);
+        else
           printExpr(e.get(), PC, indent);	
         PC << ")";
       }
@@ -438,6 +448,23 @@ public:
       PC << ' ';
     } else {
       PC.breakLine(indent);
+    }
+  }
+
+  void printAllInst(PrintContext &PC) {
+    PC.breakLine();
+    for (auto it = debugInfoPrintList.begin(), ie = debugInfoPrintList.end();
+          it != ie; it++) {
+#if 0
+      std::string str;
+      llvm::raw_string_ostream ss(str);
+      it->second->inst->print(ss);
+#endif
+      const llvm::DebugLoc &loc = it->second->inst->getDebugLoc();
+      if (loc) {
+        PC << "#! N" << it->first << ":" << loc.get()->getFilename() << ":" << loc.getLine();
+        PC.breakLine();
+      }
     }
   }
 };
@@ -577,4 +604,6 @@ void ExprPPrinter::printQuery(llvm::raw_ostream &os,
 
   PC << ')';
   PC.breakLine();
+
+  p.printAllInst(PC);
 }

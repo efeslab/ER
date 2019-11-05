@@ -14,6 +14,7 @@
 #include "klee/util/PrintContext.h"
 
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/Support/CommandLine.h"
@@ -455,16 +456,12 @@ public:
     PC.breakLine();
     for (auto it = debugInfoPrintList.begin(), ie = debugInfoPrintList.end();
           it != ie; it++) {
-#if 0
-      std::string str;
-      llvm::raw_string_ostream ss(str);
-      it->second->inst->print(ss);
-#endif
-      const llvm::DebugLoc &loc = it->second->inst->getDebugLoc();
-      if (loc) {
-        PC << "#! N" << it->first << ":" << loc.get()->getFilename() << ":" << loc.getLine();
-        PC.breakLine();
-      }
+      llvm::Instruction *I = it->second->inst;
+      llvm::BasicBlock *B = I->getParent();
+      llvm::Function *F = B->getParent();
+      PC << "#!N" << it->first << ":" << F->getName()
+              << ":" << B->getName() << ":" << I->getName();
+      PC.breakLine();
     }
   }
 };

@@ -249,7 +249,8 @@ void KModule::instrument(const Interpreter::ModuleOptions &opts) {
   if (opts.CheckOvershift) pm.add(new OvershiftCheckPass());
 
   pm.add(new IntrinsicCleanerPass(*targetData));
-   pm.add(new DebugPass());
+  pm.add(new DebugPass());
+  pm.add(new AssignIDPass());
   pm.run(*module);
 }
 

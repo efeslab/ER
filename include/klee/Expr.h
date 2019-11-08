@@ -256,6 +256,13 @@ public:
   // but using those children. 
   virtual ref<Expr> rebuild(ref<Expr> kids[/* getNumKids() */]) const = 0;
 
+  // Use given array of new kids to overwrite current kids.
+  // This is used to simplify expression tree. Note that new kids could be NULL.
+  // Side effect:
+  //   1. Existing hashValue may be outdated
+  //   2. This Expr may be no longer hashable, if NULL appears.
+  virtual void rebuildInPlace(ref<Expr> kids[/* getNumKids() */]) = 0;
+
   /// isZero - Is this a constant zero.
   bool isZero() const;
   
@@ -393,6 +400,10 @@ public:
       return right;
     return 0;
   }
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    left = kids[0];
+    right = kids[1];
+  }
  
 protected:
   BinaryExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {
@@ -448,6 +459,7 @@ public:
   ref<Expr> getKid(unsigned i) const { return src; }
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { return create(kids[0]); }
+  virtual void rebuildInPlace(ref<Expr> kids[]) { src = kids[0]; }
 
 private:
   NotOptimizedExpr(const ref<Expr> &_src) : src(_src) {
@@ -621,6 +633,9 @@ public:
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
     return create(updates, kids[0]);
   }
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    index = kids[0];
+  }
 
   virtual unsigned computeHash();
 
@@ -696,6 +711,11 @@ public:
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
     return create(kids[0], kids[1], kids[2]);
   }
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    cond = kids[0];
+    trueExpr = kids[1];
+    falseExpr = kids[2];
+  }
 
 private:
   SelectExpr(const ref<Expr> &c, const ref<Expr> &t, const ref<Expr> &f) 
@@ -761,6 +781,7 @@ public:
 			   const ref<Expr> &kid7, const ref<Expr> &kid8);
   
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { return create(kids[0], kids[1]); }
+  virtual void rebuildInPlace(ref<Expr> kids[]) { left = kids[0]; right = kids[1]; }
   
 private:
   ConcatExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {
@@ -824,6 +845,9 @@ public:
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
     return create(kids[0], offset, width);
   }
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    expr = kids[0];
+  }
 
   virtual unsigned computeHash();
 
@@ -868,6 +892,9 @@ public:
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
     return create(kids[0]);
+  }
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    expr = kids[0];
   }
 
   virtual unsigned computeHash();
@@ -915,6 +942,10 @@ public:
     const CastExpr &eb = static_cast<const CastExpr&>(b);
     if (width != eb.width) return width < eb.width ? -1 : 1;
     return 0;
+  }
+
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    src = kids[0];
   }
 
   virtual unsigned computeHash();
@@ -1115,6 +1146,9 @@ public:
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
     assert(0 && "rebuild() on ConstantExpr");
     return const_cast<ConstantExpr *>(this);
+  }
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    assert(0 && "rebuildInPlace() on ConstantExpr");
   }
 
   virtual unsigned computeHash();

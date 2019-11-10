@@ -177,7 +177,6 @@ public:
 
   unsigned refCount;
   int indirectReadRefCount = 0;
-  int maxIndirDep = 0;
 
   enum {
     FLAG_INSTRUCTION_ROOT = 1<<0,
@@ -406,9 +405,7 @@ public:
   }
  
 protected:
-  BinaryExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {
-    maxIndirDep = std::max(l->maxIndirDep, r->maxIndirDep);
-  }
+  BinaryExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {}
 
 public:
   static bool classof(const Expr *E) {
@@ -422,9 +419,7 @@ public:
 class CmpExpr : public BinaryExpr {
 
 protected:
-  CmpExpr(ref<Expr> l, ref<Expr> r) : BinaryExpr(l,r) {
-    maxIndirDep = std::max(l->maxIndirDep, r->maxIndirDep);
-  }
+  CmpExpr(ref<Expr> l, ref<Expr> r) : BinaryExpr(l,r) {}
   
 public:                                                       
   Width getWidth() const { return Bool; }
@@ -462,9 +457,7 @@ public:
   virtual void rebuildInPlace(ref<Expr> kids[]) { src = kids[0]; }
 
 private:
-  NotOptimizedExpr(const ref<Expr> &_src) : src(_src) {
-    maxIndirDep = src->maxIndirDep;
-  }
+  NotOptimizedExpr(const ref<Expr> &_src) : src(_src) {}
 
 protected:
   virtual int compareContents(const Expr &b) const {
@@ -492,7 +485,6 @@ public:
   const UpdateNode *next;
   ref<Expr> index, value;
 
-  int maxIndirDep;
   uint64_t flags;
   KInstruction *kinst;
   
@@ -644,22 +636,6 @@ private:
   ReadExpr(const UpdateList &_updates, const ref<Expr> &_index) : 
     updates(_updates), index(_index) {
       assert(updates.root);
-
-      int indirDepOfArr = updates.root->isSymbolicArray() ? 1 : 0;
-      if (index->getKind() == Expr::Constant) {
-        if (updates.head == nullptr)
-          maxIndirDep = indirDepOfArr;
-        else
-          maxIndirDep = std::max(updates.head->maxIndirDep, indirDepOfArr);
-      }
-      else {
-        if (updates.head == nullptr)
-          maxIndirDep = std::max(index->maxIndirDep+1, indirDepOfArr);
-        else {
-          maxIndirDep = std::max(updates.head->maxIndirDep, indirDepOfArr);
-          maxIndirDep = std::max(index->maxIndirDep+1, maxIndirDep);
-        }
-      }
     }
 
 public:
@@ -720,10 +696,7 @@ public:
 
 private:
   SelectExpr(const ref<Expr> &c, const ref<Expr> &t, const ref<Expr> &f) 
-    : cond(c), trueExpr(t), falseExpr(f) {
-      maxIndirDep = std::max(t->maxIndirDep, f->maxIndirDep);
-      maxIndirDep = std::max(maxIndirDep, c->maxIndirDep);
-    }
+    : cond(c), trueExpr(t), falseExpr(f) {}
 
 public:
   static bool classof(const Expr *E) {
@@ -787,7 +760,6 @@ public:
 private:
   ConcatExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {
     width = l->getWidth() + r->getWidth();
-    maxIndirDep = std::max(l->maxIndirDep, r->maxIndirDep);
   }
 
 public:
@@ -854,9 +826,7 @@ public:
 
 private:
   ExtractExpr(const ref<Expr> &e, unsigned b, Width w) 
-    : expr(e),offset(b),width(w) {
-      maxIndirDep = e->maxIndirDep;
-    }
+    : expr(e),offset(b),width(w) {}
 
 public:
   static bool classof(const Expr *E) {
@@ -907,9 +877,7 @@ public:
   static bool classof(const NotExpr *) { return true; }
 
 private:
-  NotExpr(const ref<Expr> &e) : expr(e) {
-    maxIndirDep = e->maxIndirDep;
-  }
+  NotExpr(const ref<Expr> &e) : expr(e) {}
 
 protected:
   virtual int compareContents(const Expr &b) const {
@@ -928,9 +896,7 @@ public:
   Width width;
 
 public:
-  CastExpr(const ref<Expr> &e, Width w) : src(e), width(w) {
-    maxIndirDep = e->maxIndirDep;
-  }
+  CastExpr(const ref<Expr> &e, Width w) : src(e), width(w) {}
 
   Width getWidth() const { return width; }
 
@@ -1091,9 +1057,7 @@ public:
 private:
   llvm::APInt value;
 
-  ConstantExpr(const llvm::APInt &v) : value(v) {
-    maxIndirDep = 0;
-  }
+  ConstantExpr(const llvm::APInt &v) : value(v) {}
 
 public:
   ~ConstantExpr() {}

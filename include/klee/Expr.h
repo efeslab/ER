@@ -636,6 +636,7 @@ public:
   virtual void rebuildInPlace(ref<Expr> kids[]) {
     index = kids[0];
   }
+  void resetUpdateNode(const UpdateNode *un) { updates.head = un; }
 
   virtual unsigned computeHash();
 

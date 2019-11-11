@@ -34,7 +34,7 @@ UpdateNode::UpdateNode(const UpdateNode *_next,
   assert(_value->getWidth() == Expr::Int8 && 
          "Update value should be 8-bit wide.");
   */
-  computeHash();
+  //computeHash();
 
   if (_flags == Expr::FLAG_INTERNAL && _kinst == nullptr) {
       kinstMissCounter++;

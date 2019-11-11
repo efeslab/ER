@@ -9,6 +9,7 @@
 add_executable(kleaver
   main.cpp
   GraphvizDOTDrawer.cpp
+  ExprInPlaceTransformation.cpp
 )
 
 set(KLEE_LIBS

@@ -503,6 +503,15 @@ public:
 
   int compare(const UpdateNode &b) const;  
   unsigned hash() const { return hashValue; }
+  void resetRefCount(const UpdateNode &un) {
+    refCount = un.refCount;
+  }
+  // this refCount helper is added to ease mem mangement in ExprInPlaceTransformer
+  void dec() const {
+    if (--refCount == 0) {
+      delete this;
+    }
+  }
 
 private:
   UpdateNode() : refCount(0) {}

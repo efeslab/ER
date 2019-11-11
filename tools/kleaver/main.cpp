@@ -42,6 +42,7 @@
 #include "llvm/Support/Signals.h"
 
 #include "GraphvizDOTDrawer.h"
+#include "ExprInPlaceTransformation.h"
 
 using namespace llvm;
 using namespace klee;
@@ -439,8 +440,21 @@ static bool AnalyzeInputAST(const char *Filename,
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
       ConstraintManager cm(QC->Constraints);
       IndirectReadDepthCalculator IDCalc(cm);
-      std::set<ref<ReadExpr>> lastLevelReads = IDCalc.getLastLevelReads();
-      for (ref<Expr> e: lastLevelReads) {
+      std::set<ref<ReadExpr>> &lastLevelReads = IDCalc.getLastLevelReads();
+      std::vector<ref<ReadExpr>> tosort(lastLevelReads.begin(), lastLevelReads.end());
+      std::sort(tosort.begin(), tosort.end(),
+          [&](ref<ReadExpr>&a, ref<ReadExpr>&b) {
+            const std::string &aname = a->updates.root->name;
+            const std::string &bname = b->updates.root->name;
+            uint64_t aIdx = dyn_cast<ConstantExpr>(a->index)->getZExtValue();
+            uint64_t bIdx = dyn_cast<ConstantExpr>(b->index)->getZExtValue();
+            int aDepth = IDCalc.query(a);
+            int bDepth = IDCalc.query(b);
+            return (aname < bname) ||
+                   ((aname == bname) && (aDepth < bDepth)) ||
+                   ((aname == bname) && (aDepth == bDepth) && (aIdx >= bIdx));
+          });
+      for (const ref<Expr> &e: tosort) {
         e->print(os);
         os << " : " << IDCalc.query(e) << '\n';
       }
@@ -460,15 +474,20 @@ static bool DrawInputAST(const char *Filename,
 
   std::vector<Decl*> &Decls = ast.getDecls();
   std::ofstream of(std::string(Filename) + ".dot");
-  GraphvizDOTDrawer drawer(of);
   for (Decl *D: Decls) {
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
-      for (const ref<Expr> &e: QC->Constraints) {
+      ConstraintManager cm(QC->Constraints);
+      std::vector<ref<Expr>> constraints;
+      ExprInPlaceTransformer EIPT(cm, constraints);
+      GraphvizDOTDrawer drawer(of);
+      for (const ref<Expr> &e: constraints) {
         drawer.addConstraint(e.get());
       }
+      drawer.draw();
+      // Assuming there will only be one QueryComamnd
+      break;
     }
   }
-  drawer.draw();
 
   return true;
 }

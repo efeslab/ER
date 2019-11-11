@@ -479,10 +479,8 @@ static bool DrawInputAST(const char *Filename,
       ConstraintManager cm(QC->Constraints);
       std::vector<ref<Expr>> constraints;
       ExprInPlaceTransformer EIPT(cm, constraints);
-      GraphvizDOTDrawer drawer(of);
-      for (const ref<Expr> &e: constraints) {
-        drawer.addConstraint(e.get());
-      }
+      ConstraintManager new_cm(constraints);
+      GraphvizDOTDrawer drawer(of, new_cm);
       drawer.draw();
       // Assuming there will only be one QueryComamnd
       break;

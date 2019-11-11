@@ -13,6 +13,7 @@ void GraphvizDOTDrawer::declareExpr(const Expr *e, const char *category) {
      << "[ label=\"" << label << "\", "
      << "Kind=" << e->getKind() << ","
      << "Width=" << e->getWidth() << ","
+     << "IDep=" << IDCalc.query(e) << ","
      << "Category=" << category
      << "];\n";
 }
@@ -25,14 +26,17 @@ void GraphvizDOTDrawer::declareLastLevelRead(const ReadExpr *RE, const char *cat
      << "[ label=\"" << label << "\", "
      << "Kind=" << RE->getKind() << ","
      << "Width=" << RE->getWidth() << ","
+     << "IDep=" << IDCalc.query(RE) << ","
      << "Category=" << category
      << "];\n";
 }
 
 void GraphvizDOTDrawer::declareUpdateNode(const UpdateNode *un, const Array *root) {
+  int IDep = std::max(IDCalc.query(un->index), IDCalc.query(un->value));
   os << (size_t)un
      << "[ label=\"UN\", Kind=UN , Category=UN,"
-     << "Root=" << root->name
+     << "Root=" << root->name << ","
+     << "IDep=" << IDep
      <<  "];\n";
 }
 
@@ -41,7 +45,8 @@ void GraphvizDOTDrawer::declareArray(const Array *arr) {
      << "[ label=\"" << arr->name << "\", "
      << "Kind=Array,"
      << "Size=" << arr->getSize() << ","
-     << "Category=Array"
+     << "Category=Array,"
+     << "IDep=" << IDCalc.getMax() + 1
      << "];\n";
 }
 
@@ -57,9 +62,13 @@ void GraphvizDOTDrawer::printHeader() {
 void GraphvizDOTDrawer::printFooter() {
   os << "}\n";
 }
-
-void GraphvizDOTDrawer::addConstraint(const Expr *e) {
-  ensureExprDeclared(e, "C");
+GraphvizDOTDrawer::GraphvizDOTDrawer(std::ostream &_os,
+    const ConstraintManager &_cm): os(_os), cm(_cm), IDCalc(_cm) {
+  printHeader();
+  // add each top-level constraint to drawing todo-list
+  for (const ref<Expr> &e: cm) {
+    ensureExprDeclared(e.get(), "C");
+  }
 }
 
 void GraphvizDOTDrawer::ensureExprDeclared(const Expr *e, const char *category) {

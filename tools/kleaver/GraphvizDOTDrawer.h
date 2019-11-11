@@ -1,6 +1,8 @@
 #ifndef KLEE_GRAPHVIZDOTDRAWER_H
 #define KLEE_GRAPHVIZDOTDRAWER_H
 #include "klee/Expr.h"
+#include "klee/Constraints.h"
+#include "klee/util/ExprConcretizer.h"
 
 #include <iostream>
 #include <unordered_set>
@@ -25,6 +27,9 @@ class GraphvizDOTDrawer {
   // Arrays are considered visited if declared.
   std::unordered_set<const Array *> visited_array;
 
+  const ConstraintManager &cm;
+  IndirectReadDepthCalculator IDCalc;
+
   void printHeader();
   void printFooter();
   // node category: C for top-level constraint, Q for top-level query
@@ -42,10 +47,8 @@ class GraphvizDOTDrawer {
   void ensureArrayDeclared(const Array *root);
 
   public:
-  GraphvizDOTDrawer(std::ostream &_os): os(_os) { printHeader(); }
+  GraphvizDOTDrawer(std::ostream &_os, const ConstraintManager &_cm);
   ~GraphvizDOTDrawer() { printFooter(); }
-  // add Expr *e as a top-level constraint to drawing todo-list
-  void addConstraint(const Expr *e);
   // actually start drawing, which is a pre-order traversal
   void draw();
 };

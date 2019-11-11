@@ -1,30 +1,5 @@
-#include "klee/Common.h"
-#include "klee/Config/Version.h"
-#include "klee/Expr.h"
-#include "klee/Internal/Module/KInstruction.h"
-#include "klee/Internal/Support/ErrorHandling.h"
-#include "klee/util/ExprPPrinter.h"
-#include "klee/util/ExprUtil.h"
-#include "klee/util/ExprVisitor.h"
 #include "klee/util/ExprConcretizer.h"
-#include "klee/util/OracleEvaluator.h"
-
-#include "llvm/IR/Instructions.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/Format.h"
-
-#include <algorithm>
-#include <cassert>
-#include <cerrno>
-#include <cxxabi.h>
-#include <fstream>
-#include <iomanip>
-#include <iosfwd>
-#include <sstream>
-#include <string>
-#include <sys/mman.h>
-#include <vector>
+#include "klee/Internal/Support/ErrorHandling.h"
 
 using namespace llvm;
 using namespace klee;
@@ -238,6 +213,9 @@ std::vector<ref<Expr>> ExprConcretizer::evaluate(const std::vector<ref<Expr>> &c
   return doEvaluate(cm.begin(), cm.end());
 }
 
+/*
+ * IndirectReadDepthCalculator
+ */
 int IndirectReadDepthCalculator::getLevel(const ref<Expr> &e) {
   auto it = depthStore.find(e);
 
@@ -267,56 +245,24 @@ int IndirectReadDepthCalculator::assignDepth(const ref<Expr> &e, int readLevel) 
 
   // m means the maximum indirect depth which is maintained recursively
   int m = readLevel;
-  // shouldIncrease == true iif either the ReadExpr has symbolic index or its update list has updates with symbolic index.
-  bool shouldIncrease = false;
-  if (const ReadExpr *re = dyn_cast<ReadExpr>(e)) {
-    if (!isa<ConstantExpr>(re->index)) {
-      shouldIncrease = true;
+  if (ReadExpr *RE = dyn_cast<ReadExpr>(e)) {
+    updateMaxLevelfromKid(RE->index, readLevel + 1, m);
+    const UpdateNode *un = RE->updates.head;
+    while (un) {
+      updateMaxLevelfromKid(un->index, readLevel + 1, m);
+      updateMaxLevelfromKid(un->value, readLevel, m);
+      un = un->next;
     }
-    else {
-      for (auto un = re->updates.head; un; un = un->next) {
-        if (!isa<ConstantExpr>(un->index)) {
-          shouldIncrease = true;
-          break;
-        }
-      }
+    if (!RE->index.isNull() && (RE->index->getKind() == Expr::Constant) &&
+        RE->updates.head == nullptr) {
+      lastLevelReads.insert(RE);
     }
   }
-
-  // note that ReadExpr only has one kid (update list is not considered as kid)
-  int nkids = e->getNumKids();
-  for (int i = 0; i < nkids; i++) {
-    ref<Expr> kid = e->getKid(i);
-    int m1;
-    if (shouldIncrease) {
-      m1 = assignDepth(kid, readLevel+1);
-    }
-    else {
-      m1 = assignDepth(kid, readLevel);
-    }
-    if (m1 > m) m = m1;
-  }
-
-  if (const ReadExpr *re = dyn_cast<ReadExpr>(e)) {
-    const UpdateNode *un = re->updates.head;
-    for (; un; un = un->next) {
-      int m2 = assignDepth(un->index, readLevel+1);
-      int m3 = assignDepth(un->value, readLevel);
-      if (m2 > m) m = m2;
-      if (m3 > m) m = m3;
+  else {
+    for (unsigned int i=0; i < e->getNumKids(); ++i) {
+      updateMaxLevelfromKid(e->getKid(i), readLevel, m);
     }
   }
-
-  if (const ReadExpr *re = dyn_cast<ReadExpr>(e)) {
-    if (re->index->getKind() == Expr::Constant &&
-            re->updates.head == nullptr) {
-      auto it = lastLevelReads.find(e);
-      if (it == lastLevelReads.end()) {
-        lastLevelReads.insert(e);
-      }
-    }
-  }
-
   return m;
 }
 
@@ -327,14 +273,6 @@ IndirectReadDepthCalculator::IndirectReadDepthCalculator(ConstraintManager &cm) 
     int m = assignDepth(e, 0);
     if (m > maxLevel) maxLevel = m;
   }
-}
-
-int IndirectReadDepthCalculator::getMax() {
-  return maxLevel;
-}
-
-std::set<ref<Expr>>& IndirectReadDepthCalculator::getLastLevelReads() {
-  return lastLevelReads;
 }
 
 int IndirectReadDepthCalculator::query(const ref<Expr> &e) {

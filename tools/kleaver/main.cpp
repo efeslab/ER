@@ -439,7 +439,7 @@ static bool AnalyzeInputAST(const char *Filename,
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
       ConstraintManager cm(QC->Constraints);
       IndirectReadDepthCalculator IDCalc(cm);
-      std::set<ref<Expr>> lastLevelReads = IDCalc.getLastLevelReads();
+      std::set<ref<ReadExpr>> lastLevelReads = IDCalc.getLastLevelReads();
       for (ref<Expr> e: lastLevelReads) {
         e->print(os);
         os << " : " << IDCalc.query(e) << '\n';

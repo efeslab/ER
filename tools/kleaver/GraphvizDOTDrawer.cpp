@@ -98,8 +98,10 @@ void GraphvizDOTDrawer::draw() {
       // note that last level read is guaranteed to not appear here (see ensureExprDeclared)
       // handle read index
       Expr *read_idx = RE->index.get();
-      ensureExprDeclared(read_idx);
-      drawEdge(RE, read_idx, "I");
+      if (read_idx) {
+        ensureExprDeclared(read_idx);
+        drawEdge(RE, read_idx, "I");
+      }
       // Here we handle updatelists.
       const UpdateList &ul = RE->updates;
       const Array *root = ul.root;
@@ -136,10 +138,14 @@ void GraphvizDOTDrawer::draw() {
             visited_updatenodes.insert(it);
             Expr *index = it->index.get();
             Expr *value = it->value.get();
-            ensureExprDeclared(index);
-            ensureExprDeclared(value);
-            drawEdge(it, index, "I");
-            drawEdge(it, value);
+            if (index) {
+              ensureExprDeclared(index);
+              drawEdge(it, index, "I");
+            }
+            if (value) {
+              ensureExprDeclared(value);
+              drawEdge(it, value);
+            }
             if (it->next != sentinel) {
               // I am not the last pointer to be processed
               declareUpdateNode(it->next, root);
@@ -184,8 +190,10 @@ void GraphvizDOTDrawer::draw() {
       for (unsigned int i=0, N=e->getNumKids(); i < N; ++i) {
         ref<Expr> kidref = e->getKid(i);
         Expr *kid = kidref.get();
-        ensureExprDeclared(kid);
-        drawEdge(e, kid);
+        if (kid) {
+          ensureExprDeclared(kid);
+          drawEdge(e, kid);
+        }
       }
     }
   }

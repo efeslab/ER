@@ -108,7 +108,7 @@ namespace klee {
     // the set of all last level reads
     std::set<ref<ReadExpr>> lastLevelReads;
     // map Expr(by their hash) to indirect depth
-    ExprHashMap<int> depthStore;
+    std::unordered_map<const Expr*, int> depthStore;
     // the maximum indirect depth across all constraints
     int maxLevel;
 
@@ -130,10 +130,13 @@ namespace klee {
 
   public:
     // all calculation is done in the constructor
-    IndirectReadDepthCalculator(ConstraintManager &cm);
+    IndirectReadDepthCalculator(const ConstraintManager &cm);
     int getMax() { return maxLevel; }
     std::set<ref<ReadExpr>>& getLastLevelReads() { return lastLevelReads; }
-    int query(const ref<Expr> &e);
+    int query(const Expr *e);
+    int query(const ref<Expr> &e) { return query(e.get()); }
+    // indirect depth of each top-level constraint
+    std::vector<unsigned int> depths;
   };
 }
 

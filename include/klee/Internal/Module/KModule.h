@@ -147,6 +147,10 @@ namespace klee {
     /// Run passes that check if module is valid LLVM IR and if invariants
     /// expected by KLEE's Executor hold.
     void checkModule();
+
+    /// Assign a unique ID for each instruction and basic block. The unique ID will
+    /// be used in recording.
+    void assignID();
   };
 } // End klee namespace
 

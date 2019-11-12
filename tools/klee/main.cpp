@@ -45,6 +45,7 @@
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(4, 0)
 #include <llvm/Bitcode/BitcodeReader.h>
+#include <llvm/Bitcode/BitcodeWriter.h>
 #else
 #include <llvm/Bitcode/ReaderWriter.h>
 #endif
@@ -271,6 +272,13 @@ namespace {
   SeedOutDir("seed-dir",
              cl::desc("Directory with .ktest files to be used as seeds"),
              cl::cat(SeedingCat));
+
+  cl::opt<std::string>
+  SaveFinalModulePath("save-final-module-path",
+                      cl::desc("Path to save the linked module"),
+                      cl::value_desc("path file"),
+                      cl::init(""),
+                      cl::cat(HASECat));
 
   cl::opt<unsigned>
   MakeConcreteSymbolic("make-concrete-symbolic",
@@ -1370,6 +1378,20 @@ linkWithUclibc(StringRef libDir,
 }
 #endif
 
+static void
+saveFinalModuleToFile(Module *M) {
+  if (SaveFinalModulePath == "")
+    return;
+
+  std::error_code EC;
+  raw_fd_ostream fs(SaveFinalModulePath, EC, llvm::sys::fs::F_None);
+
+  WriteBitcodeToFile(M, fs);
+  fs.close();
+
+  llvm::errs() << "Final module saved to " << SaveFinalModulePath << "\n";
+}
+
 int main(int argc, char **argv, char **envp) {
   atexit(llvm_shutdown);  // Call llvm_shutdown() on exit.
 
@@ -1603,6 +1625,8 @@ int main(int argc, char **argv, char **envp) {
   // locale and other data and then calls main.
 
   auto finalModule = interpreter->setModule(loadedModules, Opts);
+  saveFinalModuleToFile(finalModule);
+
   Function *mainFn = finalModule->getFunction(EntryPoint);
   if (!mainFn) {
     klee_error("Entry function '%s' not found in module.", EntryPoint.c_str());

@@ -7,6 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "klee/Internal/Module/Cell.h"
+#include "klee/Internal/Module/InstructionInfoTable.h"
+#include "klee/Internal/Module/KInstruction.h"
+#include "klee/Internal/Module/KModule.h"
+#include "klee/Internal/Support/ModuleUtil.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Config/Version.h"
 #include "klee/Expr/Constraints.h"
 #include "klee/Expr/ArrayCache.h"
@@ -115,6 +121,9 @@ namespace {
     unsigned MaxErrors;
     unsigned NumErrors;
 
+    std::vector<std::unique_ptr<llvm::Module>> loadedModules;
+    LLVMContext ctx;
+
     // FIXME: Use LLVM symbol tables?
     IdentifierTabTy IdentifierTab;
 
@@ -133,6 +142,10 @@ namespace {
     /* Core parsing functionality */
     
     const Identifier *GetOrCreateIdentifier(const Token &Tok);
+    const Identifier *GetOrCreateIdentifier(const std::string &Name);
+
+    Instruction *GetLLVMIR(
+          StringRef &_func, StringRef &_bb, StringRef &_inst);
 
     void GetNextNonCommentToken() {
       do {
@@ -327,6 +340,23 @@ namespace {
           ClearArrayAfterQuery(_ClearArrayAfterQuery), TheLexer(MB),
           MaxErrors(~0u), NumErrors(0) {}
 
+    ParserImpl(const std::string _Filename, const MemoryBuffer *MB,
+               ExprBuilder *_Builder, bool _ClearArrayAfterQuery,
+               const std::string _BitcodePath)
+        : Filename(_Filename), TheMemoryBuffer(MB), Builder(_Builder),
+          ClearArrayAfterQuery(_ClearArrayAfterQuery), TheLexer(MB),
+          MaxErrors(~0u), NumErrors(0) {
+      klee_message("loading from %s\n", _BitcodePath.c_str());
+
+      std::string errorMsg;
+      if (!klee::loadFile(_BitcodePath, ctx, loadedModules, errorMsg)) {
+        klee_error("error loading program '%s': %s", _BitcodePath.c_str(),
+                   errorMsg.c_str());
+      }
+      assert(loadedModules.size() == 1);
+
+    }
+
     virtual ~ParserImpl();
 
     /// Initialize - Initialize the parsing state. This must be called
@@ -348,6 +378,8 @@ namespace {
     virtual unsigned GetNumErrors() const {
       return NumErrors; 
     }
+
+    void ParseUniqID(Token &Tok);
   };
 }
 
@@ -365,6 +397,73 @@ const Identifier *ParserImpl::GetOrCreateIdentifier(const Token &Tok) {
   return I;
 }
 
+const Identifier *ParserImpl::GetOrCreateIdentifier(const std::string &Name) {
+  IdentifierTabTy::iterator it = IdentifierTab.find(Name);
+  if (it != IdentifierTab.end())
+    return it->second;
+
+  Identifier *I = new Identifier(Name);
+  IdentifierTab.insert(std::make_pair(Name, I));
+
+  return I;
+}
+
+Instruction *ParserImpl::GetLLVMIR(
+      StringRef &_func, StringRef &_bb, StringRef &_inst) {
+  Module *M = loadedModules[0].get();
+  for (Function &F : *M) {
+    if (F.getName() != _func)
+      continue;
+    for (BasicBlock &BB : F) {
+      if (BB.getName() != _bb)
+        continue;
+      for (Instruction &I : BB) {
+        if (I.getName() == _inst)
+          return &I;
+      }
+    }
+  }
+  klee_warning("Can not get LLVMIR Func: %s, BB: %s, Inst: %s",
+      _func.str().c_str(), _bb.str().c_str(), _inst.str().c_str());
+  return nullptr;
+}
+
+void ParserImpl::ParseUniqID(Token &Tok) {
+  const char *start = Tok.start + 2;
+  const char *p;
+  int i;
+
+  for (p = start, i = 0; *p != ':'; p++, i++) {}
+  std::string sym(start, i);
+
+  start = p + 1;
+  for (p = start, i = 0; *p != ':'; p++, i++) {}
+  StringRef func(start, i);
+
+  start = p + 1;
+  for (p = start, i = 0; *p != ':'; p++, i++) {}
+  StringRef bb(start, i);
+
+  start = p + 1;
+  for (p = start, i = 0; *p != '\n'; p++, i++) {}
+  StringRef inst(start, i);
+  if (loadedModules.size() != 0) {
+    const Identifier *id = GetOrCreateIdentifier(sym);
+    KInstruction *ki = new KInstruction();
+    ki->inst = GetLLVMIR(func, bb, inst);
+    assert(ki->inst != nullptr);
+    ki->info = nullptr;
+    ki->operands = nullptr;
+    ki->dest = 0;
+
+    auto it = ExprSymTab.find(id);
+    if (it != ExprSymTab.end()) {
+      assert(it->second->kinst == nullptr);
+      it->second->kinst = ki;
+    }
+  }
+}
+
 Decl *ParserImpl::ParseTopLevelDecl() {
   // Repeat until success or EOF.
   while (Tok.kind != Token::EndOfFile) {
@@ -380,6 +479,12 @@ Decl *ParserImpl::ParseTopLevelDecl() {
       DeclResult Res = ParseCommandDecl();
       if (Res.isValid())
         return Res.get();
+      break;
+    }
+
+    case Token::UniqID: {
+      ParseUniqID(Tok);
+      ConsumeAnyToken();
       break;
     }
 
@@ -1569,6 +1674,8 @@ void ParserImpl::Error(const char *Message, const Token &At) {
 }
 
 ParserImpl::~ParserImpl() {
+  loadedModules.clear();
+
   // Free identifiers
   //
   // Note the Identifiers are not disjoint across the symbol
@@ -1649,6 +1756,15 @@ Parser::~Parser() {
 Parser *Parser::Create(const std::string Filename, const MemoryBuffer *MB,
                        ExprBuilder *Builder, bool ClearArrayAfterQuery) {
   ParserImpl *P = new ParserImpl(Filename, MB, Builder, ClearArrayAfterQuery);
+  P->Initialize();
+  return P;
+}
+
+Parser *Parser::Create(const std::string Filename, const MemoryBuffer *MB,
+                       ExprBuilder *Builder, bool ClearArrayAfterQuery,
+                       const std::string BitcodePath) {
+  ParserImpl *P = new ParserImpl(Filename, MB, Builder,
+                            ClearArrayAfterQuery, BitcodePath);
   P->Initialize();
   return P;
 }

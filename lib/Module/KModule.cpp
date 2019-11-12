@@ -250,7 +250,6 @@ void KModule::instrument(const Interpreter::ModuleOptions &opts) {
 
   pm.add(new IntrinsicCleanerPass(*targetData));
   pm.add(new DebugPass());
-  pm.add(new AssignIDPass());
   pm.run(*module);
 }
 
@@ -378,6 +377,12 @@ void KModule::checkModule() {
   if (!operandTypeCheckPass->checkPassed()) {
     klee_error("Unexpected instruction operand types detected");
   }
+}
+
+void KModule::assignID() {
+  legacy::PassManager pm;
+  pm.add(new AssignIDPass());
+  pm.run(*module);
 }
 
 KConstant* KModule::getKConstant(const Constant *c) {

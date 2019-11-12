@@ -64,6 +64,12 @@ llvm::cl::opt<std::string> DumpConcretizedConstraints(
     llvm::cl::desc("Dump the concretized constraints to a file"),
     llvm::cl::cat(klee::HASECat));
 
+llvm::cl::opt<std::string> BitcodePath(
+    "bitcode",
+    llvm::cl::init(""),
+    llvm::cl::desc("The bitcode of the program"),
+    llvm::cl::cat(klee::HASECat));
+
 llvm::cl::opt<bool> AdditionalConcreteValuesRandom(
     "additional-concrete-values-random",
     llvm::cl::init(false),
@@ -125,6 +131,18 @@ llvm::cl::opt<bool> ClearArrayAfterQuery(
                    "is performed (default=false)"),
     llvm::cl::init(false), llvm::cl::cat(klee::ExprCat));
 } // namespace
+
+
+static Parser *createParser(const char *Filename,
+                             const MemoryBuffer *MB,
+                             ExprBuilder *Builder) {
+  if (BitcodePath != "") {
+    return Parser::Create(Filename, MB, Builder, ClearArrayAfterQuery, BitcodePath);
+  }
+  else {
+    return Parser::Create(Filename, MB, Builder, ClearArrayAfterQuery);
+  }
+}
 
 static std::string getQueryLogPath(const char filename[])
 {

@@ -24,6 +24,7 @@ using namespace klee::expr;
 const char *Token::getKindName() const {
   switch (kind) {
   default:
+  case UniqID:     return "UniqID";
   case Unknown:    return "Unknown";
   case Arrow:      return "Arrow";
   case At:         return "At";
@@ -235,9 +236,17 @@ Token &Lexer::Lex(Token &Result) {
   case '{': return SetTokenKind(Result, Token::LBrace);
   case '}': return SetTokenKind(Result, Token::RBrace);
 
-  case '#':
-    SkipToEndOfLine();
-    return SetTokenKind(Result, Token::Comment);
+  case '#': {
+    if (PeekNextChar() == '!') {
+      GetNextChar();
+      SkipToEndOfLine();
+      return SetTokenKind(Result, Token::UniqID);
+    }
+    else {
+      SkipToEndOfLine();
+      return SetTokenKind(Result, Token::Comment);
+    }
+  }
 
   case '+': {
     if (isdigit(PeekNextChar()))

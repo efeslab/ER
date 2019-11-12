@@ -578,6 +578,9 @@ Executor::setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
   Context::initialize(TD->isLittleEndian(),
                       (Expr::Width)TD->getPointerSizeInBits());
 
+  // assign an unique ID for each instruction and basic block
+  kmodule->assignID();
+
   return kmodule->module.get();
 }
 

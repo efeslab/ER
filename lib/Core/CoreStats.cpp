@@ -47,4 +47,15 @@ Statistic stats::indirectBrTime("indirectBrTime", "indibrTime");
 Statistic stats::brTime("BrTime", "BrTime");
 Statistic stats::callTime("CallTime", "CTime");
 Statistic stats::allocaTime("allocTime", "allocTime");
+Statistic stats::concreteBr("ConcreteBr", "CBr");
+Statistic stats::concreteIndirectBr("ConcreteIndirectBr", "CIBr");
+Statistic stats::concreteSwitch("ConcreteSwitch", "CSwitch");
+Statistic stats::concreteSelect("ConcreteSelect", "CSelect");
+Statistic stats::concreteCall("ConcreteCall", "CCall");
+Statistic stats::symbolicBr("SymbolicBr", "SBr");
+Statistic stats::symbolicIndirectBr("SymbolicIndirectBr", "SIBr");
+Statistic stats::symbolicSwitch("SymbolicSwitch", "SSwitch");
+Statistic stats::symbolicSelect("SymbolicSelect", "SSelect");
+Statistic stats::symbolicCall("SymbolicCall", "SCall");
 Statistic stats::dummy3("******************************** hase end *************************", "dummy3");
+

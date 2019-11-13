@@ -1779,6 +1779,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       ref<Expr> cond = eval(ki, 0, state).value;
 
       cond = optimizer.optimizeExpr(cond, false);
+
+      if (isa<ConstantExpr>(cond))
+        ++stats::concreteBr;
+      else
+        ++stats::symbolicBr;
+
       Executor::StatePair branches = fork(state, cond, false);
 
       // NOTE: There is a hidden dependency here, markBranchVisited
@@ -1801,6 +1807,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     const auto bi = cast<IndirectBrInst>(i);
     BasicBlock *parentbb = bi->getParent();
     auto address = eval(ki, 0, state).value;
+
+    if (isa<ConstantExpr>(address))
+      ++stats::concreteIndirectBr;
+    else
+      ++stats::symbolicIndirectBr;
+
     address = toUnique(state, address);
 
     // parse the IndirectBr instruction, order unique destination BasicBlocks deterministicly
@@ -1950,6 +1962,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     SwitchInst *si = cast<SwitchInst>(i);
     ref<Expr> cond = eval(ki, 0, state).value;
     BasicBlock *parentbb = si->getParent();
+
+    if (isa<ConstantExpr>(cond))
+      ++stats::concreteSwitch;
+    else
+      ++stats::symbolicSwitch;
     //**** parse the switch instruction ****//
 
     // We use CaseIt->getSuccessorIndex as the unique case expression index
@@ -2243,9 +2260,16 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         }
       }
 
+      ++stats::concreteCall;
+
       executeCall(state, ki, f, arguments);
     } else {
       ref<Expr> v = eval(ki, 0, state).value;
+
+      if (isa<ConstantExpr>(v))
+        ++stats::concreteCall;
+      else
+        ++stats::symbolicCall;
 
       ExecutionState *free = &state;
       bool hasInvalid = false, first = true;
@@ -2296,6 +2320,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Select: {
     // NOTE: It is not required that operands 1 and 2 be of scalar type.
     ref<Expr> cond = eval(ki, 0, state).value;
+
+    if (isa<ConstantExpr>(cond))
+      ++stats::concreteSelect;
+    else
+      ++stats::symbolicSelect;
+
     ref<Expr> tExpr = eval(ki, 1, state).value;
     ref<Expr> fExpr = eval(ki, 2, state).value;
     ref<Expr> result = SelectExpr::create(cond, tExpr, fExpr);

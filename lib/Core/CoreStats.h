@@ -39,6 +39,16 @@ namespace stats {
   extern Statistic executeMemopOOBCheck;
   extern Statistic executeMemopTimeInBounds;
   extern Statistic executeMemopTimeErrHandl;
+  extern Statistic concreteBr;
+  extern Statistic concreteIndirectBr;
+  extern Statistic concreteSwitch;
+  extern Statistic concreteSelect;
+  extern Statistic concreteCall;
+  extern Statistic symbolicBr;
+  extern Statistic symbolicIndirectBr;
+  extern Statistic symbolicSwitch;
+  extern Statistic symbolicSelect;
+  extern Statistic symbolicCall;
   // ** llvm ir instruction
   extern Statistic dummy2;
   extern Statistic switchTime;

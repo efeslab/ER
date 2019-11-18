@@ -248,11 +248,29 @@ int IndirectReadDepthCalculator::assignDepth(const ref<Expr> &e, int readLevel) 
   if (ReadExpr *RE = dyn_cast<ReadExpr>(e)) {
     updateMaxLevelfromKid(RE->index, readLevel + 1, m);
     const UpdateNode *un = RE->updates.head;
+    std::vector<const UpdateNode *> un_vec;
     while (un) {
+      un_vec.push_back(un);
       updateMaxLevelfromKid(un->index, readLevel + 1, m);
       updateMaxLevelfromKid(un->value, readLevel, m);
+      /*
+       * Indirect depth of an UpdateNode depends on its parent ReadExpr
+       */
+      auto insert_pair = depthStoreUNode.insert(std::make_pair(un, readLevel));
+      if (insert_pair.second) {
+        // insert successfully, meaning see this UNode first time
+        // do nothing
+        ;
+      }
+      else {
+        decltype(depthStoreUNode)::iterator &existed = insert_pair.first;
+        if (readLevel > existed->second) {
+          existed->second = readLevel;
+        }
+      }
       un = un->next;
     }
+
     if (!RE->index.isNull() && (RE->index->getKind() == Expr::Constant) &&
         RE->updates.head == nullptr) {
       lastLevelReads.insert(RE);

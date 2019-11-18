@@ -109,6 +109,7 @@ namespace klee {
     std::set<ref<ReadExpr>> lastLevelReads;
     // map Expr(by their hash) to indirect depth
     std::unordered_map<const Expr*, int> depthStore;
+    std::unordered_map<const UpdateNode*, int> depthStoreUNode;
     // the maximum indirect depth across all constraints
     int maxLevel;
 
@@ -135,6 +136,7 @@ namespace klee {
     std::set<ref<ReadExpr>>& getLastLevelReads() { return lastLevelReads; }
     int query(const Expr *e);
     int query(const ref<Expr> &e) { return query(e.get()); }
+    int query(const UpdateNode *un) { return depthStoreUNode[un]; }
     // indirect depth of each top-level constraint
     std::vector<unsigned int> depths;
   };

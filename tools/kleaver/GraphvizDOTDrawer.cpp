@@ -32,11 +32,10 @@ void GraphvizDOTDrawer::declareLastLevelRead(const ReadExpr *RE, const char *cat
 }
 
 void GraphvizDOTDrawer::declareUpdateNode(const UpdateNode *un, const Array *root) {
-  int IDep = std::max(IDCalc.query(un->index), IDCalc.query(un->value));
   os << (size_t)un
      << "[ label=\"UN\", Kind=UN , Category=UN,"
      << "Root=" << root->name << ","
-     << "IDep=" << IDep
+     << "IDep=" << IDCalc.query(un)
      <<  "];\n";
 }
 

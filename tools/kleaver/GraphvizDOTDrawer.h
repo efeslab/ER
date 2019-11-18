@@ -38,8 +38,8 @@ class GraphvizDOTDrawer {
   void declareLastLevelRead(const ReadExpr *RE, const char *category);
   void declareUpdateNode(const UpdateNode *un, const Array *root);
   void declareArray(const Array *arr);
-  // edge category: N for normal edge, I for indirect edg
-  void drawEdge(const void *from, const void *to, const char *category="N");
+
+  void drawEdge(const void *from, const void *to, double weight);
 
   // ensure Expr *e is declared. If e has been visited, do nothing;
   // else declare it and add it to expr_worklist

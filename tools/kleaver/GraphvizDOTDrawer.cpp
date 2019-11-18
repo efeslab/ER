@@ -49,9 +49,9 @@ void GraphvizDOTDrawer::declareArray(const Array *arr) {
      << "];\n";
 }
 
-void GraphvizDOTDrawer::drawEdge(const void *from, const void *to, const char *category) {
+void GraphvizDOTDrawer::drawEdge(const void *from, const void *to, double weight) {
   os << (size_t)from << " -> " << (size_t)to
-     << "[category=" << category << "]"
+     << "[weight=" << std::to_string(weight) << "]"
      << ";\n";
 }
 
@@ -59,7 +59,10 @@ void GraphvizDOTDrawer::printHeader() {
   os << "digraph{\n";
 }
 void GraphvizDOTDrawer::printFooter() {
-  os << "}\n";
+  os << "dummyA[label=\"dummyA\", IDep=\"-1\"];\n"
+     << "dummyB[label=\"dummyB\", IDep=\"-1\"];\n"
+     << "dummyA -> dummyB [weight=5.0];\n"
+     << "}\n";
 }
 GraphvizDOTDrawer::GraphvizDOTDrawer(std::ostream &_os,
     const ConstraintManager &_cm): os(_os), cm(_cm), IDCalc(_cm) {
@@ -108,7 +111,7 @@ void GraphvizDOTDrawer::draw() {
       Expr *read_idx = RE->index.get();
       if (read_idx) {
         ensureExprDeclared(read_idx);
-        drawEdge(RE, read_idx, "I");
+        drawEdge(RE, read_idx, 1.5);
       }
       // Here we handle updatelists.
       const UpdateList &ul = RE->updates;
@@ -148,30 +151,30 @@ void GraphvizDOTDrawer::draw() {
             Expr *value = it->value.get();
             if (index) {
               ensureExprDeclared(index);
-              drawEdge(it, index, "I");
+              drawEdge(it, index, 1.5);
             }
             if (value) {
               ensureExprDeclared(value);
-              drawEdge(it, value);
+              drawEdge(it, value, 1.0);
             }
             if (it->next != sentinel) {
               // I am not the last pointer to be processed
               declareUpdateNode(it->next, root);
-              drawEdge(it, it->next);
+              drawEdge(it, it->next, 1.0);
               it = it->next;
             }
             else {
               // no matter we are processing an entire update list or only some
               //   new updates, sentinel is guaranteed to be declared here.
               if (sentinel) {
-                drawEdge(it, sentinel);
+                drawEdge(it, sentinel, 1.0);
               }
               else {
                 // only establish edges with non-const array
                 // (constant array is not a concretization dependency)
                 if (root->isSymbolicArray()) {
                   ensureArrayDeclared(root);
-                  drawEdge(it, root);
+                  drawEdge(it, root, 1.0);
                 }
               }
               break;
@@ -184,13 +187,13 @@ void GraphvizDOTDrawer::draw() {
           // do nothing, only sanity check
           assert(arr2latest_un.find(root) != arr2latest_un.end());
         }
-        drawEdge(e, head);
+        drawEdge(e, head, 1.0);
       }
       else {
         // no updatelist, connect current Read to symbolic root array
         if (root->isSymbolicArray()) {
           ensureArrayDeclared(root);
-          drawEdge(e, root);
+          drawEdge(e, root, 1.0);
         }
       }
     }
@@ -200,7 +203,7 @@ void GraphvizDOTDrawer::draw() {
         Expr *kid = kidref.get();
         if (kid) {
           ensureExprDeclared(kid);
-          drawEdge(e, kid);
+          drawEdge(e, kid, 1.0);
         }
       }
     }

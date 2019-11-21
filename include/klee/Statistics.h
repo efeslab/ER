@@ -155,4 +155,4 @@ namespace klee {
   void dumpStatisticsToLLVMrawos(llvm::raw_ostream &os);
 }
 
-#endif
+#endif /* KLEE_STATISTICS_H */

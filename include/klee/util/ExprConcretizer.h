@@ -3,11 +3,11 @@
 
 #include "klee/Common.h"
 #include "klee/Config/Version.h"
-#include "klee/Expr.h"
-#include "klee/Constraints.h"
+#include "klee/Expr/Expr.h"
+#include "klee/Expr/Constraints.h"
 #include "klee/Internal/Module/KInstruction.h"
-#include "klee/util/ExprPPrinter.h"
-#include "klee/util/ExprUtil.h"
+#include "klee/Expr/ExprPPrinter.h"
+#include "klee/Expr/ExprUtil.h"
 #include "klee/util/OracleEvaluator.h"
 
 #include "llvm/IR/Instructions.h"

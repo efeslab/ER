@@ -10,8 +10,8 @@
 #ifndef KLEE_EXECUTIONSTATE_H
 #define KLEE_EXECUTIONSTATE_H
 
-#include "klee/Constraints.h"
-#include "klee/Expr.h"
+#include "klee/Expr/Constraints.h"
+#include "klee/Expr/Expr.h"
 #include "klee/Internal/ADT/TreeStream.h"
 #include "klee/Internal/System/Time.h"
 #include "klee/MergeHandler.h"
@@ -72,8 +72,6 @@ public:
 private:
   // unsupported, use copy constructor
   ExecutionState &operator=(const ExecutionState &);
-
-  std::map<std::string, std::string> fnAliases;
 
 public:
   // Execution - Control Flow specific
@@ -183,10 +181,6 @@ public:
   /// @brief Set of used array names for this state.  Used to avoid collisions.
   std::set<std::string> arrayNames;
 
-  std::string getFnAlias(std::string fn);
-  void addFnAlias(std::string old_fn, std::string new_fn);
-  void removeFnAlias(std::string fn);
-
   // The objects handling the klee_open_merge calls this state ran through
   std::vector<ref<MergeHandler> > openMergeStack;
 
@@ -227,4 +221,4 @@ public:
 };
 }
 
-#endif
+#endif /* KLEE_EXECUTIONSTATE_H */

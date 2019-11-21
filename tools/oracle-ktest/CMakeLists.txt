@@ -12,6 +12,7 @@ add_executable(oracle-ktest
 
 set(KLEE_LIBS
   kleeBasic
+  kleeSupport
 )
 
 target_link_libraries(oracle-ktest ${KLEE_LIBS})

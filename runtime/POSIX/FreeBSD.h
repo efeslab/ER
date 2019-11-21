@@ -1,5 +1,5 @@
-#ifndef _FREEBSD_SHIMS_H
-#define _FREEBSD_SHIMS_H
+#ifndef KLEE_FREEBSD_H
+#define KLEE_FREEBSD_H
 
 // termios maps
 #define TCGETS  TIOCGETA
@@ -13,7 +13,9 @@
 // for various typedefs inside FreeBSD headers
 #define __BSD_VISIBLE   1
 
+#ifndef INSIDE_FD_64
 #define stat64 stat
+#endif
 
 #include <sys/syscall.h>
 
@@ -435,4 +437,19 @@ struct rlimit64;
 #define	__NR_numa_setaffinity	SYS_numa_setaffinity
 #define	__NR_MAXSYSCALL	SYS_MAXSYSCALL
 
-#endif //_FREEBSD_SHIMS_H
+// we are in fd_64.c, add "64" suffix to its functions
+#ifdef INSIDE_FD_64
+
+#define open open64
+#define openat openat64
+#define lseek lseek64
+#define __xstat __xstat64
+#define stat stat64
+#define __lxstat __lxstat64
+#define lstat lstat64
+#define __fxstat __fxstat64
+#define fstat fstat64
+
+#endif
+
+#endif /* KLEE_FREEBSD_H */

@@ -2,8 +2,8 @@
 #define KLEE_DEBUGHELPER_H
 #include "llvm/IR/Instructions.h"
 #include "klee/ExecutionState.h"
-#include "klee/Constraints.h"
-#include "klee/Expr.h"
+#include "klee/Expr/Constraints.h"
+#include "klee/Expr/Expr.h"
 using namespace llvm;
 using namespace klee;
 void debugDumpLLVMIR(llvm::Instruction *llvmir);

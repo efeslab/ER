@@ -12,6 +12,7 @@ add_executable(concretizer
 
 set(KLEE_LIBS
   kleeBasic
+  kleeSupport
 )
 
 target_link_libraries(concretizer ${KLEE_LIBS})

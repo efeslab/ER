@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef KLEE_MODULE_UTIL_H
-#define KLEE_MODULE_UTIL_H
+#ifndef KLEE_MODULEUTIL_H
+#define KLEE_MODULEUTIL_H
 
 #include "klee/Config/Version.h"
 
@@ -68,4 +68,4 @@ bool loadFile(const std::string &libraryName, llvm::LLVMContext &context,
 bool stripDebugInfo(llvm::Module &module);
 }
 
-#endif
+#endif /* KLEE_MODULEUTIL_H */

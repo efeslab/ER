@@ -10,27 +10,28 @@
 #define _LARGEFILE64_SOURCE
 #include "fd.h"
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "klee/klee.h"
+
+#include <assert.h>
 #include <errno.h>
-#include <sys/syscall.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <fcntl.h>
 #include <stdarg.h>
-#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
 #ifndef __FreeBSD__
 #include <sys/vfs.h>
 #endif
-#include <unistd.h>
 #include <dirent.h>
 #include <sys/ioctl.h>
 #include <sys/mtio.h>
-#include <termios.h>
 #include <sys/select.h>
-#include <klee/klee.h>
 #include <sys/time.h>
+#include <termios.h>
+#include <unistd.h>
 
 /* Returns pointer to the symbolic file structure fs the pathname is symbolic */
 static exe_disk_file_t *__get_sym_file(const char *pathname) {
@@ -1371,19 +1372,25 @@ static const char *__concretize_string(const char *s) {
   char *sc = __concretize_ptr(s);
   unsigned i;
 
-  for (i=0; ; ++i) {
+  for (i = 0;; ++i, ++sc) {
     char c = *sc;
+    // Avoid writing read-only memory locations
+    if (!klee_is_symbolic(c)) {
+      if (!c)
+        break;
+      continue;
+    }
     if (!(i&(i-1))) {
       if (!c) {
-        *sc++ = 0;
+        *sc = 0;
         break;
       } else if (c=='/') {
-        *sc++ = '/';
+        *sc = '/';
       } 
     } else {
       char cc = (char) klee_get_valuel((long)c);
       klee_assume(cc == c);
-      *sc++ = cc;
+      *sc = cc;
       if (!cc) break;
     }
   }

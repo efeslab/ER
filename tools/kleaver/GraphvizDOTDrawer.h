@@ -1,7 +1,7 @@
 #ifndef KLEE_GRAPHVIZDOTDRAWER_H
 #define KLEE_GRAPHVIZDOTDRAWER_H
-#include "klee/Expr.h"
-#include "klee/Constraints.h"
+#include "klee/Expr/Expr.h"
+#include "klee/Expr/Constraints.h"
 #include "klee/util/ExprConcretizer.h"
 
 #include <iostream>

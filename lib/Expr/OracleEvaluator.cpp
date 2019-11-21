@@ -1,6 +1,6 @@
 #include "klee/util/OracleEvaluator.h"
 #include "klee/Internal/Support/ErrorHandling.h"
-#include "klee/SolverImpl.h"
+#include "klee/Solver/SolverImpl.h"
 #include "klee/OptionCategories.h"
 
 using namespace llvm;

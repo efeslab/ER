@@ -10,10 +10,10 @@
 #ifdef ENABLE_Z3
 #include "Z3Builder.h"
 
-#include "klee/Expr.h"
+#include "klee/Expr/Expr.h"
 #include "klee/Internal/Support/ErrorHandling.h"
-#include "klee/Solver.h"
-#include "klee/SolverStats.h"
+#include "klee/Solver/Solver.h"
+#include "klee/Solver/SolverStats.h"
 #include "klee/util/Bits.h"
 
 #include "llvm/ADT/StringExtras.h"

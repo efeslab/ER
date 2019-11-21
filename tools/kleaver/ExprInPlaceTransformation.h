@@ -1,7 +1,7 @@
 #ifndef KLEE_EXPRINPLACETRANSFORMATION_H
 #define KLEE_EXPRINPLACETRANSFORMATION_H
-#include "klee/Expr.h"
-#include "klee/Constraints.h"
+#include "klee/Expr/Expr.h"
+#include "klee/Expr/Constraints.h"
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>

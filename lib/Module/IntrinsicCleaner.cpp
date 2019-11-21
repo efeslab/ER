@@ -10,6 +10,8 @@
 #include "Passes.h"
 
 #include "klee/Config/Version.h"
+#include "llvm/Analysis/MemoryBuiltins.h"
+#include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
@@ -59,6 +61,7 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b, Module &M) {
       switch (ii->getIntrinsicID()) {
       case Intrinsic::vastart:
       case Intrinsic::vaend:
+      case Intrinsic::fabs:
         break;
 
         // Lower vacopy so that object resolution etc is handled by
@@ -190,66 +193,149 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b, Module &M) {
         dirty = true;
         break;
       }
+#if LLVM_VERSION_CODE >= LLVM_VERSION(8, 0)
+      case Intrinsic::sadd_sat:
+      case Intrinsic::ssub_sat:
+      case Intrinsic::uadd_sat:
+      case Intrinsic::usub_sat: {
+        IRBuilder<> builder(ii);
+
+        Value *op1 = ii->getArgOperand(0);
+        Value *op2 = ii->getArgOperand(1);
+
+        unsigned int bw = op1->getType()->getPrimitiveSizeInBits();
+        assert(bw == op2->getType()->getPrimitiveSizeInBits());
+
+        Value *overflow = nullptr;
+        Value *result = nullptr;
+        Value *saturated = nullptr;
+        switch(ii->getIntrinsicID()) {
+          case Intrinsic::usub_sat:
+            result = builder.CreateSub(op1, op2);
+            overflow = builder.CreateICmpULT(op1, op2); // a < b  =>  a - b < 0
+            saturated = ConstantInt::get(ctx, APInt(bw, 0));
+            break;
+          case Intrinsic::uadd_sat:
+            result = builder.CreateAdd(op1, op2);
+            overflow = builder.CreateICmpULT(result, op1); // a + b < a
+            saturated = ConstantInt::get(ctx, APInt::getMaxValue(bw));
+            break;
+          case Intrinsic::ssub_sat:
+          case Intrinsic::sadd_sat: {
+            if (ii->getIntrinsicID() == Intrinsic::ssub_sat) {
+              result = builder.CreateSub(op1, op2);
+            } else {
+              result = builder.CreateAdd(op1, op2);
+            }
+            ConstantInt *zero = ConstantInt::get(ctx, APInt(bw, 0));
+            ConstantInt *smin = ConstantInt::get(ctx, APInt::getSignedMinValue(bw));
+            ConstantInt *smax = ConstantInt::get(ctx, APInt::getSignedMaxValue(bw));
+
+            Value *sign1 = builder.CreateICmpSLT(op1, zero);
+            Value *sign2 = builder.CreateICmpSLT(op2, zero);
+            Value *signR = builder.CreateICmpSLT(result, zero);
+
+            if (ii->getIntrinsicID() == Intrinsic::ssub_sat) {
+              saturated = builder.CreateSelect(sign2, smax, smin);
+            } else {
+              saturated = builder.CreateSelect(sign2, smin, smax);
+            }
+
+            // The sign of the result differs from the sign of the first operand
+            overflow = builder.CreateXor(sign1, signR);
+            if (ii->getIntrinsicID() == Intrinsic::ssub_sat) {
+              // AND the signs of the operands differ
+              overflow = builder.CreateAnd(overflow, builder.CreateXor(sign1, sign2));
+            } else {
+              // AND the signs of the operands are the same
+              overflow = builder.CreateAnd(overflow, builder.CreateNot(builder.CreateXor(sign1, sign2)));
+            }
+            break;
+          }
+          default: ;
+        }
+
+        result = builder.CreateSelect(overflow, saturated, result);
+        ii->replaceAllUsesWith(result);
+        ii->eraseFromParent();
+        dirty = true;
+        break;
+      }
+#endif
 
       case Intrinsic::trap: {
         // Intrinsic instruction "llvm.trap" found. Directly lower it to
         // a call of the abort() function.
-        Function *F = cast<Function>(
-            M.getOrInsertFunction("abort", Type::getVoidTy(ctx)
-		    KLEE_LLVM_GOIF_TERMINATOR));
-        F->setDoesNotReturn();
-        F->setDoesNotThrow();
+        auto C = M.getOrInsertFunction("abort", Type::getVoidTy(ctx)
+                                                    KLEE_LLVM_GOIF_TERMINATOR);
+#if LLVM_VERSION_CODE >= LLVM_VERSION(9, 0)
+        if (auto *F = dyn_cast<Function>(C.getCallee())) {
+#else
+        if (auto *F = dyn_cast<Function>(C)) {
+#endif
+          F->setDoesNotReturn();
+          F->setDoesNotThrow();
+        }
 
         llvm::IRBuilder<> Builder(ii);
-        Builder.CreateCall(F);
+        Builder.CreateCall(C);
         Builder.CreateUnreachable();
 
-        ii->eraseFromParent();
+        i = ii->eraseFromParent();
+
+        // check if the instruction after the one we just replaced is not the
+        // end of the basic block and if it is not (i.e. it is a valid
+        // instruction), delete it and all remaining because the cleaner just
+        // introduced a terminating instruction (unreachable) otherwise llvm will
+        // assert in Verifier::visitTerminatorInstr
+        while (i != ie) { // i was already incremented above.
+          i = i->eraseFromParent();
+        }
 
         dirty = true;
         break;
       }
       case Intrinsic::objectsize: {
+#if LLVM_VERSION_CODE >= LLVM_VERSION(4, 0)
+        // Lower the call to a concrete value
+        auto replacement = llvm::lowerObjectSizeCall(ii, DataLayout, nullptr,
+                                                     /*MustSucceed=*/true);
+#else
         // We don't know the size of an object in general so we replace
         // with 0 or -1 depending on the second argument to the intrinsic.
-#if LLVM_VERSION_CODE >= LLVM_VERSION(5, 0)
-        assert(ii->getNumArgOperands() == 3 && "wrong number of arguments");
-#else
         assert(ii->getNumArgOperands() == 2 && "wrong number of arguments");
-#endif
-
-        Value *minArg = ii->getArgOperand(1);
-        assert(minArg && "Failed to get second argument");
-        ConstantInt *minArgAsInt = dyn_cast<ConstantInt>(minArg);
-        assert(minArgAsInt && "Second arg is not a ConstantInt");
-        assert(minArgAsInt->getBitWidth() == 1 &&
-               "Second argument is not an i1");
-
-#if LLVM_VERSION_CODE >= LLVM_VERSION(5, 0)
-        auto nullArg = ii->getArgOperand(2);
-        assert(nullArg && "Failed to get second argument");
-        auto nullArgAsInt = dyn_cast<ConstantInt>(nullArg);
-        assert(nullArgAsInt && "Third arg is not a ConstantInt");
-        assert(nullArgAsInt->getBitWidth() == 1 &&
-               "Third argument is not an i1");
-	/* TODO should we do something with the 3rd argument? */
-#endif
-
-        Value *replacement = NULL;
+        auto minArg = dyn_cast_or_null<ConstantInt>(ii->getArgOperand(1));
+        assert(minArg &&
+               "Failed to get second argument or it is not ConstantInt");
+        assert(minArg->getBitWidth() == 1 && "Second argument is not an i1");
+        ConstantInt *replacement = nullptr;
         IntegerType *intType = dyn_cast<IntegerType>(ii->getType());
         assert(intType && "intrinsic does not have integer return type");
-        if (minArgAsInt->isZero()) {
+        if (minArg->isZero()) {
           // min=false
           replacement = ConstantInt::get(intType, -1, /*isSigned=*/true);
         } else {
           // min=true
           replacement = ConstantInt::get(intType, 0, /*isSigned=*/false);
         }
+
+#endif
         ii->replaceAllUsesWith(replacement);
         ii->eraseFromParent();
         dirty = true;
         break;
       }
+#if LLVM_VERSION_CODE >= LLVM_VERSION(8, 0)
+      case Intrinsic::is_constant: {
+        if(auto* constant = llvm::ConstantFoldInstruction(ii, ii->getModule()->getDataLayout()))
+          ii->replaceAllUsesWith(constant);
+        else
+          ii->replaceAllUsesWith(ConstantInt::getFalse(ii->getType()));
+        ii->eraseFromParent();
+        dirty = true;
+        break;
+      }
+#endif
       default:
         IL->LowerIntrinsicCall(ii);
         dirty = true;

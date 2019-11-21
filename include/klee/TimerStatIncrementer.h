@@ -12,16 +12,21 @@
 
 #include "klee/Statistics.h"
 #include "klee/Internal/Support/Timer.h"
+#include <cassert>
 
 namespace klee {
+
+  /**
+   * A TimerStatIncrementer adds its lifetime to a specified Statistic.
+   */
   class TimerStatIncrementer {
   private:
-    WallTimer timer;
+    const WallTimer timer;
     Statistic &statistic;
     bool checked;
 
   public:
-    TimerStatIncrementer(Statistic &_statistic) : statistic(_statistic), checked(false) {}
+    explicit TimerStatIncrementer(Statistic &_statistic) : statistic(_statistic), checked(false) {}
     ~TimerStatIncrementer() {
       if (!checked) {
         check();
@@ -29,13 +34,16 @@ namespace klee {
     }
 
     time::Span check() {
+      assert(!checked && "TimerStatIncrementer should not be checked twice");
       // record microseconds
-      time::Span delta = timer.check();
-      statistic += delta.toMicroseconds();
+      time::Span t = delta();
+      statistic += t.toMicroseconds();
       checked = true;
-      return delta;
+      return t;
     }
+
+    time::Span delta() const { return timer.delta(); }
   };
 }
 
-#endif
+#endif /* KLEE_TIMERSTATINCREMENTER_H */

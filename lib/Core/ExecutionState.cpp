@@ -11,7 +11,7 @@
 
 #include "klee/ExecutionState.h"
 
-#include "klee/Expr.h"
+#include "klee/Expr/Expr.h"
 #include "klee/OptionCategories.h"
 #include "klee/Internal/Module/Cell.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
@@ -121,7 +121,6 @@ ExecutionState::~ExecutionState() {
 }
 
 ExecutionState::ExecutionState(const ExecutionState& state):
-    fnAliases(state.fnAliases),
     pc(state.pc),
     prevPC(state.prevPC),
     stack(state.stack),
@@ -229,22 +228,6 @@ void ExecutionState::popFrame() {
 void ExecutionState::addSymbolic(const MemoryObject *mo, const Array *array) { 
   mo->refCount++;
   symbolics.push_back(std::make_pair(mo, array));
-}
-///
-
-std::string ExecutionState::getFnAlias(std::string fn) {
-  std::map < std::string, std::string >::iterator it = fnAliases.find(fn);
-  if (it != fnAliases.end())
-    return it->second;
-  else return "";
-}
-
-void ExecutionState::addFnAlias(std::string old_fn, std::string new_fn) {
-  fnAliases[old_fn] = new_fn;
-}
-
-void ExecutionState::removeFnAlias(std::string fn) {
-  fnAliases.erase(fn);
 }
 
 /**/

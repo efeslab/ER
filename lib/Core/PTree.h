@@ -7,43 +7,36 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef __UTIL_PTREE_H__
-#define __UTIL_PTREE_H__
+#ifndef KLEE_PTREE_H
+#define KLEE_PTREE_H
 
-#include <klee/Expr.h>
+#include "klee/Expr/Expr.h"
 
 namespace klee {
   class ExecutionState;
 
-  class PTree { 
-    typedef ExecutionState* data_type;
-
+  class PTreeNode {
   public:
-    typedef class PTreeNode Node;
-    Node *root;
+    PTreeNode *parent = nullptr;
+    std::unique_ptr<PTreeNode> left;
+    std::unique_ptr<PTreeNode> right;
+    ExecutionState *state = nullptr;
 
-    PTree(const data_type &_root);
-    ~PTree();
-    
-    std::pair<Node*,Node*> split(Node *n,
-                                 const data_type &leftData,
-                                 const data_type &rightData);
-    void remove(Node *n);
-
-    void dump(llvm::raw_ostream &os);
+    PTreeNode(const PTreeNode&) = delete;
+    PTreeNode(PTreeNode *parent, ExecutionState *state);
+    ~PTreeNode() = default;
   };
 
-  class PTreeNode {
-    friend class PTree;
+  class PTree {
   public:
-    PTreeNode *parent, *left, *right;
-    ExecutionState *data;
-    ref<Expr> condition;
+    std::unique_ptr<PTreeNode> root;
+    explicit PTree(ExecutionState *initialState);
+    ~PTree() = default;
 
-  private:
-    PTreeNode(PTreeNode *_parent, ExecutionState *_data);
-    ~PTreeNode();
+    static void attach(PTreeNode *node, ExecutionState *leftState, ExecutionState *rightState);
+    static void remove(PTreeNode *node);
+    void dump(llvm::raw_ostream &os);
   };
 }
 
-#endif
+#endif /* KLEE_PTREE_H */

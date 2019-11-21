@@ -7,16 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 #include "klee/Config/config.h"
-#ifdef ENABLE_METASMT
 
+#ifdef ENABLE_METASMT
 #include "MetaSMTSolver.h"
 #include "MetaSMTBuilder.h"
-#include "klee/Constraints.h"
+
+#include "klee/Expr/Assignment.h"
+#include "klee/Expr/Constraints.h"
+#include "klee/Expr/ExprUtil.h"
 #include "klee/Internal/Support/ErrorHandling.h"
-#include "klee/Solver.h"
-#include "klee/SolverImpl.h"
-#include "klee/util/Assignment.h"
-#include "klee/util/ExprUtil.h"
+#include "klee/Solver/Solver.h"
+#include "klee/Solver/SolverImpl.h"
 
 #include "llvm/Support/ErrorHandling.h"
 
@@ -51,11 +52,11 @@
 #endif
 
 #include <errno.h>
-#include <unistd.h>
 #include <signal.h>
-#include <sys/wait.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 static unsigned char *shared_memory_ptr;
 static int shared_memory_id = 0;
@@ -110,7 +111,7 @@ public:
 
   SolverRunStatus getOperationStatusCode();
 
-  SolverContext &get_meta_solver() { return (_meta_solver); };
+  SolverContext &get_meta_solver() { return _meta_solver; };
 };
 
 template <typename SolverContext>
@@ -140,7 +141,7 @@ char *MetaSMTSolverImpl<SolverContext>::getConstraintLog(const Query &) {
   const char *msg = "Not supported";
   char *buf = new char[strlen(msg) + 1];
   strcpy(buf, msg);
-  return (buf);
+  return buf;
 }
 
 template <typename SolverContext>
@@ -158,7 +159,7 @@ bool MetaSMTSolverImpl<SolverContext>::computeTruth(const Query &query,
     success = true;
   }
 
-  return (success);
+  return success;
 }
 
 template <typename SolverContext>
@@ -180,7 +181,7 @@ bool MetaSMTSolverImpl<SolverContext>::computeValue(const Query &query,
     success = true;
   }
 
-  return (success);
+  return success;
 }
 
 template <typename SolverContext>
@@ -215,7 +216,7 @@ bool MetaSMTSolverImpl<SolverContext>::computeInitialValues(
     }
   }
 
-  return (success);
+  return success;
 }
 
 template <typename SolverContext>
@@ -260,9 +261,9 @@ SolverImpl::SolverRunStatus MetaSMTSolverImpl<SolverContext>::runAndGetCex(
   }
 
   if (true == hasSolution) {
-    return (SolverImpl::SOLVER_RUN_STATUS_SUCCESS_SOLVABLE);
+    return SolverImpl::SOLVER_RUN_STATUS_SUCCESS_SOLVABLE;
   } else {
-    return (SolverImpl::SOLVER_RUN_STATUS_SUCCESS_UNSOLVABLE);
+    return SolverImpl::SOLVER_RUN_STATUS_SUCCESS_UNSOLVABLE;
   }
 }
 
@@ -291,7 +292,7 @@ MetaSMTSolverImpl<SolverContext>::runAndGetCexForked(
   int pid = fork();
   if (pid == -1) {
     klee_warning("fork failed (for metaSMT)");
-    return (SolverImpl::SOLVER_RUN_STATUS_FORK_FAILED);
+    return SolverImpl::SOLVER_RUN_STATUS_FORK_FAILED;
   }
 
   if (pid == 0) {
@@ -349,7 +350,7 @@ MetaSMTSolverImpl<SolverContext>::runAndGetCexForked(
 
     if (res < 0) {
       klee_warning("waitpid() for metaSMT failed");
-      return (SolverImpl::SOLVER_RUN_STATUS_WAITPID_FAILED);
+      return SolverImpl::SOLVER_RUN_STATUS_WAITPID_FAILED;
     }
 
     // From timed_run.py: It appears that linux at least will on
@@ -359,7 +360,7 @@ MetaSMTSolverImpl<SolverContext>::runAndGetCexForked(
       klee_warning(
           "error: metaSMT did not return successfully (status = %d) \n",
           WTERMSIG(status));
-      return (SolverImpl::SOLVER_RUN_STATUS_INTERRUPTED);
+      return SolverImpl::SOLVER_RUN_STATUS_INTERRUPTED;
     }
 
     int exitcode = WEXITSTATUS(status);
@@ -369,10 +370,10 @@ MetaSMTSolverImpl<SolverContext>::runAndGetCexForked(
       hasSolution = false;
     } else if (exitcode == 52) {
       klee_warning("metaSMT timed out");
-      return (SolverImpl::SOLVER_RUN_STATUS_TIMEOUT);
+      return SolverImpl::SOLVER_RUN_STATUS_TIMEOUT;
     } else {
       klee_warning("metaSMT did not return a recognized code");
-      return (SolverImpl::SOLVER_RUN_STATUS_UNEXPECTED_EXIT_CODE);
+      return SolverImpl::SOLVER_RUN_STATUS_UNEXPECTED_EXIT_CODE;
     }
 
     if (hasSolution) {
@@ -415,7 +416,7 @@ MetaSMTSolver<SolverContext>::~MetaSMTSolver() {}
 
 template <typename SolverContext>
 char *MetaSMTSolver<SolverContext>::getConstraintLog(const Query &query) {
-  return (impl->getConstraintLog(query));
+  return impl->getConstraintLog(query);
 }
 
 template <typename SolverContext>

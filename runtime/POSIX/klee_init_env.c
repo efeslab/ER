@@ -245,6 +245,8 @@ usage: (klee_init_env) [options] [program arguments]\n\
     } else if (__streq(argv[k], "--fd-fail") || __streq(argv[k], "-fd-fail")) {
       fd_fail = 1;
       k++;
+    } else if (__streq(argv[k], "--bout-file") || __streq(argv[k], "-bout-file")) {
+      k += 2;
     } else if (__streq(argv[k], "--max-fail") ||
                __streq(argv[k], "-max-fail")) {
       const char *msg = "--max-fail expects an integer argument <max-failures>";
@@ -283,12 +285,12 @@ usage: (klee_init_env) [options] [program arguments]\n\
 
 /* The following function represents the main function of the user application
  * and is renamed during POSIX setup */
-int __klee_posix_wrapped_main(int argc, char **argv);
+int __klee_posix_wrapped_main(int argc, char **argv, char **envp);
 
 /* This wrapper gets called instead of main if POSIX setup is used
  * And it will be renamed to `__user_main` during POSIX setup
  */
-int __klee_posix_wrapper(int argcPtr, char **argvPtr) {
+int __klee_posix_wrapper(int argcPtr, char **argvPtr, char** envp) {
   klee_init_env(&argcPtr, &argvPtr);
-  return __klee_posix_wrapped_main(argcPtr, argvPtr);
+  return __klee_posix_wrapped_main(argcPtr, argvPtr, envp);
 }

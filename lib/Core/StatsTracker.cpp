@@ -18,7 +18,7 @@
 #include "klee/Internal/Support/ModuleUtil.h"
 #include "klee/Internal/System/MemoryUsage.h"
 #include "klee/Internal/Support/ErrorHandling.h"
-#include "klee/SolverStats.h"
+#include "klee/Solver/SolverStats.h"
 
 #include "CallPathManager.h"
 #include "CoreStats.h"
@@ -122,40 +122,6 @@ bool StatsTracker::useIStats() {
   return OutputIStats;
 }
 
-namespace klee {
-  class WriteIStatsTimer : public Executor::Timer {
-    StatsTracker *statsTracker;
-    
-  public:
-    WriteIStatsTimer(StatsTracker *_statsTracker) : statsTracker(_statsTracker) {}
-    ~WriteIStatsTimer() {}
-    
-    void run() { statsTracker->writeIStats(); }
-  };
-  
-  class WriteStatsTimer : public Executor::Timer {
-    StatsTracker *statsTracker;
-    
-  public:
-    WriteStatsTimer(StatsTracker *_statsTracker) : statsTracker(_statsTracker) {}
-    ~WriteStatsTimer() {}
-    
-    void run() { statsTracker->writeStatsLine(); }
-  };
-
-  class UpdateReachableTimer : public Executor::Timer {
-    StatsTracker *statsTracker;
-    
-  public:
-    UpdateReachableTimer(StatsTracker *_statsTracker) : statsTracker(_statsTracker) {}
-    
-    void run() { statsTracker->computeReachableUncovered(); }
-  };
- 
-}
-
-//
-
 /// Check for special cases where we statically know an instruction is
 /// uncoverable. Currently the case is an unreachable instruction
 /// following a noreturn call; the instruction is really only there to
@@ -252,60 +218,70 @@ StatsTracker::StatsTracker(Executor &_executor, std::string _objectFilename,
   }
 
   if (OutputStats) {
+    sqlite3_config(SQLITE_CONFIG_SINGLETHREAD);
+    sqlite3_enable_shared_cache(0);
+
+    // open database
     auto db_filename = executor.interpreterHandler->getOutputFilename("run.stats");
-    if (sqlite3_open(db_filename.c_str(), &statsFile) == SQLITE_OK) {
-      // prepare statements
-      if(sqlite3_prepare_v2(statsFile, "BEGIN TRANSACTION", -1, &transactionBeginStmt, nullptr) != SQLITE_OK) {
-        klee_error("Cannot create prepared statement: %s", sqlite3_errmsg(statsFile));
-      }
-
-      if(sqlite3_prepare_v2(statsFile, "END TRANSACTION", -1, &transactionEndStmt, nullptr) != SQLITE_OK) {
-        klee_error("Cannot create prepared statement: %s", sqlite3_errmsg(statsFile));
-      }
-
-      // set options
-      char *zErrMsg;
-      if (sqlite3_exec(statsFile, "PRAGMA synchronous = OFF", nullptr, nullptr, &zErrMsg) != SQLITE_OK) {
-        klee_error("%s", sqlite3ErrToStringAndFree("Can't set options for database: ", zErrMsg).c_str());
-      }
-
-      // note: we use TRUNCATE here a) for speed and b) to prevent creation of new file descriptors
-      if (sqlite3_exec(statsFile, "PRAGMA journal_mode = TRUNCATE", nullptr, nullptr, &zErrMsg) != SQLITE_OK) {
-        klee_error("%s", sqlite3ErrToStringAndFree("Can't set options for database: ", zErrMsg).c_str());
-      }
-
-      // begin transaction
-      auto rc = sqlite3_step(transactionBeginStmt);
-      if (rc != SQLITE_DONE) {
-        klee_warning("Can't begin transaction: %s", sqlite3_errmsg(statsFile));
-      }
-      sqlite3_reset(transactionBeginStmt);
-
-      // create table
-      writeStatsHeader();
-      writeStatsLine();
-
-      if (statsWriteInterval)
-        executor.addTimer(new WriteStatsTimer(this), statsWriteInterval);
-    } else {
+    if (sqlite3_open(db_filename.c_str(), &statsFile) != SQLITE_OK) {
       std::ostringstream errorstream;
       errorstream << "Can't open database: " << sqlite3_errmsg(statsFile);
       sqlite3_close(statsFile);
       klee_error("%s", errorstream.str().c_str());
     }
+
+    // prepare statements
+    if (sqlite3_prepare_v2(statsFile, "BEGIN TRANSACTION", -1, &transactionBeginStmt, nullptr) != SQLITE_OK) {
+      klee_error("Cannot create prepared statement: %s", sqlite3_errmsg(statsFile));
+    }
+
+    if (sqlite3_prepare_v2(statsFile, "END TRANSACTION", -1, &transactionEndStmt, nullptr) != SQLITE_OK) {
+      klee_error("Cannot create prepared statement: %s", sqlite3_errmsg(statsFile));
+    }
+
+    // set options
+    char *zErrMsg;
+    if (sqlite3_exec(statsFile, "PRAGMA synchronous = OFF", nullptr, nullptr, &zErrMsg) != SQLITE_OK) {
+      klee_error("%s", sqlite3ErrToStringAndFree("Can't set options for database: ", zErrMsg).c_str());
+    }
+
+    // note: we use WAL here a) for speed and b) to prevent creation of new file descriptors (as with TRUNCATE)
+    if (sqlite3_exec(statsFile, "PRAGMA journal_mode = WAL", nullptr, nullptr, &zErrMsg) != SQLITE_OK) {
+      klee_error("%s", sqlite3ErrToStringAndFree("Can't set options for database: ", zErrMsg).c_str());
+    }
+
+    // begin transaction
+    auto rc = sqlite3_step(transactionBeginStmt);
+    if (rc != SQLITE_DONE) {
+      klee_warning("Can't begin transaction: %s", sqlite3_errmsg(statsFile));
+    }
+    sqlite3_reset(transactionBeginStmt);
+
+    // create table
+    writeStatsHeader();
+    writeStatsLine();
+
+    if (statsWriteInterval)
+      executor.timers.add(std::move(std::make_unique<Timer>(statsWriteInterval, [&]{
+        writeStatsLine();
+      })));
   }
 
   // Add timer to calculate uncovered instructions if needed by the solver
   if (updateMinDistToUncovered) {
     computeReachableUncovered();
-    executor.addTimer(new UpdateReachableTimer(this), time::Span(UncoveredUpdateInterval));
+    executor.timers.add(std::move(std::make_unique<Timer>(time::Span{UncoveredUpdateInterval}, [&]{
+      computeReachableUncovered();
+    })));
   }
 
   if (OutputIStats) {
     istatsFile = executor.interpreterHandler->openOutputFile("run.istats");
     if (istatsFile) {
       if (iStatsWriteInterval)
-        executor.addTimer(new WriteIStatsTimer(this), iStatsWriteInterval);
+        executor.timers.add(std::move(std::make_unique<Timer>(iStatsWriteInterval, [&]{
+          writeIStats();
+        })));
     } else {
       klee_error("Unable to open instruction level stats file (run.istats).");
     }

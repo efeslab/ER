@@ -11,7 +11,7 @@
 
 #include "klee/Config/Version.h"
 #include "klee/ExecutionState.h"
-#include "klee/Expr.h"
+#include "klee/Expr/Expr.h"
 #include "klee/Internal/ADT/KTest.h"
 #include "klee/Internal/ADT/TreeStream.h"
 #include "klee/Internal/Support/Debug.h"
@@ -22,7 +22,7 @@
 #include "klee/Internal/System/Time.h"
 #include "klee/Interpreter.h"
 #include "klee/OptionCategories.h"
-#include "klee/SolverCmdLine.h"
+#include "klee/Solver/SolverCmdLine.h"
 #include "klee/Statistics.h"
 
 #include "llvm/IR/Constants.h"
@@ -913,9 +913,10 @@ preparePOSIX(std::vector<std::unique_ptr<llvm::Module>> &loadedModules,
   // link against a libc implementation. Preparing for libc linking (i.e.
   // linking with uClibc will expect a main function and rename it to
   // _user_main. We just provide the definition here.
-  if (!libCPrefix.empty())
-    mainFn->getParent()->getOrInsertFunction(EntryPoint,
-                                             mainFn->getFunctionType());
+  if (!libCPrefix.empty() && !mainFn->getParent()->getFunction(EntryPoint))
+    llvm::Function::Create(mainFn->getFunctionType(),
+                           llvm::Function::ExternalLinkage, EntryPoint,
+                           mainFn->getParent());
 
   llvm::Function *wrapper = nullptr;
   for (auto &module : loadedModules) {
@@ -978,7 +979,6 @@ static const char *modelledExternals[] = {
   "klee_silent_exit",
   "klee_warning",
   "klee_warning_once",
-  "klee_alias_function",
   "klee_stack_trace",
   "llvm.dbg.declare",
   "llvm.dbg.value",
@@ -1238,7 +1238,7 @@ static void register_sighandler() {
 // the state data before going ahead and killing it.
 static void halt_via_gdb(int pid) {
   char buffer[256];
-  sprintf(buffer,
+  snprintf(buffer, sizeof(buffer),
           "gdb --batch --eval-command=\"p halt_execution()\" "
           "--eval-command=detach --pid=%d &> /dev/null",
           pid);
@@ -1300,7 +1300,7 @@ createLibCWrapper(std::vector<std::unique_ptr<llvm::Module>> &modules,
   if (!libcMainFn)
     klee_error("Could not add %s wrapper", libcMainFunction.str().c_str());
 
-  auto inModuleRefernce = libcMainFn->getParent()->getOrInsertFunction(
+  auto inModuleReference = libcMainFn->getParent()->getOrInsertFunction(
       userMainFn->getName(), userMainFn->getFunctionType());
 
   const auto ft = libcMainFn->getFunctionType();
@@ -1327,8 +1327,13 @@ createLibCWrapper(std::vector<std::unique_ptr<llvm::Module>> &modules,
   // Here in the newly created wrapper main function (stub),
   // explicitly create a function call to libcMainFn.
   // The first two (and the only two) arguments (argc and argv) of the wrapper are directly passed to libcMainFn
-  args.push_back(
-      llvm::ConstantExpr::getBitCast(inModuleRefernce, ft->getParamType(0)));
+  args.push_back(llvm::ConstantExpr::getBitCast(
+#if LLVM_VERSION_CODE >= LLVM_VERSION(9, 0)
+      cast<llvm::Constant>(inModuleReference.getCallee()),
+#else
+      inModuleReference,
+#endif
+      ft->getParamType(0)));
   args.push_back(&*(stub->arg_begin())); // argc
   auto arg_it = stub->arg_begin();
   args.push_back(&*(++arg_it)); // argv

@@ -27,4 +27,4 @@ namespace klee {
   extern llvm::cl::OptionCategory HASECat;
 }
 
-#endif
+#endif /* KLEE_OPTIONCATEGORIES_H */

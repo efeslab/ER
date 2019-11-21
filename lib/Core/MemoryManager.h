@@ -73,4 +73,4 @@ public:
 
 } // End klee namespace
 
-#endif
+#endif /* KLEE_MEMORYMANAGER_H */

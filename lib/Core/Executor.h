@@ -16,20 +16,21 @@
 #define KLEE_EXECUTOR_H
 
 #include "klee/ExecutionState.h"
-#include "klee/Interpreter.h"
+#include "klee/Expr/ArrayCache.h"
 #include "klee/Internal/Module/Cell.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/System/Time.h"
-#include "klee/util/ArrayCache.h"
+#include "klee/Interpreter.h"
 #include "klee/util/OracleEvaluator.h"
-#include "llvm/Support/raw_ostream.h"
 
-#include "../Solver/QueryLoggingSolver.h"
+//#include "../Solver/QueryLoggingSolver.h"
 
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include "../Expr/ArrayExprOptimizer.h"
+
 #include <map>
 #include <memory>
 #include <set>
@@ -94,15 +95,6 @@ class Executor : public Interpreter {
   friend class MergingSearcher;
 
 public:
-  class Timer {
-  public:
-    Timer();
-    virtual ~Timer();
-
-    /// The event callback.
-    virtual void run() = 0;
-  };
-
   typedef std::pair<ExecutionState*,ExecutionState*> StatePair;
 
   enum TerminateReason {
@@ -125,16 +117,7 @@ public:
 private:
   static const char *TerminateReasonNames[];
 
-  /// Specify the range of random unsigned integers, which will be used to compute probabiliy
-  /// Note that it shouldn't be:
-  ///   - Too small (when bits expectation too short, hurting randomness)
-  ///   - Nor too large (when bits expectation too long, causing overflow)
-  static constexpr unsigned int RAND_MAX_WRAP = UINT16_MAX;
-
   class TimerInfo;
-
-    int true_count = 0;
-    int false_count = 0;
 
   std::unique_ptr<KModule> kmodule;
   InterpreterHandler *interpreterHandler;
@@ -148,8 +131,8 @@ private:
   TreeStreamWriter *pathWriter, *symPathWriter;
   TreeStreamWriter *stackPathWriter, *consPathWriter, *statsPathWriter;
   SpecialFunctionHandler *specialFunctionHandler;
-  std::vector<TimerInfo*> timers;
-  PTree *processTree;
+  TimerGroup timers;
+  std::unique_ptr<PTree> processTree;
 
   /// Keeps track of all currently ongoing merges.
   /// An ongoing merge is a set of states which branched from a single state
@@ -261,9 +244,6 @@ private:
                                     ExecutionState &state);
 
   void executeInstruction(ExecutionState &state, KInstruction *ki);
-
-  void printFileLine(ExecutionState &state, KInstruction *ki,
-                     llvm::raw_ostream &file);
 
   void run(ExecutionState &initialState);
 
@@ -484,23 +464,10 @@ private:
   /// constant values.
   void bindInstructionConstants(KInstruction *KI);
 
-  void handlePointsToObj(ExecutionState &state,
-                         KInstruction *target,
-                         const std::vector<ref<Expr> > &arguments);
-
   void doImpliedValueConcretization(ExecutionState &state,
                                     ref<Expr> e,
                                     ref<ConstantExpr> value);
 
-  /// Add a timer to be executed periodically.
-  ///
-  /// \param timer The timer object to run on firings.
-  /// \param rate The approximate delay (in seconds) between firings.
-  void addTimer(Timer *timer, time::Span rate);
-
-  void initTimers();
-
-  void processTimers(ExecutionState *current, time::Span maxInstTime);
   void checkMemoryUsage();
   void printDebugInstructions(ExecutionState &state);
   void doDumpStates();
@@ -525,6 +492,10 @@ private:
   }
 
   void printInfo(llvm::raw_ostream &os);
+
+  /// Only for debug purposes; enable via debugger or klee-control
+  void dumpStates();
+  void dumpPTree();
 
 public:
 
@@ -651,4 +622,4 @@ public:
 
 } // End klee namespace
 
-#endif
+#endif /* KLEE_EXECUTOR_H */

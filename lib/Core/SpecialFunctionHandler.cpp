@@ -13,15 +13,15 @@
 #include "Memory.h"
 #include "MemoryManager.h"
 #include "TimingSolver.h"
-#include "klee/MergeHandler.h"
 
 #include "klee/ExecutionState.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/Support/Debug.h"
 #include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/MergeHandler.h"
 #include "klee/OptionCategories.h"
-#include "klee/SolverCmdLine.h"
+#include "klee/Solver/SolverCmdLine.h"
 
 #include "llvm/ADT/Twine.h"
 #include "llvm/IR/DataLayout.h"
@@ -108,7 +108,6 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_stack_trace", handleStackTrace, false),
   add("klee_warning", handleWarning, false),
   add("klee_warning_once", handleWarningOnce, false),
-  add("klee_alias_function", handleAliasFunction, false),
   add("malloc", handleMalloc, true),
   add("malloc_usable_size", handleMallocUsableSize, true),
   add("memalign", handleMemalign, true),
@@ -298,20 +297,6 @@ void SpecialFunctionHandler::handleSilentExit(ExecutionState &state,
                                               std::vector<ref<Expr> > &arguments) {
   assert(arguments.size()==1 && "invalid number of arguments to exit");
   executor.terminateState(state);
-}
-
-void SpecialFunctionHandler::handleAliasFunction(ExecutionState &state,
-						 KInstruction *target,
-						 std::vector<ref<Expr> > &arguments) {
-  assert(arguments.size()==2 && 
-         "invalid number of arguments to klee_alias_function");
-  std::string old_fn = readStringAtAddress(state, arguments[0]);
-  std::string new_fn = readStringAtAddress(state, arguments[1]);
-  KLEE_DEBUG_WITH_TYPE("alias_handling", llvm::errs() << "Replacing " << old_fn
-                                           << "() with " << new_fn << "()\n");
-  if (old_fn == new_fn)
-    state.removeFnAlias(old_fn);
-  else state.addFnAlias(old_fn, new_fn);
 }
 
 void SpecialFunctionHandler::handleAssert(ExecutionState &state,

@@ -7,10 +7,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "klee/Solver.h"
-#include "klee/SolverImpl.h"
-#include "klee/Constraints.h"
-#include "QueryLoggingSolver.h"
+#include "klee/Solver/Solver.h"
+
+#include "klee/Expr/Constraints.h"
+#include "klee/Solver/SolverImpl.h"
 
 using namespace klee;
 
@@ -33,14 +33,6 @@ char *Solver::getConstraintLog(const Query& query) {
 void Solver::setCoreSolverTimeout(time::Span timeout) {
     impl->setCoreSolverTimeout(timeout);
 }
-
-/*
-void Solver::writeStackKQueries(std::string &buf) {
-    QueryLoggingSolver* qlSolver = dynamic_cast<QueryLoggingSolver* >(impl);
-    if (qlSolver)
-      qlSolver->writeStackKQueries(buf);
-};
-*/
 
 bool Solver::evaluate(const Query& query, Validity &result) {
   assert(query.expr->getWidth() == Expr::Bool && "Invalid expression type!");

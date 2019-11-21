@@ -9,43 +9,38 @@
 
 #include "PTree.h"
 
-#include <klee/Expr.h>
-#include <klee/util/ExprPPrinter.h>
+#include "klee/ExecutionState.h"
+#include "klee/Expr/Expr.h"
+#include "klee/Expr/ExprPPrinter.h"
 
 #include <vector>
 
 using namespace klee;
 
-  /* *** */
-
-PTree::PTree(const data_type &_root) : root(new Node(0,_root)) {
+PTree::PTree(ExecutionState *initialState) {
+  root = std::make_unique<PTreeNode>(nullptr, initialState);
 }
 
-PTree::~PTree() {}
+void PTree::attach(PTreeNode *node, ExecutionState *leftState, ExecutionState *rightState) {
+  assert(node && !node->left && !node->right);
 
-std::pair<PTreeNode*, PTreeNode*>
-PTree::split(Node *n, 
-             const data_type &leftData, 
-             const data_type &rightData) {
-  assert(n && !n->left && !n->right);
-  n->left = new Node(n, leftData);
-  n->right = new Node(n, rightData);
-  return std::make_pair(n->left, n->right);
+  node->state = nullptr;
+  node->left = std::make_unique<PTreeNode>(node, leftState);
+  node->right = std::make_unique<PTreeNode>(node, rightState);
 }
 
-void PTree::remove(Node *n) {
+void PTree::remove(PTreeNode *n) {
   assert(!n->left && !n->right);
   do {
-    Node *p = n->parent;
+    PTreeNode *p = n->parent;
     if (p) {
-      if (n == p->left) {
-        p->left = 0;
+      if (n == p->left.get()) {
+        p->left = nullptr;
       } else {
-        assert(n == p->right);
-        p->right = 0;
+        assert(n == p->right.get());
+        p->right = nullptr;
       }
     }
-    delete n;
     n = p;
   } while (n && !n->left && !n->right);
 }
@@ -60,43 +55,29 @@ void PTree::dump(llvm::raw_ostream &os) {
   os << "\tcenter = \"true\";\n";
   os << "\tnode [style=\"filled\",width=.1,height=.1,fontname=\"Terminus\"]\n";
   os << "\tedge [arrowsize=.3]\n";
-  std::vector<PTree::Node*> stack;
-  stack.push_back(root);
+  std::vector<const PTreeNode*> stack;
+  stack.push_back(root.get());
   while (!stack.empty()) {
-    PTree::Node *n = stack.back();
+    const PTreeNode *n = stack.back();
     stack.pop_back();
-    if (n->condition.isNull()) {
-      os << "\tn" << n << " [label=\"\"";
-    } else {
-      os << "\tn" << n << " [label=\"";
-      pp->print(n->condition);
-      os << "\",shape=diamond";
-    }
-    if (n->data)
+    os << "\tn" << n << " [shape=diamond";
+    if (n->state)
       os << ",fillcolor=green";
     os << "];\n";
     if (n->left) {
-      os << "\tn" << n << " -> n" << n->left << ";\n";
-      stack.push_back(n->left);
+      os << "\tn" << n << " -> n" << n->left.get() << ";\n";
+      stack.push_back(n->left.get());
     }
     if (n->right) {
-      os << "\tn" << n << " -> n" << n->right << ";\n";
-      stack.push_back(n->right);
+      os << "\tn" << n << " -> n" << n->right.get() << ";\n";
+      stack.push_back(n->right.get());
     }
   }
   os << "}\n";
   delete pp;
 }
 
-PTreeNode::PTreeNode(PTreeNode *_parent, 
-                     ExecutionState *_data) 
-  : parent(_parent),
-    left(0),
-    right(0),
-    data(_data),
-    condition(0) {
-}
-
-PTreeNode::~PTreeNode() {
+PTreeNode::PTreeNode(PTreeNode *parent, ExecutionState *state) : parent{parent}, state{state} {
+  state->ptreeNode = this;
 }
 

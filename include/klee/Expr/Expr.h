@@ -596,7 +596,7 @@ public:
   unsigned getSize() const { return (head ? head->getSize() : 0); }
   
   void extend(const ref<Expr> &index, const ref<Expr> &value,
-                uint64_t flags, KInstruction *kinst);
+                uint64_t flags = 0, KInstruction *kinst = nullptr);
 
   int compare(const UpdateList &b) const;
   unsigned hash() const;

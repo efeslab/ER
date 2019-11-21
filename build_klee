@@ -9,8 +9,11 @@ cmake -DCMAKE_INCLUDE_PATH=${INSTALL_BASE}/include \
       -DENABLE_KLEE_UCLIBC=ON -DKLEE_UCLIBC_PATH=/mnt/storage/gefeizuo/hase/klee-uclibc/\
       -DLLVM_CONFIG_BINARY=${LLVMPREFIX}/llvm-config-6.0 -DLLVMCC=${LLVMPREFIX}/clang-6.0 -DLLVMCXX=${LLVMPREFIX}/clang-6.0\
       -DCMAKE_INSTALL_PREFIX=${INSTALL_BASE}\
+      -DENABLE_SYSTEM_TESTS=ON\
+      -DENABLE_UNIT_TESTS=ON -DGTEST_SRC_DIR=/mnt/storage/gefeizuo/hase/googletest-release-1.7.0/\
       ..
-	  #commented out options
-      ##-DCMAKE_EXPORT_COMPILE_COMMANDS=ON\
-      #-DENABLE_UNIT_TESTS=ON -DGTEST_SRC_DIR=/mnt/storage/gefeizuo/hase/googletest-release-1.7.0/\
-	  #-DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer -fsanitize=address"\
+    #commented out options
+    #-DCMAKE_EXPORT_COMPILE_COMMANDS=ON\
+    #-DENABLE_SYSTEM_TESTS=ON\
+    #-DENABLE_UNIT_TESTS=ON -DGTEST_SRC_DIR=/mnt/storage/gefeizuo/hase/googletest-release-1.7.0/\
+    #-DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer -fsanitize=address"\

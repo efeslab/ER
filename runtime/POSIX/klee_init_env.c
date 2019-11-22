@@ -87,8 +87,6 @@ void klee_init_env(int *argcPtr, char ***argvPtr) {
   char **argv = *argvPtr;
 
   int new_argc = 0;
-  int new_argc_change = 0;
-  int new_argc_sym = 0;
   char *new_argv[1024];
   unsigned max_len, min_argvs, max_argvs;
   unsigned sym_files = 0, sym_file_len = 0;
@@ -168,11 +166,10 @@ usage: (klee_init_env) [options] [program arguments]\n\
       if (sym_arg_num + max_argvs > 99)
         __emit_error("No more than 100 symbolic arguments allowed.");
         
-      int temp = new_argc;
       
       // Instead of using a symboclic number of args, 
       // we set the number of symbolic args as the max-argvs
-      for (i = 0; i < (int)max_argvs; i++) {
+      for (i = 0; i < n_args; i++) {
         sym_arg_name[3] = '0' + sym_arg_num / 10;
         sym_arg_name[4] = '0' + sym_arg_num % 10;
         sym_arg_num++;
@@ -180,10 +177,6 @@ usage: (klee_init_env) [options] [program arguments]\n\
         __add_arg(&new_argc, new_argv, __get_sym_str(max_len, sym_arg_name),
                   1024);
       }
-      
-      new_argc_change += (new_argc - temp);
-      new_argc_sym += n_args;
-      
     } else if (__streq(argv[k], "--sym-files") ||
                __streq(argv[k], "-sym-files")) {
       const char *msg = "--sym-files expects two integer arguments "
@@ -275,8 +268,7 @@ usage: (klee_init_env) [options] [program arguments]\n\
   memcpy(final_argv, new_argv, new_argc * sizeof(*final_argv));
   final_argv[new_argc] = 0;
   
-  new_argc_sym += (new_argc - new_argc_change);
-  *argcPtr = new_argc_sym;
+  *argcPtr = new_argc;
   *argvPtr = final_argv;
 
   klee_init_fds(sym_files, sym_file_len, sym_stdin_len, sym_file_stdin_flag, sym_stdout_flag,

@@ -1,0 +1,31 @@
+********************
+Testing Time: 32.07s
+********************
+Failing Tests (8):
+    KLEE :: Feature/DeterministicSwitch.c
+	  # root cause locates in Executor.cpp -> Instruction::Switch
+	  # upstream use bbOrder to determine the ordering of successor BasicBlocks
+	  # bbOrder is determined by an iteration of expressionOrder (a std::map)
+	  # While my approach is to use successorIndex API from LLVM to determine
+	  # the order.
+	  # It is hard to make two approaches have the same ordering. And I do not
+	  # think upstream's ordering make sence neither. So it is a WONTFIX for now.
+    KLEE :: Feature/MemoryLimit.c
+	  # I disable memorylimit check intentionally, WONTFIX for now
+    KLEE :: Runtime/POSIX/Isatty.c
+	  # After initialziation, we do not want to deal with symbolic branch in POSIX.
+	  # So you need to know additonal properties of input file (including stdin),
+	  # e.g. size, isatty, etc.
+	  # Now we cheat those information as known (we have oracle) when replaying
+	  # sqlite and php. Such decision causes this external test no long work.
+	  # WONTFIX
+    KLEE :: Runtime/POSIX/Stdin.c
+	  # The same reason as above (Runtime/POSIX/Isatty.c)
+    KLEE :: regression/2017-02-21-pathOS-id.c
+	  # I change pathOS recording to use binary format (PathEntry) instead o
+	  # text "0" or "1". WONTFIX
+
+  Expected Passes    : 268
+  Expected Failures  : 2
+  Unsupported Tests  : 9
+  Unexpected Failures: 8

@@ -1880,7 +1880,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     // symbolic address
     std::vector<ExecutionState *> branches;
-    if (state.shouldRecord()) {
+    if (state.shouldRecord() && replayPath) {
       PathEntry pe;
       getNextPathEntry(state, pe);
       assert((pe.t == PathEntry::INDIRECTBR) &&

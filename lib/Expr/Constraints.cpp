@@ -18,6 +18,9 @@
 #include "llvm/Support/CommandLine.h"
 
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
+#include "klee/util/ExprHashMap.h"
 
 using namespace klee;
 
@@ -75,20 +78,36 @@ public:
 };
 
 bool ConstraintManager::rewriteConstraints(ExprVisitor &visitor) {
-  ConstraintManager::constraints_ty old;
   bool changed = false;
+  
+  if (old.empty()) {
+    constraints.swap(old);
+    for (ConstraintManager::constraints_ty::iterator 
+           it = old.begin(), ie = old.end(); it != ie; ++it) {
+      ref<Expr> &ce = *it;
+      ref<Expr> e = visitor.visit(ce);
 
-  constraints.swap(old);
-  for (ConstraintManager::constraints_ty::iterator 
-         it = old.begin(), ie = old.end(); it != ie; ++it) {
-    ref<Expr> &ce = *it;
-    ref<Expr> e = visitor.visit(ce);
+      if (e!=ce) {
+        addConstraintInternal(e); // enable further reductions
+        changed = true;
+      } else {
+        constraints.push_back(ce);
+      }
+    }
+  } else {
+    ConstraintManager::constraints_ty old_temp;
+    constraints.swap(old_temp);
+    for (ConstraintManager::constraints_ty::iterator 
+           it = old_temp.begin(), ie = old_temp.end(); it != ie; ++it) {
+      ref<Expr> &ce = *it;
+      ref<Expr> e = visitor.visit(ce);
 
-    if (e!=ce) {
-      addConstraintInternal(e); // enable further reductions
-      changed = true;
-    } else {
-      constraints.push_back(ce);
+      if (e!=ce) {
+        addConstraintInternal(e); // enable further reductions
+        changed = true;
+      } else {
+        constraints.push_back(ce);
+      }
     }
   }
 
@@ -124,9 +143,9 @@ ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
   return ExprReplaceVisitor2(equalities).visit(e);
 }
 
-void ConstraintManager::addConstraintInternal(ref<Expr> e) {
+bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
   // rewrite any known equalities and split Ands into different conjuncts
-
+  bool changed = false;
   switch (e->getKind()) {
   case Expr::Constant:
     assert(cast<ConstantExpr>(e)->isTrue() && 
@@ -136,8 +155,8 @@ void ConstraintManager::addConstraintInternal(ref<Expr> e) {
     // split to enable finer grained independence and other optimizations
   case Expr::And: {
     BinaryExpr *be = cast<BinaryExpr>(e);
-    addConstraintInternal(be->left);
-    addConstraintInternal(be->right);
+    changed |= addConstraintInternal(be->left);
+    changed |= addConstraintInternal(be->right);
     break;
   }
 
@@ -150,21 +169,156 @@ void ConstraintManager::addConstraintInternal(ref<Expr> e) {
       // (byte-constant comparison).
       BinaryExpr *be = cast<BinaryExpr>(e);
       if (isa<ConstantExpr>(be->left)) {
-	ExprReplaceVisitor visitor(be->right, be->left);
-	rewriteConstraints(visitor);
+    	ExprReplaceVisitor visitor(be->right, be->left);
+    	changed |= rewriteConstraints(visitor);
       }
     }
     constraints.push_back(e);
+    addedConstraints.push_back(e);
     break;
   }
     
   default:
     constraints.push_back(e);
+    addedConstraints.push_back(e);
     break;
   }
+  return changed;
+}
+
+void ConstraintManager::updateDelete() {
+  // Get the set for all the IndependentSet that need to be update.
+  std::unordered_map<IndependentElementSet*, ExprHashSet > updateList;
+  for (auto it = deleteConstraints.begin(); it != deleteConstraints.end(); it++) {
+    updateList[representative[*it]].insert(*it);
+    // Update representative.
+    representative.erase(*it);
+  }
+  
+  // Update factors.
+  for (auto it = updateList.begin(); it != updateList.end(); it++) {
+    factors.erase(it->first);
+  }
+  
+  for (auto it = updateList.begin(); it != updateList.end(); it++) {
+    std::vector<IndependentElementSet*> temp;
+    for (auto e = it->first->exprs.begin(); e != it->first->exprs.end(); e++) {
+      auto find = it->second.find(*e);
+      if (find == it->second.end()) {
+        temp.push_back(new IndependentElementSet(*e));
+      }
+    }
+    
+    std::vector<IndependentElementSet*> result;
+    
+    if (!temp.empty()) {
+      result.push_back(temp.back());
+      temp.pop_back();
+    }
+    
+    while (!temp.empty()) {
+      IndependentElementSet* current = temp.back();
+      temp.pop_back();
+      unsigned int i = 0;
+      while (i < result.size()) {
+        if (current->intersects(*result[i])) {
+          current->add(*result[i]);
+          IndependentElementSet* victim = result[i];
+          result[i] = result.back();
+          result.pop_back();
+          delete victim;
+        } else {
+          i++;
+        }
+      }
+      result.push_back(current);
+    }
+    
+    // Update representative and factors.
+    for (auto r = result.begin(); r != result.end(); r++) {
+      factors.insert(*r);
+      for (auto e = (*r)->exprs.begin(); e != (*r)->exprs.end(); e++) {
+          representative[*e] = *r;
+      }
+    }
+  }
+  
+  deleteConstraints.clear();
+}
+
+// Update the representative after adding constraint
+void ConstraintManager::updateIndependentSet() {
+  // First find if there are removed constraint. If is, update the correspoding set.
+  if (!deleteConstraints.empty()) {
+    updateDelete();
+  }
+  
+  while (!addedConstraints.empty()) {
+    IndependentElementSet* current = new IndependentElementSet(addedConstraints.back());
+    addedConstraints.pop_back();
+    std::vector<IndependentElementSet*> garbage;
+    for (auto it = factors.begin(); it != factors.end(); it++ ) {
+      if (current->intersects(*(*it))) {
+        current->add(*(*it));
+        garbage.push_back(*it);
+      }
+    }
+    
+    // Update representative and factors.
+    for (auto it = current->exprs.begin(); it != current->exprs.end(); it ++ ) {
+      representative[*it] = current;
+    }
+    
+    while (!garbage.empty()) {
+      IndependentElementSet* victim = garbage.back();
+      garbage.pop_back();
+      factors.erase(victim);
+      delete victim;
+    }
+    
+    factors.insert(current);
+  }
+  
+  addedConstraints.clear();
+}
+
+void ConstraintManager::checkConstraintChange() {
+  ExprHashSet oldConsSet;
+  while (!old.empty()) {
+    oldConsSet.insert(old.back());
+    old.pop_back();
+  }
+  
+  for (auto it = constraints.begin(); it != constraints.end(); it++ ) {
+    if (!oldConsSet.erase(*it)) {
+      addedConstraints.push_back(*it);
+    } 
+  }
+  
+  // The rest element inside oldConsSet should be the deleted element.
+  for (auto itr = oldConsSet.begin(); itr != oldConsSet.end(); ++itr) {
+    deleteConstraints.push_back(*itr);
+  }
+
 }
 
 void ConstraintManager::addConstraint(ref<Expr> e) {
+  // After update the independant, the add and delete vector should be cleaned;
+  assert(old.empty() && "old vector is not empty"); 
+  assert(deleteConstraints.empty() && "delete Constraints not empty"); 
+  assert(addedConstraints.empty() && "add Constraints not empty"); 
+
   e = simplifyExpr(e);
-  addConstraintInternal(e);
+  bool changed = addConstraintInternal(e);
+  
+  // If the constraints are changed by rewriteConstraints. Check what has been
+  // modified; Important clear the old vector after finish running.
+  if (changed) {
+    addedConstraints.clear();
+    checkConstraintChange();
+  }
+  old.clear();
+  
+  updateIndependentSet();
 }
+

@@ -4491,6 +4491,24 @@ void debugDumpConstraints(ExecutionState &state, ConstraintManager &cm, ref<Expr
   ofs.close();
 }
 
+void debugDumpExpr(ConstraintManager &cm, ref<Expr> expr) {
+  const ref<Expr> *evalExprsBegin = nullptr;
+  const ref<Expr> *evalExprsEnd = nullptr;
+  const Array *const *evalArraysBegin = nullptr;
+  const Array *const *evalArraysEnd = nullptr;
+  std::vector<const Array*> symbolic_objs;
+
+  // has query expr, dumping for evaluation
+  evalExprsBegin = &expr;
+  evalExprsEnd = evalExprsBegin + 1;
+    
+  ExprPPrinter::printQuery(llvm::errs(), cm, klee::ConstantExpr::alloc(false, Expr::Bool),
+      evalExprsBegin, evalExprsEnd,
+      evalArraysBegin, evalArraysEnd, true);
+      
+  llvm::errs() << "\n";
+}
+
 static llvm::raw_ostream &debugLLVMErrs = llvm::errs();
 
 /*

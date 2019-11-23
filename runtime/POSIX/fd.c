@@ -37,22 +37,42 @@ static exe_disk_file_t *__get_sym_file(const char *pathname) {
   if (!pathname)
     return NULL;
 
-  char c = pathname[0];
-  unsigned i;
+  if (__exe_fs.type == UNITED) {
+    char c = pathname[0];
+    unsigned i;
 
-  if (c == 0 || pathname[1] != 0)
-    return NULL;
+    if (c == 0 || pathname[1] != 0)
+      return NULL;
 
-  for (i=0; i<__exe_fs.n_sym_files; ++i) {
-    if (c == 'A' + (char) i) {
-      exe_disk_file_t *df = &__exe_fs.sym_files[i];
-      if (df->stat->st_ino == 0)
-        return NULL;
-      return df;
+    for (i=0; i<__exe_fs.n_sym_files; ++i) {
+      if (c == 'A' + (char) i) {
+        printf("get symbolic file %c\n", c);
+        exe_disk_file_t *df = &__exe_fs.sym_files[i];
+        if (df->stat->st_ino == 0)
+          return NULL;
+        return df;
+      }
     }
+
+    return NULL;
   }
-  
-  return NULL;
+  else {
+    if (pathname[0] == 0)
+      return NULL;
+
+    unsigned i;
+    for (i=0; i<__exe_fs.n_sym_files; ++i) {
+      if (strcmp(pathname, __exe_fs.sym_files[i].filename)==0) {
+        printf("get symbolic file %s\n", __exe_fs.sym_files[i].filename);
+        exe_disk_file_t *df = &__exe_fs.sym_files[i];
+        if (df->stat->st_ino == 0)
+          return NULL;
+        return df;
+      }
+    }
+
+    return NULL;
+  }
 }
 
 static void *__concretize_ptr(const void *p);

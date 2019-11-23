@@ -12,6 +12,7 @@
 
 #include "klee/util/Bits.h"
 #include "klee/util/Ref.h"
+#include "klee/Internal/Module/KInstruction.h"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -175,6 +176,16 @@ public:
   };
 
   unsigned refCount;
+  int indirectReadRefCount = 0;
+
+  enum {
+    FLAG_INSTRUCTION_ROOT = 1<<0,
+    FLAG_OPTIMIZATION = 1<<1,
+    FLAG_INTERNAL = 1<<2,
+    FLAG_INITIALIZATION = 1<<3
+  };
+  uint64_t flags = 0;
+  KInstruction *kinst = nullptr;
 
 protected:  
   unsigned hashValue;
@@ -244,6 +255,13 @@ public:
   // but using those children. 
   virtual ref<Expr> rebuild(ref<Expr> kids[/* getNumKids() */]) const = 0;
 
+  // Use given array of new kids to overwrite current kids.
+  // This is used to simplify expression tree. Note that new kids could be NULL.
+  // Side effect:
+  //   1. Existing hashValue may be outdated
+  //   2. This Expr may be no longer hashable, if NULL appears.
+  virtual void rebuildInPlace(ref<Expr> kids[/* getNumKids() */]) = 0;
+
   /// isZero - Is this a constant zero.
   bool isZero() const;
   
@@ -252,6 +270,8 @@ public:
 
   /// isFalse - Is this the false expression.
   bool isFalse() const;
+
+  const char *getKindStr() const { return getKindStr(getKind()); }
 
   /* Static utility methods */
 
@@ -284,6 +304,7 @@ public:
   static bool needsResultType() { return false; }
 
   static bool classof(const Expr *) { return true; }
+  static const char *getKindStr(enum Kind k);
 
 private:
   typedef llvm::DenseSet<std::pair<const Expr *, const Expr *> > ExprEquivSet;
@@ -378,6 +399,10 @@ public:
       return right;
     return 0;
   }
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    left = kids[0];
+    right = kids[1];
+  }
  
 protected:
   BinaryExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {}
@@ -429,6 +454,7 @@ public:
   ref<Expr> getKid(unsigned i) const { return src; }
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { return create(kids[0]); }
+  virtual void rebuildInPlace(ref<Expr> kids[]) { src = kids[0]; }
 
 private:
   NotOptimizedExpr(const ref<Expr> &_src) : src(_src) {}
@@ -458,6 +484,9 @@ class UpdateNode {
 public:
   const UpdateNode *next;
   ref<Expr> index, value;
+
+  uint64_t flags;
+  KInstruction *kinst;
   
 private:
   /// size of this update sequence, including this update
@@ -466,12 +495,23 @@ private:
 public:
   UpdateNode(const UpdateNode *_next, 
              const ref<Expr> &_index, 
-             const ref<Expr> &_value);
+             const ref<Expr> &_value,
+             uint64_t _flags = 0,
+             KInstruction *_kinst = nullptr);
 
   unsigned getSize() const { return size; }
 
   int compare(const UpdateNode &b) const;  
   unsigned hash() const { return hashValue; }
+  void resetRefCount(const UpdateNode &un) {
+    refCount = un.refCount;
+  }
+  // this refCount helper is added to ease mem mangement in ExprInPlaceTransformer
+  void dec() const {
+    if (--refCount == 0) {
+      delete this;
+    }
+  }
 
 private:
   UpdateNode() : refCount(0) {}
@@ -555,7 +595,8 @@ public:
   /// size of this update list
   unsigned getSize() const { return (head ? head->getSize() : 0); }
   
-  void extend(const ref<Expr> &index, const ref<Expr> &value);
+  void extend(const ref<Expr> &index, const ref<Expr> &value,
+                uint64_t flags, KInstruction *kinst);
 
   int compare(const UpdateList &b) const;
   unsigned hash() const;
@@ -593,12 +634,18 @@ public:
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
     return create(updates, kids[0]);
   }
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    index = kids[0];
+  }
+  void resetUpdateNode(const UpdateNode *un) { updates.head = un; }
 
   virtual unsigned computeHash();
 
 private:
   ReadExpr(const UpdateList &_updates, const ref<Expr> &_index) : 
-    updates(_updates), index(_index) { assert(updates.root); }
+    updates(_updates), index(_index) {
+      assert(updates.root);
+    }
 
 public:
   static bool classof(const Expr *E) {
@@ -649,6 +696,11 @@ public:
     
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
     return create(kids[0], kids[1], kids[2]);
+  }
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    cond = kids[0];
+    trueExpr = kids[1];
+    falseExpr = kids[2];
   }
 
 private:
@@ -712,6 +764,7 @@ public:
 			   const ref<Expr> &kid7, const ref<Expr> &kid8);
   
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { return create(kids[0], kids[1]); }
+  virtual void rebuildInPlace(ref<Expr> kids[]) { left = kids[0]; right = kids[1]; }
   
 private:
   ConcatExpr(const ref<Expr> &l, const ref<Expr> &r) : left(l), right(r) {
@@ -774,6 +827,9 @@ public:
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
     return create(kids[0], offset, width);
   }
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    expr = kids[0];
+  }
 
   virtual unsigned computeHash();
 
@@ -817,6 +873,9 @@ public:
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
     return create(kids[0]);
   }
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    expr = kids[0];
+  }
 
   virtual unsigned computeHash();
 
@@ -859,6 +918,10 @@ public:
     const CastExpr &eb = static_cast<const CastExpr&>(b);
     if (width != eb.width) return width < eb.width ? -1 : 1;
     return 0;
+  }
+
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    src = kids[0];
   }
 
   virtual unsigned computeHash();
@@ -1057,6 +1120,9 @@ public:
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
     assert(0 && "rebuild() on ConstantExpr");
     return const_cast<ConstantExpr *>(this);
+  }
+  virtual void rebuildInPlace(ref<Expr> kids[]) {
+    assert(0 && "rebuildInPlace() on ConstantExpr");
   }
 
   virtual unsigned computeHash();

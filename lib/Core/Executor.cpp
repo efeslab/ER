@@ -24,6 +24,8 @@
 #include "StatsTracker.h"
 #include "TimingSolver.h"
 #include "UserSearcher.h"
+#include "ExecutorDebugHelper.h"
+#include "ExecutorCmdLine.h"
 
 #include "klee/Common.h"
 #include "klee/Config/Version.h"
@@ -105,8 +107,6 @@ cl::OptionCategory
 cl::OptionCategory TestGenCat("Test generation options",
                               "These options impact test generation.");
 
-cl::OptionCategory HASECat("HASE additional options",
-                              "These are additional options related to extended features for HASE");
 } // namespace klee
 
 namespace {
@@ -411,10 +411,13 @@ cl::opt<bool> DoOutofBoundaryCheck(
     "oob-check", cl::init(true),
     cl::desc("Disable out of boundary check during memory operations"),
     cl::cat(HASECat));
-cl::opt<std::string> OracleKTest( "oracle-KTest", cl::init(""),
-		cl::desc(""), cl::cat(HASECat));
 } // namespace
 
+
+// exported command line options
+namespace klee {
+  extern cl::opt<std::string> OracleKTest;
+} // namespace klee
 namespace klee {
   RNG theRNG;
 }
@@ -440,11 +443,11 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
                    InterpreterHandler *ih)
     : Interpreter(opts), interpreterHandler(ih), searcher(0),
       externalDispatcher(new ExternalDispatcher(ctx)), statsTracker(0), pathWriter(0),
-      symPathWriter(0), stackPathWriter(0), consPathWriter(0), statsPathWriter(0), symIndexWriter(0),
+      symPathWriter(0), stackPathWriter(0), consPathWriter(0), statsPathWriter(0),
       specialFunctionHandler(0), processTree(0), replayKTest(0),
-	  oracle_eval(0), replayPath(0), symIndex(0),
+      oracle_eval(0), replayPath(0),
       usingSeeds(0), atMemoryLimit(false), inhibitForking(false), haltExecution(false),
-      ivcEnabled(false), debugLogBuffer(debugBufferString) {
+      ivcEnabled(false), debugLogBuffer(debugBufferString), info_requested(false) {
 
 
   const time::Span maxCoreSolverTime(MaxCoreSolverTime);
@@ -593,7 +596,7 @@ void Executor::initializeGlobalObject(ExecutionState &state, ObjectState *os,
   } else if (isa<ConstantAggregateZero>(c)) {
     unsigned i, size = targetData->getTypeStoreSize(c->getType());
     for (i=0; i<size; i++)
-      os->write8(offset+i, (uint8_t) 0);
+      os->write8(offset+i, (uint8_t) 0, Expr::FLAG_INITIALIZATION, nullptr);
   } else if (const ConstantArray *ca = dyn_cast<ConstantArray>(c)) {
     unsigned elementSize =
       targetData->getTypeStoreSize(ca->getType()->getElementType());
@@ -622,7 +625,7 @@ void Executor::initializeGlobalObject(ExecutionState &state, ObjectState *os,
     if (StoreBits > C->getWidth())
       C = C->ZExt(StoreBits);
 
-    os->write(offset, C);
+    os->write(offset, C, Expr::FLAG_INITIALIZATION, nullptr);
   }
 }
 
@@ -633,7 +636,7 @@ MemoryObject * Executor::addExternalObject(ExecutionState &state,
                                   size, nullptr);
   ObjectState *os = bindObjectInState(state, mo, false);
   for(unsigned i = 0; i < size; i++)
-    os->write8(i, ((uint8_t*)addr)[i]);
+    os->write8(i, ((uint8_t*)addr)[i], Expr::FLAG_INITIALIZATION, nullptr);
   if(isReadOnly)
     os->setReadOnly(true);
   return mo;
@@ -745,7 +748,8 @@ void Executor::initializeGlobals(ExecutionState &state) {
 
       MemoryObject *mo = memory->allocate(size, /*isLocal=*/false,
                                           /*isGlobal=*/true, /*allocSite=*/v,
-                                          /*alignment=*/globalObjectAlignment);
+                                          /*alignment=*/globalObjectAlignment,
+                                          /*isInPOSIX*/false);
       ObjectState *os = bindObjectInState(state, mo, false);
       globalObjects.insert(std::make_pair(v, mo));
       globalAddresses.insert(std::make_pair(v, mo->getBaseExpr()));
@@ -764,14 +768,15 @@ void Executor::initializeGlobals(ExecutionState &state) {
                      i->getName().data());
 
         for (unsigned offset=0; offset<mo->size; offset++)
-          os->write8(offset, ((unsigned char*)addr)[offset]);
+          os->write8(offset, ((unsigned char*)addr)[offset], Expr::FLAG_INITIALIZATION, nullptr);
       }
     } else {
       Type *ty = i->getType()->getElementType();
       uint64_t size = kmodule->targetData->getTypeStoreSize(ty);
       MemoryObject *mo = memory->allocate(size, /*isLocal=*/false,
                                           /*isGlobal=*/true, /*allocSite=*/v,
-                                          /*alignment=*/globalObjectAlignment);
+                                          /*alignment=*/globalObjectAlignment,
+                                          /*isInPOSIX*/false);
       if (!mo)
         llvm::report_fatal_error("out of memory");
       ObjectState *os = bindObjectInState(state, mo, false);
@@ -997,12 +1002,6 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         assert(current.isInUserMain && "We assumed that during replay, uClibc doesn't need recorded path, wrong!");
         assert(!current.isInPOSIX && "We assumed that no constraints will be added inside POSIX runtime, wrong!");
         getNextBranchConstraint(current, condition, new_constraint, res);
-        // at this point, replayPosition points to the index of next branch
-        // while current branch hasn't been recorded
-        assert(current.nbranches_rec == current.replayPosition - 1);
-        if (symIndexWriter) {
-          current.symIndexOS << current.replayPosition - 1;
-        }
       }
     } else if (res==Solver::Unknown) {
       assert(!replayKTest && "in replay mode, only one branch can be true.");
@@ -1089,6 +1088,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     // res is still Solver::Unknown in this branch, which means current state
     // should fork here.
     ExecutionState *falseState, *trueState = &current;
+    if (replayPath) {
+      klee_warning("ExecutionState forks in replay mode:");
+      current.dumpStack();
+    }
 
     ++stats::forks;
     
@@ -1202,7 +1205,6 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
     ref<Expr> res = oracle_eval->visit(condition);
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(res)) {
       if (!CE->isTrue()) {
-        printInfo(llvm::errs());
         terminateStateOnError(state, "Adding False Constaint", Abort);
       }
     }
@@ -1238,6 +1240,8 @@ const Cell& Executor::eval(KInstruction *ki, unsigned index,
 void Executor::bindLocal(KInstruction *target, ExecutionState &state,
                          ref<Expr> value) {
   getDestCell(state, target).value = value;
+  value->kinst = target;
+  value->flags |= Expr::Expr::FLAG_INSTRUCTION_ROOT;
 }
 
 void Executor::bindArgument(KFunction *kf, unsigned index,
@@ -1419,7 +1423,7 @@ void Executor::executeCall(ExecutionState &state,
       Expr::Width WordSize = Context::get().getPointerWidth();
       if (WordSize == Expr::Int32) {
         executeMemoryOperation(state, true, arguments[0],
-                               sf.varargs->getBaseExpr(), 0);
+                               sf.varargs->getBaseExpr(), ki);
       } else {
         assert(WordSize == Expr::Int64 && "Unknown word size!");
 
@@ -1427,19 +1431,19 @@ void Executor::executeCall(ExecutionState &state,
         // instead of implementing it, we can do a simple hack: just
         // make a function believe that all varargs are on stack.
         executeMemoryOperation(state, true, arguments[0],
-                               ConstantExpr::create(48, 32), 0); // gp_offset
+                               ConstantExpr::create(48, 32), ki); // gp_offset
         executeMemoryOperation(state, true,
                                AddExpr::create(arguments[0],
                                                ConstantExpr::create(4, 64)),
-                               ConstantExpr::create(304, 32), 0); // fp_offset
+                               ConstantExpr::create(304, 32), ki); // fp_offset
         executeMemoryOperation(state, true,
                                AddExpr::create(arguments[0],
                                                ConstantExpr::create(8, 64)),
-                               sf.varargs->getBaseExpr(), 0); // overflow_arg_area
+                               sf.varargs->getBaseExpr(), ki); // overflow_arg_area
         executeMemoryOperation(state, true,
                                AddExpr::create(arguments[0],
                                                ConstantExpr::create(16, 64)),
-                               ConstantExpr::create(0, 64), 0); // reg_save_area
+                               ConstantExpr::create(0, 64), ki); // reg_save_area
       }
       break;
     }
@@ -1537,8 +1541,9 @@ void Executor::executeCall(ExecutionState &state,
       }
 
       MemoryObject *mo = sf.varargs =
-          memory->allocate(size, true, false, state.prevPC->inst,
-                           (requires16ByteAlignment ? 16 : 8));
+          memory->allocate(size, /*isLocal=*/true, /*isGlobal=*/false, state.prevPC->inst,
+                           (requires16ByteAlignment ? 16 : 8),
+                           /*isInPOSIX*/(state.isInPOSIX || !state.isInUserMain));
       if (!mo && size) {
         terminateStateOnExecError(state, "out of memory (varargs)");
         return;
@@ -1558,7 +1563,7 @@ void Executor::executeCall(ExecutionState &state,
           // FIXME: This is really specific to the architecture, not the pointer
           // size. This happens to work for x86-32 and x86-64, however.
           if (WordSize == Expr::Int32) {
-            os->write(offset, arguments[i]);
+            os->write(offset, arguments[i], Expr::FLAG_INSTRUCTION_ROOT, ki);
             offset += Expr::getMinBytesForWidth(arguments[i]->getWidth());
           } else {
             assert(WordSize == Expr::Int64 && "Unknown word size!");
@@ -1571,7 +1576,7 @@ void Executor::executeCall(ExecutionState &state,
               offset = llvm::RoundUpToAlignment(offset, 16);
 #endif
             }
-            os->write(offset, arguments[i]);
+            os->write(offset, arguments[i], Expr::FLAG_INSTRUCTION_ROOT, ki);
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 9)
             offset += llvm::alignTo(argWidth, WordSize) / 8;
 #else
@@ -1781,10 +1786,10 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     const auto numDestinations = bi->getNumDestinations();
     // bbindexMap map each feasible succeeding basicblock to a unique index
     std::map<const BasicBlock*, PathEntry::indirectbrIndex_t> bbindexMap;
-    // index2bb map each possible unique index (not necessarily feasible) to
+    // BBindex2bb map each possible unique index (not necessarily feasible) to
     // the corresponding succeeding basicblock pointer (NULL if the successor is unfeasible)
-    std::vector<const BasicBlock *> index2bb;
-    index2bb.reserve(numDestinations);
+    std::vector<const BasicBlock *> BBindex2bb;
+    BBindex2bb.reserve(numDestinations);
     // index2exp map each possible unique index (not necessarily feasible) to
     // the corresponding constraint expression (NULL if the successor is unfeasible)
     std::vector<ref<Expr>> index2exp;
@@ -1814,16 +1819,16 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       assert(success && "FIXME: Unhandled solver failure");
       if (result) {
         bbindexMap[d] = bbindex;
-        index2bb.push_back(d);
+        BBindex2bb.push_back(d);
         index2exp.push_back(e);
       }
       else {
-        index2bb.push_back(NULL);
+        BBindex2bb.push_back(NULL);
         index2exp.push_back(NULL);
       }
       ++bbindex;
     }
-    assert((index2bb.size() == bbindex) && (index2exp.size() == bbindex) && "bb or expr size mismatch");
+    assert((BBindex2bb.size() == bbindex) && (index2exp.size() == bbindex) && "bb or expr size mismatch");
     // check errorCase feasibility
     bool isErrorCaseFeasible;
     bool success __attribute__ ((unused)) = solver->mayBeTrue(state, errorCase, isErrorCaseFeasible);
@@ -1839,7 +1844,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         PathEntry pe;
         if (replayPath) {
           // replaying, check
-          pe = (*replayPath)[state.replayPosition++];
+          getNextPathEntry(state, pe);
           assert((pe.t == PathEntry::INDIRECTBR) &&
               "When replaying Instruction::IndirectBr concrete address, wrong PathEntry Type");
           assert((pe.body.indirectbrIndex == bbindex_find_it->second) &&
@@ -1859,16 +1864,16 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     std::vector<ExecutionState *> branches;
     if (state.shouldRecord()) {
       PathEntry pe;
-      pe = (*replayPath)[state.replayPosition++];
+      getNextPathEntry(state, pe);
       assert((pe.t == PathEntry::INDIRECTBR) &&
           "When replaying Instruction::IndirectBr symbolic address, wrong PathEntry Type");
       PathEntry::indirectbrIndex_t index = pe.body.indirectbrIndex;
-      assert((index < bbindex) && (index2bb[index]) &&
+      assert((index < bbindex) && (BBindex2bb[index]) &&
           "When replaying Instruction::IndirectBr symbolic address, recorded index is invalid");
       branch(state, std::vector<ref<Expr>>{index2exp[index]}, branches);
       assert((branches.size() > 0) && (branches[0] != NULL));
       dumpStateAtBranch(state, pe, index2exp[index]);
-      transferToBasicBlock(index2bb[index], parentbb, *branches[0]);
+      transferToBasicBlock(BBindex2bb[index], parentbb, *branches[0]);
     }
     else {
       std::vector<ref<Expr>> expressions;
@@ -1895,8 +1900,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       auto state_it = branches.begin();
       // iterate all feasible succeeding basicblocks by index, because we need to fill the index to PathEntry
       for (std::vector<const BasicBlock*>::size_type bbidx=0;
-          (bbidx < index2bb.size()) && (exp_it != expressions.end()); ++bbidx) {
-        if (index2bb[bbidx]) {
+          (bbidx < BBindex2bb.size()) && (exp_it != expressions.end()); ++bbidx) {
+        if (BBindex2bb[bbidx]) {
           pe.body.indirectbrIndex = bbidx;
           dumpStateAtBranch(**state_it, pe, *exp_it);
           ++exp_it;
@@ -1907,7 +1912,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       state_it = branches.begin();
       assert(bbindexMap.size() == branches.size());
       // iterate all succeeding basicblock again since `branches` is corresponding to feasible successors only.
-      for (auto bbp: index2bb) {
+      for (auto bbp: BBindex2bb) {
         if (bbp) { // BasicBlock * != NULL
           if (*state_it) { // ExecutionState * != NULL
             transferToBasicBlock(bbp, parentbb, **state_it);
@@ -1925,27 +1930,32 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> cond = eval(ki, 0, state).value;
     BasicBlock *parentbb = si->getParent();
     //**** parse the switch instruction ****//
-    // only used to construct its following data structures. tracks mapping from cases condition to succeeding basicblocks
-    std::map<ref<Expr>, const BasicBlock *> expressionOrder;
+
+    // We use CaseIt->getSuccessorIndex as the unique case expression index
+    // it maps default case, case_begin()..case_end() to
+    // 0, 1 ... si->getNumCases()
+    // Note that getNumCases() == getNumSuccesors() - 1
+    // Note that even though the function name contains Successor,
+    //   a distinct case value (expression) still has a unique SuccessorIndex.
+    // Though, SwitchIndex::getSuccessor may return the same basicblock for
+    //   distinct SuccessorIndex (multiple cases are mapped to the same
+    //   successive BB).
 
     // map basicblocks (regardless of feasibility) to corresponding unique index
     std::map<const BasicBlock*, PathEntry::switchIndex_t> bbindexMap;
     // map unique index to corresponding basicblocks (regardless of feasibility), no NULL here
-    std::vector<const BasicBlock *> index2bb;
+    std::vector<const BasicBlock *> BBindex2bb;
 
     // Iterate through all non-default cases and order them by expressions
     PathEntry::switchIndex_t bbindex = 0;
     for (auto i : si->cases()) {
-      ref<Expr> value = evalConstant(i.getCaseValue());
-
       BasicBlock *caseSuccessor = i.getCaseSuccessor();
-      expressionOrder.insert(std::make_pair(value, caseSuccessor));
       std::pair<std::map<const BasicBlock*, PathEntry::switchIndex_t>::iterator, bool>
         insert_res = bbindexMap.insert(std::make_pair(
               caseSuccessor, bbindex));
       if (insert_res.second) { // first time see a BB
         ++bbindex;
-        index2bb.push_back(caseSuccessor);
+        BBindex2bb.push_back(caseSuccessor);
       }
     }
     { // handle default destination separately
@@ -1955,13 +1965,20 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
               defaultDest, bbindex));
       if (insert_res.second) {
         ++bbindex;
-        index2bb.push_back(defaultDest);
+        BBindex2bb.push_back(defaultDest);
       }
     }
-    assert(index2bb.size() == bbindex);
+    assert(BBindex2bb.size() == bbindex);
 
-    //**** deal with the condition ****//
-    cond = toUnique(state, cond);
+    if (state.shouldRecord() && replayPath) {
+      ; // replaying, do not try to simplify cond
+    }
+    else {
+      // concretize the condition Expr to a unique ConstExpr if possbile.
+      // possible means the Expr provably only has a single value.
+      cond = toUnique(state, cond);
+    }
+
     // concrete switch condition
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(cond)) {
       // Somewhat gross to create these all the time, but fine till we
@@ -1969,52 +1986,180 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       llvm::IntegerType *Ty = cast<IntegerType>(si->getCondition()->getType());
       ConstantInt *ci = ConstantInt::get(Ty, CE->getZExtValue());
 #if LLVM_VERSION_CODE >= LLVM_VERSION(5, 0)
-      BasicBlock *succbb = si->findCaseValue(ci)->getCaseSuccessor();
+      SwitchInst::CaseIt caseit = si->findCaseValue(ci);
+      BasicBlock* succbb = caseit->getCaseSuccessor();
+      PathEntry::switchIndex_t exp_idx = caseit->getSuccessorIndex();
 #else
+#error "Haven't tried SwitchInst::CaseIt in llvm < 5.0"
       BasicBlock *succbb = si->findCaseValue(ci).getCaseSuccessor();
 #endif
-      auto find_it = bbindexMap.find(succbb);
-      assert((find_it != bbindexMap.end()) && "When replaying Instruction::Switch concrete condition, succeeding basicblock doesn't exist");
       if (state.shouldRecord()) { // need to consider record/replay
         PathEntry pe;
         if (replayPath) { // replaying
-          pe = (*replayPath)[state.replayPosition++];
-          assert((pe.t == PathEntry::SWITCH) && "When replaying Instruction::Switch concrete condition, wrong PathEntry Type");
-          assert((pe.body.switchIndex == find_it->second) && "When replaying Instruction::Switch concrete condition, recorded index mismatch");
+          getNextPathEntry(state, pe);
+          assert((pe.t == PathEntry::SWITCH_EXPIDX) && "When replaying Instruction::Switch concrete condition, wrong PathEntry Type");
+          assert((pe.body.switchIndex == exp_idx) && "When replaying Instruction::Switch concrete condition, recorded index mismatch");
         }
         else { // not replaying
-          pe.t = PathEntry::SWITCH;
-          pe.body.switchIndex = static_cast<PathEntry::switchIndex_t>(find_it->second);
+          pe.t = PathEntry::SWITCH_EXPIDX;
+          pe.body.switchIndex = exp_idx;
         }
         dumpStateAtBranch(state, pe, CE);
       }
-      transferToBasicBlock(succbb, si->getParent(), state);
+      transferToBasicBlock(succbb, parentbb, state);
     } else {
       // Handle possible different (symbolic) branch targets
 
       // We have the following assumptions:
-      // - each case value is mutual exclusive to all other values including the
-      //   default value
+      // - each case value is mutual exclusive to all other values, the
+      //   default case represents value excluding all case values.
       // - order of case branches is based on the order of the expressions of
       //   the scase values, still default is handled last
 
-      // tracking all feasible basicblocks, its order is not guaranteed to follow the unique index
-      std::vector<const BasicBlock *> bbOrder;
-      // tracking the constraints expression associated with each feasible basicblock
-      std::map<const BasicBlock *, ref<Expr> > branchTargets;
+      // constraints of each case (default case included)
+      std::vector<ref<Expr>> cases_constraints(si->getNumSuccessors(), ref<Expr>());
+      // default constraint, initialized to true
+      // it will be the conjunction of cond != each case value
+      SwitchInst::CaseIt defaultit = si->case_default();
+      ref<Expr> &defaultConstraint = cases_constraints[defaultit->getSuccessorIndex()];
+      defaultConstraint = ConstantExpr::alloc(1, Expr::Bool);
 
-      // Track default branch values
-      ref<Expr> defaultValue = ConstantExpr::alloc(1, Expr::Bool);
+      for (auto caseit: si->cases()) {
+        ref<Expr> value = evalConstant(caseit.getCaseValue());
+        ref<Expr> match = EqExpr::create(cond, value);
+        match = optimizer.optimizeExpr(match, false);
+        cases_constraints[caseit.getSuccessorIndex()] = match;
+        defaultConstraint = AndExpr::create(defaultConstraint, Expr::createIsZero(match));
+      }
+
+      for (auto i: cases_constraints) {
+        assert(!i.isNull() && "cases_constraints uninitialized");
+      }
+
+      // constraints of all derived states, they may come from
+      //   each case expression or the constraint of each possible succ BB
+      std::vector<ref<Expr>> conditions;
+      // used to store the forked state(s) returned by Executor::branch
+      std::vector<ExecutionState*> branches;
+      if (state.shouldRecord() && replayPath) {
+        // replay
+        PathEntry pe;
+        getNextPathEntry(state, pe);
+        if (pe.t == PathEntry::SWITCH_EXPIDX) {
+          // replay a concrete switch decision, the cond should equal
+          //   the corresponding case value
+          PathEntry::switchIndex_t index = pe.body.switchIndex;
+          assert(index < si->getNumSuccessors() && "invalid recorded EXPIDX");
+          conditions.push_back(cases_constraints[index]);
+          branch(state, conditions, branches);
+          dumpStateAtBranch(state, pe, conditions[0]);
+          transferToBasicBlock(si->getSuccessor(index), parentbb, *(branches[0]));
+        }
+        else if (pe.t == PathEntry::SWITCH_BBIDX) {
+          // replay a symbolic switch decision, the cond could equal any
+          //   case value (disjunction of equations)
+          //   having the corresponding successor basicblock
+          PathEntry::switchIndex_t index = pe.body.switchIndex;
+          assert(index < BBindex2bb.size() &&  "Invalid recorded BBIDX");
+          const BasicBlock *targetBB = BBindex2bb[index];
+          // init this disjunction form to false
+          ref<Expr> new_constraint = ConstantExpr::alloc(0, Expr::Bool);
+          // "default" is also taken cared in this loop.
+          // Even though a case value (case1) could have the same successor BB
+          // as the default case, the generated condition is also valid:
+          //   (cond == case1) || (cond != case1 && cond != case2 && ...)
+          for (unsigned int succ_idx = 0;
+              succ_idx < si->getNumSuccessors(); ++succ_idx) {
+            SwitchInst::CaseIt caseit =
+              SwitchInst::CaseIt::fromSuccessorIndex(si, succ_idx);
+            if (caseit->getCaseSuccessor() == targetBB) {
+              new_constraint = OrExpr::create(
+                  new_constraint,
+                  cases_constraints[caseit->getSuccessorIndex()]
+              );
+            }
+          }
+          conditions.push_back(new_constraint);
+          branch(state, conditions, branches);
+          dumpStateAtBranch(state, pe, conditions[0]);
+          transferToBasicBlock(targetBB, parentbb, *(branches[0]));
+        }
+        else {
+          klee_error("When replaying Instruction::Switch symbolic condition, wrong PathEntry type: %d", pe.t);
+          terminateStateOnError(state, "Wrong PathEntry type", ReplayPath);
+          break;
+        }
+      }
+      else {
+        // require symbolic execution, i.e. fork for each possible successive BB
+
+        // tracking the constraints expression associated with each feasible basicblock
+        std::map<const BasicBlock *, ref<Expr> > branchTargets;
+        for (unsigned int succ_idx = 0;
+            succ_idx < si->getNumSuccessors(); ++succ_idx) {
+          SwitchInst::CaseIt caseit =
+            SwitchInst::CaseIt::fromSuccessorIndex(si, succ_idx);
+          bool result;
+          ref<Expr> &match = cases_constraints[caseit->getSuccessorIndex()];
+          bool success = solver->mayBeTrue(state, match, result);
+          assert(success && "FIXME: Unhandled solver failure");
+          (void) success;
+          if (result) {
+            const BasicBlock *caseSuccessor = caseit->getCaseSuccessor();
+            // Handle the case that a basic block might be the target of multiple
+            // switch cases.
+            // Currently we generate a disjunctive form of all switch-case
+            // values with the same target basic block. We spare us forking too
+            // many times but we generate more complex condition expressions
+            // TODO Add option to allow to choose between those behaviors
+            std::pair<std::map<const BasicBlock *, ref<Expr> >::iterator, bool> insret =
+              branchTargets.insert(std::make_pair(
+                    caseSuccessor, ConstantExpr::alloc(0, Expr::Bool)));
+            insret.first->second = OrExpr::create(insret.first->second, match);
+          }
+        }
+        // call branch to fork on all possbile targets
+        // note that iterator of branchTargets consists of:
+        //   (target BB*, target constraint)
+        for (auto t: branchTargets) {
+          conditions.push_back(t.second);
+        }
+        branch(state, conditions, branches);
+        PathEntry pe;
+        pe.t = PathEntry::SWITCH_BBIDX;
+        auto target = branchTargets.begin();
+        auto forked_state = branches.begin();
+        for (; (target != branchTargets.end()) && (forked_state != branches.end())
+             ; target++, forked_state++) {
+          if (*forked_state) { // Executor::branch returned valid state
+            auto find_it = bbindexMap.find(target->first);
+            assert(find_it != bbindexMap.end() && "invalid target BB*");
+            pe.body.switchIndex = find_it->second;
+            dumpStateAtBranch(**forked_state, pe, target->second);
+            transferToBasicBlock(target->first, parentbb, **forked_state);
+          }
+        }
+      }
+/*
+      // TODO: CLEANUP
+      // map cases condition to succeeding basicblocks
+      // Note that multiple switch-case value could be mapped to the same BB
+      for (auto i: si->cases()) {
+        ref<Expr> value = evalConstant(i.getCaseValue());
+        BasicBlock *caseSuccessor = i.getCaseSuccessor();
+        expression2succBB.insert(std::make_pair(value, caseSuccessor));
+        ref<Expr> match = EqExpr::create(cond, value);
+        // Make sure that the default value does not contain this target's value
+        defaultValue = AndExpr::create(defaultValue, Expr::createIsZero(match));
+      }
+
 
       // iterate through all non-default cases but in order of the expressions
       for (std::map<ref<Expr>, const BasicBlock *>::iterator
-               it = expressionOrder.begin(),
-               itE = expressionOrder.end();
+               it = expression2succBB.begin(),
+               itE = expression2succBB.end();
            it != itE; ++it) {
         ref<Expr> match = EqExpr::create(cond, it->first);
-
-        // Make sure that the default value does not contain this target's value
-        defaultValue = AndExpr::create(defaultValue, Expr::createIsZero(match));
 
         // Check if control flow could take this case
         bool result;
@@ -2027,8 +2172,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
           // Handle the case that a basic block might be the target of multiple
           // switch cases.
-          // Currently we generate an expression containing all switch-case
-          // values for the same target basic block. We spare us forking too
+          // Currently we generate a disjunctive form of all switch-case
+          // values with the same target basic block. We spare us forking too
           // many times but we generate more complex condition expressions
           // TODO Add option to allow to choose between those behaviors
           std::pair<std::map<const BasicBlock *, ref<Expr> >::iterator, bool> res =
@@ -2068,20 +2213,20 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       // Since the construction of bbOrder does not involve runtime info, the order of succeeding basicblocks should be fixed
       if (state.shouldRecord() && replayPath) {
         PathEntry pe;
-        pe = (*replayPath)[state.replayPosition++];
-        assert((pe.t == PathEntry::SWITCH) && "When replaying Instruction::Switch symbolic condition, wrong PathEntry type");
+        getNextPathEntry(state, pe);
+        assert((pe.t == PathEntry::SWITCH_BBIDX) && "When replaying Instruction::Switch symbolic condition, wrong PathEntry type");
         PathEntry::switchIndex_t index = pe.body.switchIndex;
         assert(
             (index < bbindex) &&
-            (branchTargets.count(index2bb[index]) != 0) &&
+            (branchTargets.count(BBindex2bb[index]) != 0) &&
             "When replaying Instruction::Switch symbolic condition, recorded index is out of boudnary"
         );
-        conditions.push_back(branchTargets[index2bb[index]]);
+        conditions.push_back(branchTargets[BBindex2bb[index]]);
         // only fork recorded branch
         branch(state, conditions, branches);
         assert((branches.size() > 0) && (branches[0] != NULL));
         dumpStateAtBranch(state, pe, conditions[0]);
-        transferToBasicBlock(index2bb[index], parentbb, *branches[0]);
+        transferToBasicBlock(BBindex2bb[index], parentbb, *branches[0]);
       }
       else {
         for (std::vector<const BasicBlock *>::iterator it = bbOrder.begin(),
@@ -2093,7 +2238,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         branch(state, conditions, branches);
         // dump PathEntry
         PathEntry pe;
-        pe.t = PathEntry::SWITCH;
+        pe.t = PathEntry::SWITCH_BBIDX;
         for (std::vector<const BasicBlock*>::size_type i=0; i < bbOrder.size(); ++i) {
           if (branches[i]) {
             auto find_it = bbindexMap.find(bbOrder[i]);
@@ -2110,7 +2255,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
           }
           ++state_it;
         }
-      }
+      }*/
     }
     break;
   }
@@ -2480,7 +2625,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Store: {
     ref<Expr> base = eval(ki, 1, state).value;
     ref<Expr> value = eval(ki, 0, state).value;
-    executeMemoryOperation(state, true, base, value, 0);
+    executeMemoryOperation(state, true, base, value, ki);
     break;
   }
 
@@ -3104,7 +3249,7 @@ void Executor::run(ExecutionState &initialState) {
 
   // Delay init till now so that ticks don't accrue during
   // optimization and such.
-  initTimers();
+  // initTimers();
 
   states.insert(&initialState);
 
@@ -3184,6 +3329,10 @@ void Executor::run(ExecutionState &initialState) {
   searcher->update(0, newStates, std::vector<ExecutionState *>());
 
   while (!states.empty() && !haltExecution) {
+    if (info_requested) {
+      info_requested = false;
+      printInfo(llvm::errs());
+    }
     ExecutionState &state = searcher->selectState();
     KInstruction *ki = state.pc;
     stepInstruction(state);
@@ -3193,7 +3342,7 @@ void Executor::run(ExecutionState &initialState) {
 
     //processTimers(&state, maxInstructionTime);
 
-    checkMemoryUsage();
+    //checkMemoryUsage();
 
     updateStates(&state);
   }
@@ -3209,6 +3358,10 @@ std::string Executor::getAddressInfo(ExecutionState &state,
   std::string Str;
   llvm::raw_string_ostream info(Str);
   info << "\taddress: " << address << "\n";
+  // hack: I do not care detailed AddressInfo for now and I want to get rid of
+  //   the expensive solver call bellow.
+  // So just return the address itself here.
+  return info.str();
   uint64_t example;
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(address)) {
     example = CE->getZExtValue();
@@ -3402,8 +3555,8 @@ void Executor::terminateStateOnError(ExecutionState &state,
       msg << "Line: " << ii.line << "\n";
       msg << "assembly.ll line: " << ii.assemblyLine << "\n";
     }
-    msg << "Stack: \n";
-    state.dumpStack(msg);
+
+    printInfo(llvm::errs());
 
     std::string info_str = info.str();
     if (info_str != "")
@@ -3620,7 +3773,8 @@ void Executor::executeAlloc(ExecutionState &state,
     }
     MemoryObject *mo =
         memory->allocate(CE->getZExtValue(), isLocal, /*isGlobal=*/false,
-                         allocSite, allocationAlignment);
+                         allocSite, allocationAlignment,
+                         /*isInPOSIX*/(state.isInPOSIX || !state.isInUserMain));
     if (!mo) {
       bindLocal(target, state,
                 ConstantExpr::alloc(0, Context::get().getPointerWidth()));
@@ -3636,7 +3790,7 @@ void Executor::executeAlloc(ExecutionState &state,
       if (reallocFrom) {
         unsigned count = std::min(reallocFrom->size, os->size);
         for (unsigned i=0; i<count; i++)
-          os->write(i, reallocFrom->read8(i));
+          os->write(i, reallocFrom->read8(i), Expr::FLAG_INSTRUCTION_ROOT, target);
         state.addressSpace.unbindObject(reallocFrom->getObject());
       }
     }
@@ -3731,6 +3885,10 @@ void Executor::executeFree(ExecutionState &state,
       bindLocal(target, *zeroPointer.first, Expr::createPointer(0));
   }
   if (zeroPointer.second) { // address != 0
+    //typedef std::vector< std::pair<
+    //          std::pair<const MemoryObject*, const ObjectState*>,
+    //          ExecutionState*>
+    //        > ExactResolutionList;
     ExactResolutionList rl;
     resolveExact(*zeroPointer.second, address, rl, "free");
 
@@ -3750,6 +3908,40 @@ void Executor::executeFree(ExecutionState &state,
       }
     }
   }
+}
+
+void Executor::executeMallocUsableSize(ExecutionState &state,
+                           ref<Expr> address,
+                           KInstruction *target) {
+  address = optimizer.optimizeExpr(address, true);
+  StatePair zeroPointer = fork(state, Expr::createIsZero(address), true);
+  if (zeroPointer.first) {
+    terminateStateOnError(state, "call usable_size on zero address", Unhandled);
+  }
+  if (zeroPointer.second) { // address != 0
+    //typedef std::vector< std::pair<
+    //          std::pair<const MemoryObject*, const ObjectState*>,
+    //          ExecutionState*>
+    //        > ExactResolutionList;
+    ExactResolutionList rl;
+    resolveExact(*zeroPointer.second, address, rl, "usable_size");
+    if (rl.size() != 1) {
+    terminateStateOnError(state, "wrong number of resolved obj", Unhandled, NULL, getAddressInfo(state, address));
+    }
+    Executor::ExactResolutionList::iterator it = rl.begin();
+    const MemoryObject *mo = it->first.first;
+    if (mo->isLocal) {
+      terminateStateOnError(*it->second, "usable_size of alloca", Free, NULL,
+          getAddressInfo(*it->second, address));
+    } else if (mo->isGlobal) {
+      terminateStateOnError(*it->second, "usable_size of global", Free, NULL,
+          getAddressInfo(*it->second, address));
+    } else {
+      bindLocal(target, state, ConstantExpr::create(mo->size, Expr::Int64));
+      return;
+    }
+  }
+  bindLocal(target, state, ConstantExpr::create(0, Expr::Int64));
 }
 
 void Executor::resolveExact(ExecutionState &state,
@@ -3853,7 +4045,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                 ReadOnly);
         } else {
           ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-          wos->write(offset, value);
+          wos->write(offset, value, Expr::FLAG_INSTRUCTION_ROOT, target);
         }
       } else {
         ref<Expr> result = os->read(offset, type);
@@ -3887,6 +4079,13 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     const ObjectState *os = i->second;
     ref<Expr> inBounds = mo->getBoundsCheckPointer(address, bytes);
 
+    // TODO: I feel like the fork here is unnecessary.
+    // Considering the symbolic address can already be mapped to multiple
+    //   memory objects, it of course will be "out of bound" when you only consider
+    //   one possible mapping. (unless the objects overlap or
+    //   the addressSpace.resolve is not accurate.
+    // I am considering only forking one more ExecutionState per iteration,
+    //   which represents the in bound case.
     StatePair branches = fork(*unbound, inBounds, true);
     ExecutionState *bound = branches.first;
 
@@ -3898,7 +4097,8 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                 ReadOnly);
         } else {
           ObjectState *wos = bound->addressSpace.getWriteable(mo, os);
-          wos->write(mo->getOffsetExpr(address), value);
+          wos->write(mo->getOffsetExpr(address), value,
+                    Expr::FLAG_INSTRUCTION_ROOT, target);
         }
       } else {
         ref<Expr> result = os->read(mo->getOffsetExpr(address), type);
@@ -3991,7 +4191,7 @@ void Executor::executeMakeSymbolic(ExecutionState &state,
         terminateStateOnError(state, "replay size mismatch", User);
       } else {
         for (unsigned i=0; i<mo->size; i++)
-          os->write8(i, obj->bytes[i]);
+          os->write8(i, obj->bytes[i], Expr::FLAG_INITIALIZATION, nullptr);
       }
     }
   }
@@ -4030,7 +4230,8 @@ void Executor::runFunctionAsMain(Function *f,
       argvMO =
           memory->allocate((argc + 1 + envc + 1 + 1) * NumPtrBytes,
                            /*isLocal=*/false, /*isGlobal=*/true,
-                           /*allocSite=*/first, /*alignment=*/8);
+                           /*allocSite=*/first, /*alignment=*/8,
+                           /*isInPOSIX*/false);
 
       if (!argvMO)
         klee_error("Could not allocate memory for function arguments");
@@ -4059,8 +4260,6 @@ void Executor::runFunctionAsMain(Function *f,
     state->consPathOS = consPathWriter->open();
   if (statsPathWriter)
     state->statsPathOS = statsPathWriter->open();
-  if (symIndexWriter)
-    state->symIndexOS = symIndexWriter->open();
 
   if (statsTracker)
     statsTracker->framePushed(*state, 0);
@@ -4075,22 +4274,23 @@ void Executor::runFunctionAsMain(Function *f,
     for (int i=0; i<argc+1+envc+1+1; i++) {
       if (i==argc || i>=argc+1+envc) {
         // Write NULL pointer
-        argvOS->write(i * NumPtrBytes, Expr::createPointer(0));
+        argvOS->write(i * NumPtrBytes, Expr::createPointer(0), Expr::FLAG_INITIALIZATION, nullptr);
       } else {
         char *s = i<argc ? argv[i] : envp[i-(argc+1)];
         int j, len = strlen(s);
 
         MemoryObject *arg =
             memory->allocate(len + 1, /*isLocal=*/false, /*isGlobal=*/true,
-                             /*allocSite=*/state->pc->inst, /*alignment=*/8);
+                             /*allocSite=*/state->pc->inst, /*alignment=*/8,
+                             /*isInPOSIX*/false);
         if (!arg)
           klee_error("Could not allocate memory for function arguments");
         ObjectState *os = bindObjectInState(*state, arg, false);
         for (j=0; j<len+1; j++)
-          os->write8(j, s[j]);
+          os->write8(j, s[j], Expr::FLAG_INITIALIZATION, nullptr);
 
         // Write pointer to newly allocated and initialised argv/envp c-string
-        argvOS->write(i * NumPtrBytes, arg->getBaseExpr());
+        argvOS->write(i * NumPtrBytes, arg->getBaseExpr(), Expr::FLAG_INITIALIZATION, nullptr);
       }
     }
   }
@@ -4137,11 +4337,6 @@ unsigned Executor::getConsPathStreamID(const ExecutionState &state) {
 unsigned Executor::getStatsPathStreamID(const ExecutionState &state) {
   assert(statsPathWriter);
   return state.statsPathOS.getID();
-}
-
-unsigned Executor::getSymIndexStreamID(const ExecutionState &state) {
-  assert(symIndexWriter);
-  return state.symIndexOS.getID();
 }
 
 void Executor::getConstraintLog(const ExecutionState &state, std::string &res,
@@ -4284,7 +4479,7 @@ void Executor::doImpliedValueConcretization(ExecutionState &state,
         assert(!os->readOnly &&
                "not possible? read only object with static read?");
         ObjectState *wos = state.addressSpace.getWriteable(mo, os);
-        wos->write(CE, it->second);
+        wos->write(CE, it->second, 0, nullptr);
       }
     }
   }
@@ -4348,8 +4543,12 @@ size_t Executor::getAllocationAlignment(const llvm::Value *allocSite) const {
     }
   }
 
-  // Currently we require alignment be a power of 2
-  if (!bits64::isPowerOfTwo(alignment)) {
+  if (alignment < sizeof(void*)) {
+    // force alignment to >= minimum alignment unit (sizeof(void*))
+    alignment = sizeof(void*);
+  }
+  else if (!bits64::isPowerOfTwo(alignment)) {
+    // Otherwise, we require alignment be a power of 2
     klee_warning_once(allocSite, "Alignment of %zu requested for %s but this "
                                  "not supported. Using alignment of %zu",
                       alignment, allocSite->getName().str().c_str(),
@@ -4358,6 +4557,8 @@ size_t Executor::getAllocationAlignment(const llvm::Value *allocSite) const {
   }
   assert(bits64::isPowerOfTwo(alignment) &&
          "Returned alignment must be a power of two");
+  assert(alignment >= sizeof(void*) &&
+         "Alignment should be a multiple of pointer size");
   return alignment;
 }
 
@@ -4370,6 +4571,8 @@ void Executor::prepareForEarlyExit() {
 }
 
 void Executor::printInfo(llvm::raw_ostream &os) {
+  static unsigned int cnt = 0;
+  os << "********************************* Info " << cnt << "***********************\n";
   os << "Total Instructions: " << stats::instructions.getValue() << '\n';
   unsigned int i=0;
   for (auto s: states) {
@@ -4377,9 +4580,14 @@ void Executor::printInfo(llvm::raw_ostream &os) {
        << "  ReplayPosition: " << (replayPath?std::to_string(s->replayPosition):"N/A") << '\n'
        << "  Stack:\n";
     s->dumpStack(os);
+    char filenamebuf[128];
+    std::snprintf(filenamebuf, 128, "constraints_cnt%03u_state%03u.kquery", cnt, i);
+    debugDumpConstraints(*s, s->constraints, ref<Expr>(0), filenamebuf);
+    ++i;
   }
   os << "======== Statistics =============\n";
   dumpStatisticsToLLVMrawos(os);
+  ++cnt;
 }
 
 /// Returns the errno location in memory
@@ -4446,7 +4654,7 @@ Interpreter *Interpreter::create(LLVMContext &ctx, const InterpreterOptions &opt
 
 void debugDumpLLVMIR(llvm::Instruction *llvmir) {
     llvmir->print(llvm::errs());
-    llvm::errs() << '\n';
+llvm::errs() << '\n';
 }
 
 /// Dump constraints to a file, used inside gdb
@@ -4517,13 +4725,11 @@ void Executor::writeStackKQueries(std::string& buf) {
 };
 */
 void Executor::AssertNextBranchTaken(ExecutionState &state, bool br) {
-  PathEntry pe = (*replayPath)[state.replayPosition++];
+  PathEntry pe;
+  getNextPathEntry(state, pe);
   bool recorded_br;
   if (pe.t == PathEntry::FORK) {
     recorded_br = pe.body.br;
-  }
-  else if (pe.t == PathEntry::FORKREC) {
-    recorded_br = pe.body.rec.br;
   }
   else {
     klee_error("Wrong PathEntry_t during asserting next branch");
@@ -4543,23 +4749,13 @@ void Executor::AssertNextBranchTaken(ExecutionState &state, bool br) {
 
 void Executor::getNextBranchConstraint(ExecutionState &state, ref<Expr> condition,
     ref<Expr> &new_constraint, Solver::Validity &res) {
-  PathEntry pe = (*replayPath)[state.replayPosition++];
-  switch (pe.t) {
-    case PathEntry::FORK:
-      getConstraintFromBool(condition, new_constraint, res, pe.body.br);
-      break;
-    case PathEntry::FORKREC:
-      new_constraint = ConstantExpr::alloc(1, Expr::Bool);
-      assert(condition->getNumKids() == pe.body.rec.numKids);
-      for (PathEntry::numKids_t i=0; i < pe.body.rec.numKids; ++i) {
-        ref<ConstantExpr> v = ConstantExpr::alloc(pe.Kids[i], condition->getKid(i)->getWidth());
-        new_constraint = AndExpr::create(
-            new_constraint,
-            EqExpr::create(condition->getKid(i), v));
-      }
-      res = pe.body.rec.br?Solver::True:Solver::False;
-      break;
-    default:
-      klee_error("Wrong recorded branch type");
+  PathEntry pe;
+  getNextPathEntry(state, pe);
+  if (pe.t == PathEntry::FORK) {
+    getConstraintFromBool(condition, new_constraint, res, pe.body.br);
+  }
+  else {
+    klee_error("Wrong recorded branch type");
   }
 }
+static void (*dummy_include_debug_helper)(llvm::raw_ostream &) __attribute__((unused)) = printDebugLibVersion;

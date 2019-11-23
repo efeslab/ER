@@ -98,6 +98,8 @@ ObjectState::ObjectState(const MemoryObject *mo)
     refCount(0),
     object(mo),
     concreteStore(new uint8_t[mo->size]),
+    flagStore(new uint64_t[mo->size]),
+    kinstStore(new KInstruction*[mo->size]),
     concreteMask(0),
     flushMask(0),
     knownSymbolics(0),
@@ -112,6 +114,10 @@ ObjectState::ObjectState(const MemoryObject *mo)
     updates = UpdateList(array, 0);
   }
   memset(concreteStore, 0, size);
+  for (unsigned i = 0; i < size; i++) {
+    flagStore[i] = Expr::FLAG_INTERNAL;
+  }
+  memset(kinstStore, 0, size*sizeof(KInstruction*));
 }
 
 
@@ -120,6 +126,8 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
     refCount(0),
     object(mo),
     concreteStore(new uint8_t[mo->size]),
+    flagStore(new uint64_t[mo->size]),
+    kinstStore(new KInstruction*[mo->size]),
     concreteMask(0),
     flushMask(0),
     knownSymbolics(0),
@@ -129,6 +137,10 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
   mo->refCount++;
   makeSymbolic();
   memset(concreteStore, 0, size);
+  for (unsigned i = 0; i < size; i++) {
+    flagStore[i] = Expr::FLAG_INTERNAL;
+  }
+  memset(kinstStore, 0, size*sizeof(KInstruction*));
 }
 
 ObjectState::ObjectState(const ObjectState &os) 
@@ -136,6 +148,8 @@ ObjectState::ObjectState(const ObjectState &os)
     refCount(0),
     object(os.object),
     concreteStore(new uint8_t[os.size]),
+    flagStore(new uint64_t[os.size]),
+    kinstStore(new KInstruction*[os.size]),
     concreteMask(os.concreteMask ? new BitArray(*os.concreteMask, os.size) : 0),
     flushMask(os.flushMask ? new BitArray(*os.flushMask, os.size) : 0),
     knownSymbolics(0),
@@ -153,6 +167,8 @@ ObjectState::ObjectState(const ObjectState &os)
   }
 
   memcpy(concreteStore, os.concreteStore, size*sizeof(*concreteStore));
+  memcpy(flagStore, os.flagStore, size*sizeof(*flagStore));
+  memcpy(kinstStore, os.kinstStore, size*sizeof(*kinstStore));
 }
 
 ObjectState::~ObjectState() {
@@ -160,6 +176,8 @@ ObjectState::~ObjectState() {
   delete flushMask;
   delete[] knownSymbolics;
   delete[] concreteStore;
+  delete[] flagStore;
+  delete[] kinstStore;
 
   if (object)
   {
@@ -189,10 +207,14 @@ const UpdateList &ObjectState::getUpdates() const {
     // should avoid creating UpdateNode instances we never use.
     unsigned NumWrites = updates.head ? updates.head->getSize() : 0;
     std::vector< std::pair< ref<Expr>, ref<Expr> > > Writes(NumWrites);
+    std::vector<uint64_t> Flags(NumWrites);
+    std::vector<KInstruction *> Kinsts(NumWrites);
     const UpdateNode *un = updates.head;
     for (unsigned i = NumWrites; i != 0; un = un->next) {
       --i;
       Writes[i] = std::make_pair(un->index, un->value);
+      Flags[i] = un->flags;
+      Kinsts[i] = un->kinst;
     }
 
     std::vector< ref<ConstantExpr> > Contents(size);
@@ -224,7 +246,8 @@ const UpdateList &ObjectState::getUpdates() const {
 
     // Apply the remaining (non-constant) writes.
     for (; Begin != End; ++Begin)
-      updates.extend(Writes[Begin].first, Writes[Begin].second);
+      updates.extend(Writes[Begin].first, Writes[Begin].second,
+                    Flags[Begin], Kinsts[Begin]);
   }
 
   return updates;
@@ -270,6 +293,10 @@ void ObjectState::makeSymbolic() {
 void ObjectState::initializeToZero() {
   makeConcrete();
   memset(concreteStore, 0, size);
+  for (unsigned i = 0; i < size; i++) {
+    flagStore[i] = Expr::FLAG_INITIALIZATION;
+  }
+  memset(kinstStore, 0, size*sizeof(KInstruction*));
 }
 
 void ObjectState::initializeToRandom() {  
@@ -278,6 +305,10 @@ void ObjectState::initializeToRandom() {
     // randomly selected by 256 sided die
     concreteStore[i] = 0xAB;
   }
+  for (unsigned i = 0; i < size; i++) {
+    flagStore[i] = Expr::FLAG_INITIALIZATION;
+  }
+  memset(kinstStore, 0, size*sizeof(KInstruction*));
 }
 
 /*
@@ -303,11 +334,13 @@ void ObjectState::flushRangeForRead(unsigned rangeBase,
     if (!isByteFlushed(offset)) {
       if (isByteConcrete(offset)) {
         updates.extend(ConstantExpr::create(offset, Expr::Int32),
-                       ConstantExpr::create(concreteStore[offset], Expr::Int8));
+                       ConstantExpr::create(concreteStore[offset], Expr::Int8),
+                       flagStore[offset], kinstStore[offset]);
       } else {
         assert(isByteKnownSymbolic(offset) && "invalid bit set in flushMask");
         updates.extend(ConstantExpr::create(offset, Expr::Int32),
-                       knownSymbolics[offset]);
+                       knownSymbolics[offset],
+                       flagStore[offset], kinstStore[offset]);
       }
 
       flushMask->unset(offset);
@@ -323,13 +356,19 @@ void ObjectState::flushRangeForWrite(unsigned rangeBase,
     if (!isByteFlushed(offset)) {
       if (isByteConcrete(offset)) {
         updates.extend(ConstantExpr::create(offset, Expr::Int32),
-                       ConstantExpr::create(concreteStore[offset], Expr::Int8));
+                       ConstantExpr::create(concreteStore[offset], Expr::Int8),
+                       flagStore[offset], kinstStore[offset]);
         markByteSymbolic(offset);
+        //flagStore[offset] = 0;
+        //kinstStore[offset] = 0;
       } else {
         assert(isByteKnownSymbolic(offset) && "invalid bit set in flushMask");
         updates.extend(ConstantExpr::create(offset, Expr::Int32),
-                       knownSymbolics[offset]);
+                       knownSymbolics[offset],
+                       flagStore[offset], kinstStore[offset]);
         setKnownSymbolic(offset, 0);
+        //flagStore[offset] = 0;
+        //kinstStore[offset] = 0;
       }
 
       flushMask->unset(offset);
@@ -425,28 +464,46 @@ ref<Expr> ObjectState::read8(ref<Expr> offset) const {
   return ReadExpr::create(getUpdates(), ZExtExpr::create(offset, Expr::Int32));
 }
 
-void ObjectState::write8(unsigned offset, uint8_t value) {
+void ObjectState::write8(unsigned offset, uint8_t value,
+            uint64_t flags, KInstruction *kinst) {
+  increaseUntaggedWriteCnt(flags, kinst);
+
   //assert(read_only == false && "writing to read-only object!");
   concreteStore[offset] = value;
+  flagStore[offset] = flags;
+  kinstStore[offset] = kinst;
   setKnownSymbolic(offset, 0);
 
   markByteConcrete(offset);
   markByteUnflushed(offset);
 }
 
-void ObjectState::write8(unsigned offset, ref<Expr> value) {
+void ObjectState::increaseUntaggedWriteCnt(uint64_t flags, KInstruction *kinst) {
+  if ((flags & Expr::FLAG_INITIALIZATION) == 0 && kinst == nullptr)
+    untaggedWriteCnt++;
+}
+
+void ObjectState::write8(unsigned offset, ref<Expr> value,
+            uint64_t flags, KInstruction *kinst) {
   // can happen when ExtractExpr special cases
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value)) {
-    write8(offset, (uint8_t) CE->getZExtValue(8));
+    write8(offset, (uint8_t) CE->getZExtValue(8), flags, kinst);
   } else {
+    increaseUntaggedWriteCnt(flags, kinst);
+
     setKnownSymbolic(offset, value.get());
-      
+    flagStore[offset] = flags;
+    kinstStore[offset] = kinst;
+
     markByteSymbolic(offset);
     markByteUnflushed(offset);
   }
 }
 
-void ObjectState::write8(ref<Expr> offset, ref<Expr> value) {
+void ObjectState::write8(ref<Expr> offset, ref<Expr> value,
+            uint64_t flags, KInstruction *kinst) {
+  increaseUntaggedWriteCnt(flags, kinst);
+
   assert(!isa<ConstantExpr>(offset) && "constant offset passed to symbolic write8");
   unsigned base, size;
   fastRangeCheckOffset(offset, &base, &size);
@@ -460,7 +517,7 @@ void ObjectState::write8(ref<Expr> offset, ref<Expr> value) {
                       allocInfo.c_str());
   }
   
-  updates.extend(ZExtExpr::create(offset, Expr::Int32), value);
+  updates.extend(ZExtExpr::create(offset, Expr::Int32), value, flags, kinst);
 }
 
 /***/
@@ -510,20 +567,21 @@ ref<Expr> ObjectState::read(unsigned offset, Expr::Width width) const {
   return Res;
 }
 
-void ObjectState::write(ref<Expr> offset, ref<Expr> value) {
+void ObjectState::write(ref<Expr> offset, ref<Expr> value,
+            uint64_t flags, KInstruction *kinst) {
   // Truncate offset to 32-bits.
   offset = ZExtExpr::create(offset, Expr::Int32);
 
   // Check for writes at constant offsets.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(offset)) {
-    write(CE->getZExtValue(32), value);
+    write(CE->getZExtValue(32), value, flags, kinst);
     return;
   }
 
   // Treat bool specially, it is the only non-byte sized write we allow.
   Expr::Width w = value->getWidth();
   if (w == Expr::Bool) {
-    write8(offset, ZExtExpr::create(value, Expr::Int8));
+    write8(offset, ZExtExpr::create(value, Expr::Int8), flags, kinst);
     return;
   }
 
@@ -533,11 +591,12 @@ void ObjectState::write(ref<Expr> offset, ref<Expr> value) {
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
     write8(AddExpr::create(offset, ConstantExpr::create(idx, Expr::Int32)),
-           ExtractExpr::create(value, 8 * i, Expr::Int8));
+           ExtractExpr::create(value, 8 * i, Expr::Int8), flags, kinst);
   }
 }
 
-void ObjectState::write(unsigned offset, ref<Expr> value) {
+void ObjectState::write(unsigned offset, ref<Expr> value,
+            uint64_t flags, KInstruction *kinst) {
   // Check for writes of constant values.
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value)) {
     Expr::Width w = CE->getWidth();
@@ -546,10 +605,10 @@ void ObjectState::write(unsigned offset, ref<Expr> value) {
       switch (w) {
       default: assert(0 && "Invalid write size!");
       case  Expr::Bool:
-      case  Expr::Int8:  write8(offset, val); return;
-      case Expr::Int16: write16(offset, val); return;
-      case Expr::Int32: write32(offset, val); return;
-      case Expr::Int64: write64(offset, val); return;
+      case  Expr::Int8:  write8(offset, val, flags, kinst); return;
+      case Expr::Int16: write16(offset, val, flags, kinst); return;
+      case Expr::Int32: write32(offset, val, flags, kinst); return;
+      case Expr::Int64: write64(offset, val, flags, kinst); return;
       }
     }
   }
@@ -557,7 +616,7 @@ void ObjectState::write(unsigned offset, ref<Expr> value) {
   // Treat bool specially, it is the only non-byte sized write we allow.
   Expr::Width w = value->getWidth();
   if (w == Expr::Bool) {
-    write8(offset, ZExtExpr::create(value, Expr::Int8));
+    write8(offset, ZExtExpr::create(value, Expr::Int8), flags, kinst);
     return;
   }
 
@@ -566,31 +625,34 @@ void ObjectState::write(unsigned offset, ref<Expr> value) {
   assert(w == NumBytes * 8 && "Invalid write size!");
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
-    write8(offset + idx, ExtractExpr::create(value, 8 * i, Expr::Int8));
+    write8(offset + idx, ExtractExpr::create(value, 8 * i, Expr::Int8), flags, kinst);
   }
 } 
 
-void ObjectState::write16(unsigned offset, uint16_t value) {
+void ObjectState::write16(unsigned offset, uint16_t value,
+            uint64_t flags, KInstruction *kinst) {
   unsigned NumBytes = 2;
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
-    write8(offset + idx, (uint8_t) (value >> (8 * i)));
+    write8(offset + idx, (uint8_t) (value >> (8 * i)), flags, kinst);
   }
 }
 
-void ObjectState::write32(unsigned offset, uint32_t value) {
+void ObjectState::write32(unsigned offset, uint32_t value,
+            uint64_t flags, KInstruction *kinst) {
   unsigned NumBytes = 4;
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
-    write8(offset + idx, (uint8_t) (value >> (8 * i)));
+    write8(offset + idx, (uint8_t) (value >> (8 * i)), flags, kinst);
   }
 }
 
-void ObjectState::write64(unsigned offset, uint64_t value) {
+void ObjectState::write64(unsigned offset, uint64_t value,
+            uint64_t flags, KInstruction *kinst) {
   unsigned NumBytes = 8;
   for (unsigned i = 0; i != NumBytes; ++i) {
     unsigned idx = Context::get().isLittleEndian() ? i : (NumBytes - i - 1);
-    write8(offset + idx, (uint8_t) (value >> (8 * i)));
+    write8(offset + idx, (uint8_t) (value >> (8 * i)), flags, kinst);
   }
 }
 

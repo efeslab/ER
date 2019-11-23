@@ -1,6 +1,14 @@
-#include "OracleEvaluator.h"
+#include "klee/util/OracleEvaluator.h"
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/SolverImpl.h"
+#include "klee/OptionCategories.h"
+
+using namespace llvm;
+
+namespace klee {
+  cl::opt<std::string> OracleKTest( "oracle-KTest", cl::init(""),
+      cl::desc(""), cl::cat(HASECat));
+} // namespace klee
 
 ref<Expr> OracleEvaluator::getInitialValue(const Array &array, unsigned index) {
     // it.first == array name, it.second == index at ktest->objects
@@ -11,43 +19,21 @@ ref<Expr> OracleEvaluator::getInitialValue(const Array &array, unsigned index) {
     }
     KTestObject &kobj = ktest->objects[it->second];
     if (index >= kobj.numBytes) {
-        klee_message("Array %s requested index (%u) >= numBytes (%u)",
-                array.name.c_str(), index, kobj.numBytes);
-        abort();
+        // FIXME: klee does not support symbolic malloc and symbolic file size,
+        // and memcpy is not recorded. It is possible that an "invalid" position
+        // is referenced here. However, the program won't use it.
+        return ConstantExpr::alloc(0, array.getRange());
     }
     assert(array.getRange() == Expr::Int8 && "Current implementation only supports byte array");
     return ConstantExpr::alloc(kobj.bytes[index], array.getRange());
 }
-OracleEvaluator::OracleEvaluator(std::string KTestPath) {
+OracleEvaluator::OracleEvaluator(std::string KTestPath, bool silent) {
     ktest = kTest_fromFile(KTestPath.c_str());
     assert(ktest && "Open KTestFile error");
     for (unsigned int i=0; i < ktest->numObjects; ++i) {
-        klee_message("Loading %s from OracleKTest", ktest->objects[i].name);
+        if (!silent) {
+            klee_message("Loading %s from OracleKTest", ktest->objects[i].name);
+        }
         arrayname2idx[ktest->objects[i].name] = i;
     }
 }
-/*
-class OracleSolver : public SolverImpl {
-    Solver *solver;
-    OracleEvaluator oracle_eval;
-    public:
-    OracleSolver(Solver *_solver, std::string KTestPath): solver(_solver), ktest_ev(KTestPath) {}
-    ~OracleSolver() {
-        kTest_free(ktest);
-    }
-    bool computeTruth(const Query&, bool &isValid);
-    bool computeValidity(const Query&, Solver::Validity &result);
-    bool computeValue(const Query&, ref<Expr> &result);
-    bool computeInitialValues(const Query&,
-            const std::vector<const Array*> &objects,
-            std::vector<std::vector<unsigned char> > &values,
-            bool &hasSolution);
-    SolverRunStatus getOperationStatusCode();
-    char *getConstraintLog(const Query&);
-    void setCoreSolverTimeout(time::Span timeout) {};
-}
-
-bool OracleSolver::computeTruth(const Query &query, bool &isValid) {
-    ref<Expr> result = ktest_ev.visit(query.expr);
-}
-*/

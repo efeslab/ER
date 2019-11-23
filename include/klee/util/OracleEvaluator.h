@@ -9,16 +9,20 @@
 using namespace klee;
 
 namespace klee {
+  extern llvm::cl::opt<std::string> OracleKTest;
+
   class OracleEvaluator : public ExprEvaluator {
+    // KTest loaded from the given file
     KTest *ktest;
-    typedef std::unordered_map<std::string, unsigned int> arrayname2idx_ty;
-    arrayname2idx_ty arrayname2idx;
 
     protected:
     ref<Expr> getInitialValue(const Array &mo, unsigned index);
+    // arrayname2idx maps symbolic objs' name in the ktest to their index in the ktest.
+    typedef std::unordered_map<std::string, unsigned int> arrayname2idx_ty;
+    arrayname2idx_ty arrayname2idx;
 
     public:
-    OracleEvaluator(std::string KTestPath);
+    OracleEvaluator(std::string KTestPath, bool silent = false);
   };
 }
 #endif

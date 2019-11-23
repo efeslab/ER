@@ -8,10 +8,13 @@
 #===------------------------------------------------------------------------===#
 add_executable(kleaver
   main.cpp
+  GraphvizDOTDrawer.cpp
+  ExprInPlaceTransformation.cpp
 )
 
 set(KLEE_LIBS
   kleaverSolver
+  kleaverExpr
 )
 
 target_link_libraries(kleaver ${KLEE_LIBS})

@@ -101,6 +101,10 @@ void klee_init_env(int *argcPtr, char ***argvPtr) {
   char sym_arg_name[6] = "arg";
   unsigned sym_arg_num = 0;
   int k = 0, i;
+  char *concretize_cfg = 0;
+
+  char *sym_file_names[1024];
+  unsigned sym_file_lens[1024];
 
   sym_arg_name[5] = '\0';
 
@@ -113,6 +117,8 @@ usage: (klee_init_env) [options] [program arguments]\n\
                               MAX arguments, each with maximum length N\n\
   -sym-files <NUM> <N>      - Make NUM symbolic files ('A', 'B', 'C', etc.),\n\
                               each with size N\n\
+  -sym-file <FILE> <N>      - Make a symbolic FILE with size N. This is conflict\n\
+                            - with -sym-files\n\
   -sym-stdin <N>            - Make stdin symbolic with size N.\n\
   -sym-file-stdin           - Make symbolic stdin behave like piped in from a file if set.\n\
   -sym-stdout               - Make stdout symbolic.\n\
@@ -121,6 +127,7 @@ usage: (klee_init_env) [options] [program arguments]\n\
                               writes exceeding the initial file size are discarded.\n\
                               Note: file offset is always incremented.\n\
   -max-fail <N>             - Allow up to N injected failures\n\
+  -concretize_cfg <FILE>    - Replace specific inputs with concretized value\n\
   -fd-fail                  - Shortcut for '-max-fail 1'\n\n");
   }
 
@@ -199,7 +206,21 @@ usage: (klee_init_env) [options] [program arguments]\n\
       if (sym_file_len == 0)
         __emit_error("The second argument to --sym-files (file size) "
                      "cannot be 0\n");
+    } else if (__streq(argv[k], "--sym-file") ||
+               __streq(argv[k], "-sym-file")) {
+      const char *msg = "--sym-files expect two arguments "
+                        "<sym-file-name> <sym-file-len>";
 
+      if (k + 2 >= argc)
+        __emit_error(msg);
+
+      if (sym_file_len != 0)
+        __emit_error("--sym-files not allowed together with --sym-file");
+
+      k++;
+      sym_file_names[sym_files] = argv[k++];
+      sym_file_lens[sym_files] = __str_to_int(argv[k++], msg);
+      sym_files++;
     } else if (__streq(argv[k], "--sym-stdin") ||
                __streq(argv[k], "-sym-stdin")) {
       const char *msg =
@@ -231,6 +252,13 @@ usage: (klee_init_env) [options] [program arguments]\n\
         __emit_error(msg);
 
       fd_fail = __str_to_int(argv[k++], msg);
+    } else if (__streq(argv[k], "--concretize-cfg") ||
+               __streq(argv[k], "-concretize-cfg")) {
+      const char *msg = "--concretization-config expects an string argument <filename>";
+      if (++k == argc)
+        __emit_error(msg);
+
+      concretize_cfg = argv[k++];
     } else {
       /* simply copy arguments */
       __add_arg(&new_argc, new_argv, argv[k++], 1024);
@@ -250,7 +278,7 @@ usage: (klee_init_env) [options] [program arguments]\n\
   *argvPtr = final_argv;
 
   klee_init_fds(sym_files, sym_file_len, sym_stdin_len, sym_file_stdin_flag, sym_stdout_flag,
-                save_all_writes_flag, fd_fail);
+                save_all_writes_flag, fd_fail, concretize_cfg, sym_file_names, sym_file_lens);
 }
 
 /* The following function represents the main function of the user application

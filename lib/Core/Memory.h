@@ -13,6 +13,7 @@
 #include "Context.h"
 #include "TimingSolver.h"
 #include "klee/Expr.h"
+#include "klee/Internal/Module/KInstruction.h"
 
 #include "llvm/ADT/StringExtras.h"
 
@@ -52,6 +53,9 @@ public:
   bool isFixed;
 
   bool isUserSpecified;
+  // if (isGlobal == false), this field means if this object was allocated
+  // deterministically
+  bool isDeterm;
 
   MemoryManager *parent;
 
@@ -79,12 +83,13 @@ public:
       address(_address),
       size(0),
       isFixed(true),
+      isDeterm(false),
       parent(NULL),
       allocSite(0) {
   }
 
   MemoryObject(uint64_t _address, unsigned _size, 
-               bool _isLocal, bool _isGlobal, bool _isFixed,
+               bool _isLocal, bool _isGlobal, bool _isFixed, bool _isDeterm,
                const llvm::Value *_allocSite,
                MemoryManager *_parent)
     : refCount(0), 
@@ -96,6 +101,7 @@ public:
       isGlobal(_isGlobal),
       isFixed(_isFixed),
       isUserSpecified(false),
+      isDeterm(_isDeterm),
       parent(_parent), 
       allocSite(_allocSite) {
   }
@@ -155,6 +161,8 @@ private:
   const MemoryObject *object;
 
   uint8_t *concreteStore;
+  uint64_t *flagStore;
+  KInstruction **kinstStore;
 
   // XXX cleanup name of flushMask (its backwards or something)
   BitArray *concreteMask;
@@ -171,6 +179,7 @@ public:
   unsigned size;
 
   bool readOnly;
+  unsigned untaggedWriteCnt = 0;
 
 public:
   /// Create a new object state for the given memory object with concrete
@@ -194,18 +203,26 @@ public:
   // make contents all concrete and random
   void initializeToRandom();
 
+  uint64_t getFlags(unsigned offset) {
+      return flagStore[offset];
+  }
+
+  KInstruction *getKInst(unsigned offset) {
+      return kinstStore[offset];
+  }
+
   ref<Expr> read(ref<Expr> offset, Expr::Width width) const;
   ref<Expr> read(unsigned offset, Expr::Width width) const;
   ref<Expr> read8(unsigned offset) const;
 
   // return bytes written.
-  void write(unsigned offset, ref<Expr> value);
-  void write(ref<Expr> offset, ref<Expr> value);
+  void write(unsigned offset, ref<Expr> value, uint64_t flags, KInstruction *kinst);
+  void write(ref<Expr> offset, ref<Expr> value, uint64_t flags, KInstruction *kinst);
 
-  void write8(unsigned offset, uint8_t value);
-  void write16(unsigned offset, uint16_t value);
-  void write32(unsigned offset, uint32_t value);
-  void write64(unsigned offset, uint64_t value);
+  void write8(unsigned offset, uint8_t value, uint64_t flags, KInstruction *kinst);
+  void write16(unsigned offset, uint16_t value, uint64_t flags, KInstruction *kinst);
+  void write32(unsigned offset, uint32_t value, uint64_t flags, KInstruction *kinst);
+  void write64(unsigned offset, uint64_t value, uint64_t flags, KInstruction *kinst);
   void print() const;
 
   /*
@@ -223,8 +240,8 @@ private:
   void makeSymbolic();
 
   ref<Expr> read8(ref<Expr> offset) const;
-  void write8(unsigned offset, ref<Expr> value);
-  void write8(ref<Expr> offset, ref<Expr> value);
+  void write8(unsigned offset, ref<Expr> value, uint64_t flags, KInstruction *kinst);
+  void write8(ref<Expr> offset, ref<Expr> value, uint64_t flags, KInstruction *kinst);
 
   void fastRangeCheckOffset(ref<Expr> offset, unsigned *base_r, 
                             unsigned *size_r) const;
@@ -240,6 +257,8 @@ private:
   void markByteFlushed(unsigned offset);
   void markByteUnflushed(unsigned offset);
   void setKnownSymbolic(unsigned offset, Expr *value);
+
+  void increaseUntaggedWriteCnt(uint64_t flags, KInstruction *kinst);
 
   ArrayCache *getArrayCache() const;
 };

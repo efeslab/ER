@@ -42,7 +42,44 @@ cl::opt<bool> ConstArrayOpt(
 /***/
 
 unsigned Expr::count = 0;
-
+const char *Expr::getKindStr(enum Expr::Kind k) {
+  switch (k) {
+    case Expr::Constant: return "Constant";
+    case Expr::NotOptimized: return "NotOptimized";
+    case Expr::Read: return "Read";
+    case Expr::Select: return "Select";
+    case Expr::Concat: return "Concat";
+    case Expr::Extract: return "Extract";
+    case Expr::ZExt: return "ZExt";
+    case Expr::SExt: return "SExt";
+    case Expr::Not: return "Not";
+    case Expr::Add: return "Add";
+    case Expr::Sub: return "Sub";
+    case Expr::Mul: return "Mul";
+    case Expr::UDiv: return "UDiv";
+    case Expr::SDiv: return "SDiv";
+    case Expr::URem: return "URem";
+    case Expr::SRem: return "SRem";
+    case Expr::And: return "And";
+    case Expr::Or: return "Or";
+    case Expr::Xor: return "Xor";
+    case Expr::Shl: return "Shl";
+    case Expr::LShr: return "LShr";
+    case Expr::AShr: return "AShr";
+    case Expr::Eq: return "Eq";
+    case Expr::Ne: return "Ne";
+    case Expr::Ult: return "Ult";
+    case Expr::Ule: return "Ule";
+    case Expr::Ugt: return "Ugt";
+    case Expr::Uge: return "Uge";
+    case Expr::Slt: return "Slt";
+    case Expr::Sle: return "Sle";
+    case Expr::Sgt: return "Sgt";
+    case Expr::Sge: return "Sge";
+    default: return "Unknown Expr";
+  }
+  return "Unknown Expr";
+};
 ref<Expr> Expr::createTempRead(const Array *array, Expr::Width w) {
   UpdateList ul(array, 0);
 

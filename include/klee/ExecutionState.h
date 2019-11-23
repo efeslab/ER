@@ -112,9 +112,13 @@ public:
   /// It influences whether we should record/replay execution path
   bool isInUserMain;
 
-  /// When IgnorePOSIXPath is set, isInPOSIX will be true if the latest frame in current call stack is a function of POSIX runtime.
-  /// isInPOSIX will be clear to false when frames of POSIX runtime function are poped out.
-  /// When IgnorePOSIXPath is not set, isInPOSIX will be always false even if POSIX runtime function is on the stack.
+  /// When IgnorePOSIXPath is set, isInPOSIX will be true if the latest frame
+  ///   in current call stack is a function from POSIX runtime and UserMain
+  //    func is already on the stack (we are not initializing).
+  /// isInPOSIX will be clear to false when frames of POSIX runtime function
+  ///   are poped out. It will also be false if we haven't called UserMain yet.
+  /// When IgnorePOSIXPath is not set, isInPOSIX will be always false even if
+  ///   POSIX runtime function is on the stack.
   /// It influences whether we should record/replay path trace
   /// It is designed to filter out all recording happened inside POSIX runtime
   bool isInPOSIX;
@@ -147,10 +151,6 @@ public:
   //  when each brach decision (both concrete and symbolic) is made
   TreeOStream statsPathOS;
 
-  /// @brief History of indices of all symbolic branches during replay
-  //  when a branch decision depends on recorded info
-  TreeOStream symIndexOS;
-
   /// @brief Counts how many instructions were executed since the last new
   /// instruction was covered.
   unsigned instsSinceCovNew;
@@ -164,8 +164,6 @@ public:
   /// The index into the current \ref replayKTest or \ref replayPath
   /// object.
   unsigned replayPosition;
-  /// The index info the current \ref symIndex object
-  unsigned symIndexPosition;
   /// The number of branches recorded
   /// regardless of fork or switch or indirectbr, symbolic or concrete
   ///   should record or not (isInPosix, isInUserMain)
@@ -196,7 +194,7 @@ public:
   std::uint64_t steppedInstructions;
 
 private:
-  ExecutionState() : replayPosition(0), symIndexPosition(0), nbranches_rec(0), ptreeNode(0) {}
+  ExecutionState() : replayPosition(0), nbranches_rec(0), ptreeNode(0) {}
 
 public:
   ExecutionState(KFunction *kf);

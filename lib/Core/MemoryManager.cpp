@@ -19,7 +19,6 @@
 
 #include <inttypes.h>
 #include <sys/mman.h>
-#include <malloc.h>
 
 using namespace klee;
 
@@ -32,12 +31,6 @@ llvm::cl::opt<bool> DeterministicAllocation(
     "allocate-determ",
     llvm::cl::desc("Allocate memory deterministically (default=false)"),
     llvm::cl::init(false), llvm::cl::cat(MemoryCat));
-
-llvm::cl::opt<unsigned> DeterministicAllocationSize(
-    "allocate-determ-size",
-    llvm::cl::desc(
-        "Preallocated memory for deterministic allocation in MB (default=100)"),
-    llvm::cl::init(100), llvm::cl::cat(MemoryCat));
 
 llvm::cl::opt<bool> NullOnZeroMalloc(
     "return-null-on-zero-malloc",
@@ -56,30 +49,27 @@ llvm::cl::opt<unsigned long long> DeterministicStartAddress(
     llvm::cl::desc("Start address for deterministic allocation. Has to be page "
                    "aligned (default=0x7ff30000000)"),
     llvm::cl::init(0x7ff30000000), llvm::cl::cat(MemoryCat));
+
+llvm::cl::opt<unsigned long long> UnDeterministicStartAddress(
+    "allocate-undeterm-start-address",
+    llvm::cl::desc("Start address for undeterministic allocation. Has to be page "
+                   "aligned (default=0x80f30000000)"),
+    llvm::cl::init(0x80f30000000), llvm::cl::cat(MemoryCat));
 } // namespace
 
 /***/
 MemoryManager::MemoryManager(ArrayCache *_arrayCache)
-    : arrayCache(_arrayCache), deterministicSpace(0), nextFreeSlot(0),
-      spaceSize(DeterministicAllocationSize.getValue() * 1024 * 1024) {
+    : arrayCache(_arrayCache) {
   if (DeterministicAllocation) {
     // Page boundary
-    void *expectedAddress = (void *)DeterministicStartAddress.getValue();
-
-    char *newSpace =
-        (char *)mmap(expectedAddress, spaceSize, PROT_READ | PROT_WRITE,
-                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-
-    if (newSpace == MAP_FAILED) {
-      klee_error("Couldn't mmap() memory for deterministic allocations");
-    }
-    if (expectedAddress != newSpace && expectedAddress != 0) {
-      klee_error("Could not allocate memory deterministically");
-    }
-
-    klee_message("Deterministic memory allocation starting from %p", newSpace);
-    deterministicSpace = newSpace;
-    nextFreeSlot = newSpace;
+    void *determ_expectedAddress = (void *)DeterministicStartAddress.getValue();
+    void *undeterm_expectedAddress = (void *)UnDeterministicStartAddress.getValue();
+    determ_msp = create_mspace(0, 1, determ_expectedAddress);
+    undeterm_msp = create_mspace(0, 1, undeterm_expectedAddress);
+  }
+  else {
+    determ_msp = NULL;
+    undeterm_msp = NULL;
   }
 }
 
@@ -92,14 +82,27 @@ MemoryManager::~MemoryManager() {
     delete mo;
   }
 
-  if (DeterministicAllocation)
-    munmap(deterministicSpace, spaceSize);
+  if (DeterministicAllocation) {
+    destroy_mspace(determ_msp);
+    destroy_mspace(undeterm_msp);
+    determ_msp = NULL;
+    undeterm_msp = NULL;
+  }
 }
-
+// Note: I think isLocal == true means this allocation is on stack (e.g. alloca instruction)
+//   isLocal == false means this is not on stack (on heap, e.g. calling malloc)
+// However I am not sure what does isGlobal mean. It seems like isGlobal == true
+//   means allocation unrelated to application itself.
+// To make allocations inside application as determistic as possible,
+//   memory allocations inside POSIX are also considered as stack allocation.
+// Param isInPOSIX tells you if it is in POSIX. It is only meaningful when
+//   (isGlobal == false)
+// Note that the isInPOSIX here is not the same as ExecutionState::isInPOSIX.
+// Here we do not care if UserMain has been called.
 MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
                                       bool isGlobal,
                                       const llvm::Value *allocSite,
-                                      size_t alignment) {
+                                      size_t alignment, bool isInPOSIX) {
   if (size > 10 * 1024 * 1024)
     klee_warning_once(0, "Large alloc: %" PRIu64
                          " bytes.  KLEE may run out of memory.",
@@ -115,32 +118,36 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
   }
 
   uint64_t address = 0;
+  bool isDeterm = false;
   if (DeterministicAllocation) {
-#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 9)
-    address = llvm::alignTo((uint64_t)nextFreeSlot + alignment - 1, alignment);
-#else
-    address = llvm::RoundUpToAlignment((uint64_t)nextFreeSlot + alignment - 1,
-                                       alignment);
-#endif
-
     // Handle the case of 0-sized allocations as 1-byte allocations.
     // This way, we make sure we have this allocation between its own red zones
     size_t alloc_size = std::max(size, (uint64_t)1);
-    if ((char *)address + alloc_size < deterministicSpace + spaceSize) {
-      nextFreeSlot = (char *)address + alloc_size + RedzoneSize;
-    } else {
-      klee_warning_once(0, "Couldn't allocate %" PRIu64
-                           " bytes. Not enough deterministic space left.",
-                        size);
+    // use dlmalloc to allocate in preserved virtual address space.
+    int ret;
+    assert(!(isGlobal && isInPOSIX) && "Allocation cannot be both Global and InPOSIX");
+    if (isGlobal || isInPOSIX) {
+      // allocations inside POSIX are undeterministic since extra POSIX code
+      // is responsible to simulate symbolic behaviours.
+      ret = mspace_posix_memalign(undeterm_msp, (void **)&address, alignment, alloc_size);
+    }
+    else {
+      isDeterm = true;
+      ret = mspace_posix_memalign(determ_msp, (void **)&address, alignment, alloc_size);
+    }
+    if (ret) { // non-zero means error appears, let us check error value
+      if (ret == EINVAL) {
+        klee_warning("Could not allocate %lu bytes with alignment %lu: EINVAL", size, alignment);
+      }
+      else if (ret == ENOMEM) {
+        klee_warning("Could not allocate %lu bytes with alignment %lu: ENOMEN", size, alignment);
+      }
       address = 0;
     }
   } else {
     // Use malloc for the standard case
     if (alignment <= 8) {
       address = (uint64_t)malloc(size);
-      if (address) {
-        size = malloc_usable_size((void*)(address));
-      }
     }
     else {
       int res = posix_memalign((void **)&address, alignment, size);
@@ -156,8 +163,8 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
   }
 
   ++stats::allocations;
-  MemoryObject *res = new MemoryObject(address, size, isLocal, isGlobal, false,
-                                       allocSite, this);
+  MemoryObject *res = new MemoryObject(address, size, isLocal, isGlobal,
+                        /*isFixed*/false, isDeterm, allocSite, this);
   objects.insert(res);
   return res;
 }
@@ -175,7 +182,8 @@ MemoryObject *MemoryManager::allocateFixed(uint64_t address, uint64_t size,
 
   ++stats::allocations;
   MemoryObject *res =
-      new MemoryObject(address, size, false, true, true, allocSite, this);
+      new MemoryObject(address, size, /*isLocal*/false, /*isGlobal*/true,
+            /*isFixed*/true, /*isDeterm*/false, allocSite, this);
   objects.insert(res);
   return res;
 }
@@ -184,12 +192,38 @@ void MemoryManager::deallocate(const MemoryObject *mo) { assert(0); }
 
 void MemoryManager::markFreed(MemoryObject *mo) {
   if (objects.find(mo) != objects.end()) {
-    if (!mo->isFixed && !DeterministicAllocation)
-      free((void *)mo->address);
+    if (!mo->isFixed) {
+      if (DeterministicAllocation) {
+        // managed by dlmalloc
+        if (mo->isDeterm) {
+          // was allocated deterministically (e.g. stack/heap inside application)
+          mspace_free(determ_msp, (void *)mo->address);
+        }
+        else {
+          // was allocated undeterministically (e.g. stack/heap inside POSIX, isGlobal)
+          mspace_free(undeterm_msp, (void *)mo->address);
+        }
+      }
+      else {
+        // managed by system malloc
+        if (mo->address >= UnDeterministicStartAddress && (mo->address < (UnDeterministicStartAddress + (1L << 36)))) {
+          klee_warning("Free Undeterm dlmalloc with tcmalloc");
+        }
+        free((void *)mo->address);
+      }
+    }
     objects.erase(mo);
   }
 }
 
 size_t MemoryManager::getUsedDeterministicSize() {
-  return nextFreeSlot - deterministicSpace;
+  if (DeterministicAllocation) {
+    struct mallinfo determ_mi = mspace_mallinfo(determ_msp);
+    struct mallinfo undeterm_mi = mspace_mallinfo(undeterm_msp);
+    return (determ_mi.uordblks + determ_mi.hblkhd) +
+           (undeterm_mi.uordblks + undeterm_mi.hblkhd);
+  }
+  else {
+    return 0;
+  }
 }

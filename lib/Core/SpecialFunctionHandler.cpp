@@ -110,6 +110,7 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("klee_warning_once", handleWarningOnce, false),
   add("klee_alias_function", handleAliasFunction, false),
   add("malloc", handleMalloc, true),
+  add("malloc_usable_size", handleMallocUsableSize, true),
   add("memalign", handleMemalign, true),
   add("realloc", handleRealloc, true),
 
@@ -425,6 +426,15 @@ void SpecialFunctionHandler::handleMalloc(ExecutionState &state,
   // XXX should type check args
   assert(arguments.size()==1 && "invalid number of arguments to malloc");
   executor.executeAlloc(state, arguments[0], false, target);
+}
+
+void SpecialFunctionHandler::handleMallocUsableSize(ExecutionState &state,
+                          KInstruction *target,
+                          std::vector<ref<Expr> > &arguments) {
+  // XXX should type check args
+  assert(arguments.size()==1 &&
+         "invalid number of arguments to free");
+  executor.executeMallocUsableSize(state, arguments[0], target);
 }
 
 void SpecialFunctionHandler::handleMemalign(ExecutionState &state,

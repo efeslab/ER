@@ -90,7 +90,6 @@ ExecutionState::ExecutionState(KFunction *kf) :
     coveredNew(false),
     forkDisabled(false),
     replayPosition(0),
-    symIndexPosition(0),
     nbranches_rec(0),
     ptreeNode(0),
     steppedInstructions(0){
@@ -101,7 +100,7 @@ ExecutionState::ExecutionState(KFunction *kf) :
 }
 
 ExecutionState::ExecutionState(const std::vector<ref<Expr> > &assumptions)
-    : constraints(assumptions), replayPosition(0), symIndexPosition(0), nbranches_rec(0), ptreeNode(0) {}
+    : constraints(assumptions), replayPosition(0), nbranches_rec(0), ptreeNode(0) {}
 
 ExecutionState::~ExecutionState() {
   for (unsigned int i=0; i<symbolics.size(); i++)
@@ -149,7 +148,6 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     forkDisabled(state.forkDisabled),
 
     replayPosition(state.replayPosition),
-    symIndexPosition(state.symIndexPosition),
     nbranches_rec(state.nbranches_rec),
 
     coveredLines(state.coveredLines),
@@ -191,9 +189,6 @@ ExecutionState *ExecutionState::branch() {
   if (statsPathOS.isValid()) {
     falseState->statsPathOS = statsPathOS.branch();
   }
-  if (symIndexOS.isValid()) {
-    falseState->symIndexOS = symIndexOS.branch();
-  }
 
   return falseState;
 }
@@ -203,6 +198,9 @@ void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
   if (!isInUserMain && (kf->function->getName() == PathRecordingEntryPoint)) {
     isInUserMain = true;
   }
+  // NOTE: when enabling POSIX runtime, the entire application will be wrapped
+  // into a POSIX function call (i.e. the entry point func belongs to POSIX)
+  // So we should only reason about prop "InPOSIX" inside UserMain
   if (isInUserMain && IgnorePOSIXPath && kf->function->hasFnAttribute("InPOSIX")) {
     if(POSIXDepth == 0) {
       isInPOSIX=true;
@@ -412,7 +410,10 @@ bool ExecutionState::merge(const ExecutionState &b) {
     for (unsigned i=0; i<mo->size; i++) {
       ref<Expr> av = wos->read8(i);
       ref<Expr> bv = otherOS->read8(i);
-      wos->write(i, SelectExpr::create(inA, av, bv));
+      uint64_t flags = wos->getFlags(i);
+      flags |= Expr::FLAG_OPTIMIZATION;
+      KInstruction *kinst = wos->getKInst(i);
+      wos->write(i, SelectExpr::create(inA, av, bv), flags, kinst);
     }
   }
 

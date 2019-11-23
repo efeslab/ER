@@ -22,6 +22,7 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/System/Time.h"
 #include "klee/util/ArrayCache.h"
+#include "klee/util/OracleEvaluator.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "../Solver/QueryLoggingSolver.h"
@@ -29,7 +30,6 @@
 #include "llvm/ADT/Twine.h"
 
 #include "../Expr/ArrayExprOptimizer.h"
-#include "../Expr/OracleEvaluator.h"
 #include <map>
 #include <memory>
 #include <set>
@@ -146,7 +146,7 @@ private:
   std::set<ExecutionState*> states;
   StatsTracker *statsTracker;
   TreeStreamWriter *pathWriter, *symPathWriter;
-  TreeStreamWriter *stackPathWriter, *consPathWriter, *statsPathWriter, *symIndexWriter;
+  TreeStreamWriter *stackPathWriter, *consPathWriter, *statsPathWriter;
   SpecialFunctionHandler *specialFunctionHandler;
   std::vector<TimerInfo*> timers;
   PTree *processTree;
@@ -208,7 +208,6 @@ private:
 
   /// When non-null a list of branch decisions to be used for replay.
   const std::vector<PathEntry> *replayPath;
-  const std::vector<unsigned int> *symIndex;
 
   /// The index into the current \ref replayKTest or \ref replayPath
   /// object. (moved inside ExecutionState, since we might replay multiple states at the same time)
@@ -251,6 +250,9 @@ private:
 
   // @brief buffer to store logs before flushing to file
   llvm::raw_string_ostream debugLogBuffer;
+
+  // @brief if printInfo is requested
+  bool info_requested;
 
   /// Optimizes expressions
   ExprOptimizer optimizer;
@@ -330,6 +332,12 @@ private:
                     bool zeroMemory=false,
                     const ObjectState *reallocFrom=0,
                     size_t allocationAlignment=0);
+
+  /// Force return the requested allocation size.
+  /// No matter it was deterministically allocated or not.
+  void executeMallocUsableSize(ExecutionState &state,
+                               ref<Expr> address,
+                               KInstruction *target);
 
   /// Free the given address with checking for errors. If target is
   /// given it will be bound to 0 in the resulting states (this is a
@@ -516,6 +524,8 @@ private:
     }
   }
 
+  void printInfo(llvm::raw_ostream &os);
+
 public:
 
   Executor(llvm::LLVMContext &ctx, const InterpreterOptions &opts,
@@ -542,10 +552,6 @@ public:
     statsPathWriter = tsw; 
   }
 
-  void setSymIndexWriter(TreeStreamWriter *tsw) override {
-    symIndexWriter = tsw;
-  }
-
   void setReplayKTest(const struct KTest *out) override {
     assert(!replayPath && "cannot replay both buffer and path");
     replayKTest = out;
@@ -556,8 +562,11 @@ public:
     replayPath = path;
   }
 
-  void setSymIndex(const std::vector<unsigned int> *_symIndex) override {
-    symIndex = _symIndex;
+  // Read next PathEntry using (and advancing) the cursor in state
+  void getNextPathEntry(ExecutionState &state, PathEntry &pe) {
+    assert(replayPath && "Trying to get next PathEntry without a valud replayPath");
+    assert(state.replayPosition < replayPath->size() && "replayPath exhausts too early");
+    pe = (*replayPath)[state.replayPosition++];
   }
 
   llvm::Module *setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
@@ -578,7 +587,12 @@ public:
 
   void prepareForEarlyExit() override;
 
-  void printInfo(llvm::raw_ostream &os) override;
+  /// called outside, request the Interpreter to dump information
+  /// the request will be served after current instruction executed.
+  ///   (before executing next instruction)
+  void requestInfo() override {
+    info_requested = true;
+  }
 
   /*** State accessor methods ***/
 
@@ -591,8 +605,6 @@ public:
   unsigned getConsPathStreamID(const ExecutionState &state) override;
   
   unsigned getStatsPathStreamID(const ExecutionState &state) override;
-
-  unsigned getSymIndexStreamID(const ExecutionState &state) override;
 
   void getConstraintLog(const ExecutionState &state, std::string &res,
                         Interpreter::LogType logFormat =

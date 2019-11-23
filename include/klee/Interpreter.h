@@ -128,10 +128,6 @@ public:
   // to record the statics path
   virtual void setStatsPathWriter(TreeStreamWriter *tsw) = 0;
 
-  // supply a tree stream writer which the interpreter will use
-  // to record the index of all symbolic branches during replay
-  virtual void setSymIndexWriter(TreeStreamWriter *tsw) = 0;
-
   // supply a test case to replay from. this can be used to drive the
   // interpretation down a user specified path. use null to reset.
   virtual void setReplayKTest(const struct KTest *out) = 0;
@@ -140,10 +136,6 @@ public:
   // take on forks. this can be used to drive the interpretation down
   // a user specified path. use null to reset.
   virtual void setReplayPath(const std::vector<PathEntry> *path) = 0;
-
-  // supply a list of indices of symbolic branches during previous replay
-  // This is used to help recording decide additional recording.
-  virtual void setSymIndex(const std::vector<unsigned int> *symIndex) = 0;
 
   // supply a set of symbolic bindings that will be used as "seeds"
   // for the search. use null to reset.
@@ -162,7 +154,10 @@ public:
 
   virtual void prepareForEarlyExit() = 0;
 
-  virtual void printInfo(llvm::raw_ostream &os) = 0;
+  /// request the Interpreter to dump information for debug purpose
+  /// The information may not be dumpped right after requested.
+  /// When will the request be served depends on derived class implementation.
+  virtual void requestInfo() = 0;
 
   /*** State accessor methods ***/
 
@@ -175,8 +170,6 @@ public:
   virtual unsigned getConsPathStreamID(const ExecutionState &state) = 0;
 
   virtual unsigned getStatsPathStreamID(const ExecutionState &state) = 0;
-
-  virtual unsigned getSymIndexStreamID(const ExecutionState &state) = 0;
 
   virtual void getConstraintLog(const ExecutionState &state,
                                 std::string &res,

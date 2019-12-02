@@ -228,8 +228,8 @@ namespace expr {
     /// \arg MB - The input data.
     /// \arg Builder - The expression builder to use for constructing
     /// expressions.
-    static Parser *Create(const std::string Name, const llvm::MemoryBuffer *MB,
-                          ExprBuilder *Builder, bool ClearArrayAfterQuery);
+    /// \arg BitcodePath (optional) a bitcode file to reconstruct kinst mapping
+    ///   for kleaver
     static Parser *Create(const std::string Name, const llvm::MemoryBuffer *MB,
                           ExprBuilder *Builder, bool ClearArrayAfterQuery,
                           const std::string BitcodePath);

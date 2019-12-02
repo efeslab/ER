@@ -132,18 +132,6 @@ llvm::cl::opt<bool> ClearArrayAfterQuery(
     llvm::cl::init(false), llvm::cl::cat(klee::ExprCat));
 } // namespace
 
-
-static Parser *createParser(const char *Filename,
-                             const MemoryBuffer *MB,
-                             ExprBuilder *Builder) {
-  if (BitcodePath != "") {
-    return Parser::Create(Filename, MB, Builder, ClearArrayAfterQuery, BitcodePath);
-  }
-  else {
-    return Parser::Create(Filename, MB, Builder, ClearArrayAfterQuery);
-  }
-}
-
 static std::string getQueryLogPath(const char filename[])
 {
 	//check directoryToWriteLogs exists
@@ -209,7 +197,7 @@ class InputAST {
   bool valid;
   public:
   InputAST(const char *Filename, const MemoryBuffer *MB, ExprBuilder *Builder) {
-    P = Parser::Create(Filename, MB, Builder, ClearArrayAfterQuery);
+    P = Parser::Create(Filename, MB, Builder, ClearArrayAfterQuery, BitcodePath);
     P->SetMaxErrors(20);
     while (Decl *D = P->ParseTopLevelDecl()) {
       Decls.push_back(D);

@@ -335,26 +335,21 @@ namespace {
 
   public:
     ParserImpl(const std::string _Filename, const MemoryBuffer *MB,
-               ExprBuilder *_Builder, bool _ClearArrayAfterQuery)
-        : Filename(_Filename), TheMemoryBuffer(MB), Builder(_Builder),
-          ClearArrayAfterQuery(_ClearArrayAfterQuery), TheLexer(MB),
-          MaxErrors(~0u), NumErrors(0) {}
-
-    ParserImpl(const std::string _Filename, const MemoryBuffer *MB,
                ExprBuilder *_Builder, bool _ClearArrayAfterQuery,
                const std::string _BitcodePath)
         : Filename(_Filename), TheMemoryBuffer(MB), Builder(_Builder),
           ClearArrayAfterQuery(_ClearArrayAfterQuery), TheLexer(MB),
           MaxErrors(~0u), NumErrors(0) {
-      klee_message("loading from %s\n", _BitcodePath.c_str());
+      if (_BitcodePath != "") {
+        klee_message("loading from %s\n", _BitcodePath.c_str());
 
-      std::string errorMsg;
-      if (!klee::loadFile(_BitcodePath, ctx, loadedModules, errorMsg)) {
-        klee_error("error loading program '%s': %s", _BitcodePath.c_str(),
-                   errorMsg.c_str());
+        std::string errorMsg;
+        if (!klee::loadFile(_BitcodePath, ctx, loadedModules, errorMsg)) {
+          klee_error("error loading program '%s': %s", _BitcodePath.c_str(),
+              errorMsg.c_str());
+        }
+        assert(loadedModules.size() == 1);
       }
-      assert(loadedModules.size() == 1);
-
     }
 
     virtual ~ParserImpl();
@@ -1751,13 +1746,6 @@ Parser::Parser() {
 }
 
 Parser::~Parser() {
-}
-
-Parser *Parser::Create(const std::string Filename, const MemoryBuffer *MB,
-                       ExprBuilder *Builder, bool ClearArrayAfterQuery) {
-  ParserImpl *P = new ParserImpl(Filename, MB, Builder, ClearArrayAfterQuery);
-  P->Initialize();
-  return P;
 }
 
 Parser *Parser::Create(const std::string Filename, const MemoryBuffer *MB,

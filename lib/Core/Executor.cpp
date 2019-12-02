@@ -4477,7 +4477,8 @@ void Executor::printInfo(llvm::raw_ostream &os) {
   unsigned int i=0;
   for (auto s: states) {
     os << "ExecutionState: " << i << '\n'
-       << "  ReplayPosition: " << (replayPath?std::to_string(s->replayPosition):"N/A") << '\n'
+       << "  ReplayPosition: " << (replayPath?std::to_string(s->replayPosition):"N/A")
+         << " / " << (replayPath?std::to_string(replayPath->size()):"N/A") << '\n'
        << "  Stack:\n";
     s->dumpStack(os);
     char filenamebuf[128];

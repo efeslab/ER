@@ -671,9 +671,9 @@ class SelectExpr : public NonConstantExpr {
 public:
   static const Kind kind = Select;
   static const unsigned numKids = 3;
-  
-public:
   ref<Expr> cond, trueExpr, falseExpr;
+private:
+  Width width;
 
 public:
   static ref<Expr> alloc(const ref<Expr> &c, const ref<Expr> &t, 
@@ -685,7 +685,7 @@ public:
   
   static ref<Expr> create(ref<Expr> c, ref<Expr> t, ref<Expr> f);
 
-  Width getWidth() const { return trueExpr->getWidth(); }
+  Width getWidth() const { return width; }
   Kind getKind() const { return Select; }
 
   unsigned getNumKids() const { return numKids; }
@@ -716,7 +716,7 @@ public:
 
 private:
   SelectExpr(const ref<Expr> &c, const ref<Expr> &t, const ref<Expr> &f) 
-    : cond(c), trueExpr(t), falseExpr(f) {}
+    : cond(c), trueExpr(t), falseExpr(f) { width = t->getWidth();}
 
 public:
   static bool classof(const Expr *E) {
@@ -990,7 +990,9 @@ CAST_EXPR_CLASS(ZExt)
       return res;                                                              \
     }                                                                          \
     static ref<Expr> create(const ref<Expr> &l, const ref<Expr> &r);           \
-    Width getWidth() const { return left->getWidth(); }                        \
+    Width getWidth() const {                                                   \
+		return left.isNull()?right->getWidth():left->getWidth();               \
+	}                                                                          \
     Kind getKind() const { return _class_kind; }                               \
     virtual ref<Expr> rebuild(ref<Expr> kids[]) const {                        \
       return create(kids[0], kids[1]);                                         \

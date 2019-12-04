@@ -18,6 +18,7 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -89,6 +90,12 @@ The general rules are:
 Todo: Shouldn't bool \c Xor just be written as not equal?
 
 */
+
+// These helper funcs are extracted because both Expr and UpdateNode have kinst
+std::string getKInstUniqueID(const KInstruction *ki);
+// This helper is supposed to used inside gdb
+std::string getInstUniqueID(const llvm::Instruction *I);
+std::string getKInstDbgInfo(const KInstruction *ki);
 
 class Expr {
 public:
@@ -305,6 +312,8 @@ public:
 
   static bool classof(const Expr *) { return true; }
   static const char *getKindStr(enum Kind k);
+  std::string getKInstUniqueID() const { return klee::getKInstUniqueID(kinst); }
+  std::string getKInstDbgInfo() const { return klee::getKInstDbgInfo(kinst); }
 
 private:
   typedef llvm::DenseSet<std::pair<const Expr *, const Expr *> > ExprEquivSet;
@@ -512,6 +521,8 @@ public:
       delete this;
     }
   }
+  std::string getKInstUniqueID() const { return klee::getKInstUniqueID(kinst); }
+  std::string getKInstDbgInfo() const { return klee::getKInstDbgInfo(kinst); }
 
 private:
   UpdateNode() : refCount(0) {}

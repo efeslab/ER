@@ -64,7 +64,7 @@ public:
   std::set<const Array*> usedArrays;
 private:
   std::map<ref<Expr>, unsigned> bindings;
-  std::map<unsigned, KInstruction *> debugInfoPrintList;
+  std::map<unsigned, ref<Expr> > debugInfoPrintList;
   std::map<const UpdateNode*, unsigned> updateBindings;
   std::set< ref<Expr> > couldPrint, shouldPrint, shouldPrintInst;
   std::set<const UpdateNode*> couldPrintUpdates, shouldPrintUpdates;
@@ -396,7 +396,7 @@ public:
         if (!hasScan || shouldPrint.count(e) || shouldPrintInst.count(e)) {
           PC << 'N' << counter << ':';
           if (e->kinst)
-            debugInfoPrintList.insert(std::make_pair(counter, e->kinst));
+            debugInfoPrintList.insert(std::make_pair(counter, e));
           bindings.insert(std::make_pair(e, counter++));
         }
 
@@ -456,11 +456,7 @@ public:
     PC.breakLine();
     for (auto it = debugInfoPrintList.begin(), ie = debugInfoPrintList.end();
           it != ie; it++) {
-      llvm::Instruction *I = it->second->inst;
-      llvm::BasicBlock *B = I->getParent();
-      llvm::Function *F = B->getParent();
-      PC << "#!N" << it->first << ":" << F->getName()
-              << ":" << B->getName() << ":" << I->getName();
+      PC << "#!N" << it->first << ":" << it->second->getKInstUniqueID();
       PC.breakLine();
     }
   }

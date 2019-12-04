@@ -17,6 +17,9 @@
 #include "klee/OptionCategories.h"
 
 #include "llvm/ADT/Hashing.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -80,6 +83,39 @@ const char *Expr::getKindStr(enum Expr::Kind k) {
   }
   return "Unknown Expr";
 };
+
+std::string klee::getKInstUniqueID(const KInstruction *ki) {
+  if (ki) {
+    return getInstUniqueID(ki->inst);
+  }
+  else {
+    return "N/A";
+  }
+}
+
+std::string klee::getInstUniqueID(const llvm::Instruction *I) {
+  const BasicBlock *BB = I->getParent();
+  const Function *F = BB->getParent();
+  return F->getName().str() + ":" + BB->getName().str() + ":" + I->getName().str();
+}
+
+std::string klee::getKInstDbgInfo(const KInstruction *ki) {
+  if (ki) {
+    const InstructionInfo *info = ki->info;
+    if (info) {
+      return info->file + ":" +
+        std::to_string(info->line) + "," + std::to_string(info->column) +
+        " [asm " + std::to_string(info->assemblyLine) + " ]";
+    }
+    else {
+      return "N/A";
+    }
+  }
+  else {
+    return "N/A";
+  }
+}
+
 ref<Expr> Expr::createTempRead(const Array *array, Expr::Width w) {
   UpdateList ul(array, 0);
 

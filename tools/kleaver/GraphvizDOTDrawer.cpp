@@ -14,7 +14,9 @@ void GraphvizDOTDrawer::declareExpr(const Expr *e, const char *category) {
      << "Kind=" << e->getKind() << ","
      << "Width=" << e->getWidth() << ","
      << "IDep=" << IDCalc.query(e) << ","
-     << "Category=" << category
+     << "Category=" << category << ","
+     << "KInst=\"" << e->getKInstUniqueID() << "\"" << ","
+     << "DbgInfo=\"" << e->getKInstDbgInfo() << "\""
      << "];\n";
 }
 
@@ -27,7 +29,9 @@ void GraphvizDOTDrawer::declareLastLevelRead(const ReadExpr *RE, const char *cat
      << "Kind=" << RE->getKind() << ","
      << "Width=" << RE->getWidth() << ","
      << "IDep=" << IDCalc.query(RE) << ","
-     << "Category=" << category
+     << "Category=" << category << ","
+     << "KInst=\"" << RE->getKInstUniqueID() << "\"" << ","
+     << "DbgInfo=\"" << RE->getKInstDbgInfo() << "\""
      << "];\n";
 }
 
@@ -35,7 +39,10 @@ void GraphvizDOTDrawer::declareUpdateNode(const UpdateNode *un, const Array *roo
   os << (size_t)un
      << "[ label=\"UN\", Kind=UN , Category=UN,"
      << "Root=" << root->name << ","
-     << "IDep=" << IDCalc.query(un)
+     << "IDep=" << IDCalc.query(un) << ","
+     << "KInst=\"" << un->getKInstUniqueID() << "\"" << ","
+     << "DbgInfo=\"" << un->getKInstDbgInfo() << "\"" <<","
+     << "Flags=\"" << std::to_string(un->flags) << "\"" << ","
      <<  "];\n";
 }
 

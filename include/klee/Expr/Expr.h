@@ -192,6 +192,9 @@ public:
     FLAG_INITIALIZATION = 1<<3
   };
   uint64_t flags = 0;
+
+  /// kinst keeps tracking of which IR instruction creates current expression.
+  /// it is maintained in "Executor::bindLocal" and "Expr::rebuild"
   KInstruction *kinst = nullptr;
 
 protected:  
@@ -462,7 +465,11 @@ public:
   unsigned getNumKids() const { return 1; }
   ref<Expr> getKid(unsigned i) const { return src; }
 
-  virtual ref<Expr> rebuild(ref<Expr> kids[]) const { return create(kids[0]); }
+  virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
+    ref<Expr> result = create(kids[0]);
+    result->kinst = kinst;
+    return result;
+  }
   virtual void rebuildInPlace(ref<Expr> kids[]) { src = kids[0]; }
 
 private:
@@ -643,7 +650,9 @@ public:
   int compareContents(const Expr &b) const;
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
-    return create(updates, kids[0]);
+    ref<Expr> result = create(updates, kids[0]);
+    result->kinst = kinst;
+    return result;
   }
   virtual void rebuildInPlace(ref<Expr> kids[]) {
     index = kids[0];
@@ -706,7 +715,9 @@ public:
   }
     
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
-    return create(kids[0], kids[1], kids[2]);
+    ref<Expr> result = create(kids[0], kids[1], kids[2]);
+    result->kinst = kinst;
+    return result;
   }
   virtual void rebuildInPlace(ref<Expr> kids[]) {
     cond = kids[0];
@@ -774,7 +785,11 @@ public:
 			   const ref<Expr> &kid5, const ref<Expr> &kid6,
 			   const ref<Expr> &kid7, const ref<Expr> &kid8);
   
-  virtual ref<Expr> rebuild(ref<Expr> kids[]) const { return create(kids[0], kids[1]); }
+  virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
+    ref<Expr> result = create(kids[0], kids[1]);
+    result->kinst = kinst;
+    return result;
+  }
   virtual void rebuildInPlace(ref<Expr> kids[]) { left = kids[0]; right = kids[1]; }
   
 private:
@@ -836,7 +851,9 @@ public:
   }
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
-    return create(kids[0], offset, width);
+    ref<Expr> result = create(kids[0], offset, width);
+    result->kinst = kinst;
+    return result;
   }
   virtual void rebuildInPlace(ref<Expr> kids[]) {
     expr = kids[0];
@@ -882,7 +899,9 @@ public:
   ref<Expr> getKid(unsigned i) const { return expr; }
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
-    return create(kids[0]);
+    ref<Expr> result = create(kids[0]);
+    result->kinst = kinst;
+    return result;
   }
   virtual void rebuildInPlace(ref<Expr> kids[]) {
     expr = kids[0];
@@ -959,7 +978,9 @@ public:                                                          \
     static ref<Expr> create(const ref<Expr> &e, Width w);        \
     Kind getKind() const { return _class_kind; }                 \
     virtual ref<Expr> rebuild(ref<Expr> kids[]) const {          \
-      return create(kids[0], width);                             \
+      ref<Expr> result = create(kids[0], width);                 \
+      result->kinst = kinst;                                     \
+      return result;                                             \
     }                                                            \
                                                                  \
     static bool classof(const Expr *E) {                         \
@@ -995,7 +1016,9 @@ CAST_EXPR_CLASS(ZExt)
 	}                                                                          \
     Kind getKind() const { return _class_kind; }                               \
     virtual ref<Expr> rebuild(ref<Expr> kids[]) const {                        \
-      return create(kids[0], kids[1]);                                         \
+      ref<Expr> result = create(kids[0], kids[1]);                             \
+      result->kinst = kinst;                                                   \
+      return result;                                                           \
     }                                                                          \
                                                                                \
     static bool classof(const Expr *E) {                                       \
@@ -1043,7 +1066,9 @@ ARITHMETIC_EXPR_CLASS(AShr)
     static ref<Expr> create(const ref<Expr> &l, const ref<Expr> &r);           \
     Kind getKind() const { return _class_kind; }                               \
     virtual ref<Expr> rebuild(ref<Expr> kids[]) const {                        \
-      return create(kids[0], kids[1]);                                         \
+      ref<Expr> result = create(kids[0], kids[1]);                             \
+      result->kinst = kinst;                                                   \
+      return result;                                                           \
     }                                                                          \
                                                                                \
     static bool classof(const Expr *E) {                                       \

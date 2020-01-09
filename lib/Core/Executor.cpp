@@ -3946,10 +3946,15 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     ref<Expr> offset = mo->getOffsetExpr(address);
 
     bool inBounds;
-    // I would say it is totally OK to disable solver call here.
+    // I used to say:
+    // *********************************************
+    // It is totally OK to disable solver call here.
     // Since we only symbolic execute instructions before the crash, thus no
     //   out of bound memory access should happen.
     //   Otherwise, the program is supposed to crash earlier.
+    // *********************************************
+    // But it is no longer true because out of bound access does not necessarily
+    // cause segfault immediately
     if (DoOutofBoundaryCheck) {
       ref<Expr> check = mo->getBoundsCheckOffset(offset, bytes);
       check = optimizer.optimizeExpr(check, true);

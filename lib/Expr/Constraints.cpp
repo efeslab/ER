@@ -155,7 +155,7 @@ bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
       // ConstraintSet ADT which efficiently remembers obvious patterns
       // (byte-constant comparison).
       BinaryExpr *be = cast<BinaryExpr>(e);
-      if (isa<ConstantExpr>(be->left)) {
+      if (isa<ConstantExpr>(be->left) && !isa<EqExpr>(be->right)) {
         ExprReplaceVisitor visitor(be->right, be->left);
         changed |= rewriteConstraints(visitor);
       }

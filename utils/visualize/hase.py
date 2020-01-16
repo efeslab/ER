@@ -145,11 +145,25 @@ class HaseUtils(object):
         # initialize important data structures
         for i in range(self.maxIDep+1):
             self.idep_subg.append(self.g.filter(self.attr_idepi==i))
+        # all first level nodes is considered root
+        for v in self.g.nodes:
+            if v.idepi == 0:
+                self.all_root_nodes.add(v.id)
+                self.idep_index_score[v.id] = 0
+                v.size = 20
+        # nodes pointed by cross-layer edges but no intra-layer edges are roots
+        # nodes pointed by cross-layer edges will be enlarged
         for e in self.g.edges:
             if e.weight==1.5:
                 if e.target.idepi == e.source.idepi + 1:
                     self.all_root_nodes.add(e.target.id)
+                    e.target.size = 20
                 self.idep_index_score[e.target.id] = self.idep_index_score.get(e.target.id, 0) + e.source.idepi
+        for e in self.g.edges:
+            if (e.target.idepi == e.source.idepi) and \
+                    (e.target.id in self.all_root_nodes):
+                        self.all_root_nodes.remove(e.target.id)
+                        del self.idep_index_score[e.target.id]
         self.idep_roots = []
 
         """
@@ -172,7 +186,7 @@ class HaseUtils(object):
             self.idep_roots.append(
                     sorted(
                         [v for v in subg.nodes if v.id in self.all_root_nodes],
-                        key=lambda v: self.idep_index_score.get(v.id, 0)
+                        key=lambda v: str(self.idep_index_score.get(v.id, 0)) + v.label
                     )
             )
 

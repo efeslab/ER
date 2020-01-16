@@ -364,6 +364,10 @@ private:
   std::vector<ref<Expr>> deleteConstraints;
   std::vector<ref<Expr>> addedConstraints;
   std::unordered_set<IndependentElementSet*> factors;
+  // equalities consists of EqExpr in current constraints.
+  // For each item <key,value> in this map, ExprReplaceVisitor2 can find 
+  // occurrences of "key" in an expression and replace it with "value"
+  std::map<ref<Expr>, ref<Expr>> equalities;
 
   // returns true iff the constraints were modified
   bool rewriteConstraints(ExprVisitor &visitor);
@@ -371,6 +375,8 @@ private:
   bool addConstraintInternal(ref<Expr> e);
 
   void updateIndependentSet();
+  // maintain the equalities used to simplify(replace) expression
+  void updateEqualities();
 
   void checkConstraintChange();
 

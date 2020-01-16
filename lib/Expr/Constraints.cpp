@@ -33,6 +33,9 @@ llvm::cl::opt<bool> RewriteEqualities(
     llvm::cl::cat(SolvingCat));
 }
 
+/**
+ * ExprReplaceVisitor can find and replace occurrence of a single expression.
+ */
 class ExprReplaceVisitor : public ExprVisitor {
 private:
   ref<Expr> src, dst;
@@ -57,6 +60,10 @@ public:
   }
 };
 
+/**
+ * ExprReplaceVisitor2 can find and replace multiple expressions.
+ * The replacement mapping is passed in as a std::map
+ */
 class ExprReplaceVisitor2 : public ExprVisitor {
 private:
   const std::map< ref<Expr>, ref<Expr> > &replacements;
@@ -120,25 +127,6 @@ void ConstraintManager::simplifyForValidConstraint(ref<Expr> e) {
 ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
   if (isa<ConstantExpr>(e))
     return e;
-
-  std::map< ref<Expr>, ref<Expr> > equalities;
-
-  for (ConstraintManager::constraints_ty::const_iterator 
-         it = constraints.begin(), ie = constraints.end(); it != ie; ++it) {
-    if (const EqExpr *ee = dyn_cast<EqExpr>(*it)) {
-      if (isa<ConstantExpr>(ee->left)) {
-        equalities.insert(std::make_pair(ee->right,
-                                         ee->left));
-      } else {
-        equalities.insert(std::make_pair(*it,
-                                         ConstantExpr::alloc(1, Expr::Bool)));
-      }
-    } else {
-      equalities.insert(std::make_pair(*it,
-                                       ConstantExpr::alloc(1, Expr::Bool)));
-    }
-  }
-
   return ExprReplaceVisitor2(equalities).visit(e);
 }
 
@@ -241,8 +229,6 @@ void ConstraintManager::updateDelete() {
       }
     }
   }
-
-  deleteConstraints.clear();
 }
 
 // Update the representative after adding constraint
@@ -277,8 +263,33 @@ void ConstraintManager::updateIndependentSet() {
 
     factors.insert(current);
   }
+}
 
-  addedConstraints.clear();
+void ConstraintManager::updateEqualities() {
+  for (auto &refE: addedConstraints) {
+    bool isConstantEq = false;
+    if (const EqExpr *EE = dyn_cast<EqExpr>(refE)) {
+      if (isa<ConstantExpr>(EE->left)) {
+        equalities[EE->right] = EE->left;
+        isConstantEq = true;
+      }
+    }
+    if (!isConstantEq) {
+      equalities[refE] = ConstantExpr::alloc(1, Expr::Bool);
+    }
+  }
+  for (auto refE: deleteConstraints) {
+    bool isConstantEq = false;
+    if (const EqExpr *EE = dyn_cast<EqExpr>(refE)) {
+      if (isa<ConstantExpr>(EE->left)) {
+        equalities.erase(EE->right);
+        isConstantEq = true;
+      }
+    }
+    if (!isConstantEq) {
+      equalities.erase(refE);
+    }
+  }
 }
 
 void ConstraintManager::checkConstraintChange() {
@@ -318,5 +329,9 @@ void ConstraintManager::addConstraint(ref<Expr> e) {
   old.clear();
 
   updateIndependentSet();
+  updateEqualities();
+
+  addedConstraints.clear();
+  deleteConstraints.clear();
 }
 

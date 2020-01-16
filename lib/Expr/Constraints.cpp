@@ -13,6 +13,7 @@
 #include "klee/Expr/ExprVisitor.h"
 #include "klee/Internal/Module/KModule.h"
 #include "klee/OptionCategories.h"
+#include "klee/Solver/SolverCmdLine.h"
 
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
@@ -328,7 +329,9 @@ void ConstraintManager::addConstraint(ref<Expr> e) {
   }
   old.clear();
 
-  updateIndependentSet();
+  if (UseIndependentSolver) {
+    updateIndependentSet();
+  }
   updateEqualities();
 
   addedConstraints.clear();

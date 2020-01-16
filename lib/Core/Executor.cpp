@@ -3170,6 +3170,7 @@ void Executor::doDumpStates() {
   if (!DumpStatesOnHalt || states.empty())
     return;
 
+  printInfo(llvm::errs());
   klee_message("halting execution, dumping remaining states");
   for (const auto &state : states)
     terminateStateEarly(*state, "Execution halting.");

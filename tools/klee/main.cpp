@@ -335,7 +335,8 @@ extern cl::opt<std::string> MaxTime;
 class KleeHandler : public InterpreterHandler {
 private:
   Interpreter *m_interpreter;
-  TreeStreamWriter *m_pathWriter, *m_symPathWriter;
+  TreeStreamWriter *m_pathWriter, *m_pathDataRecWriter;
+  TreeStreamWriter *m_symPathWriter;
   TreeStreamWriter *m_stackPathWriter, *m_consPathWriter, *m_statsPathWriter;
   std::unique_ptr<llvm::raw_ostream> m_infoFile;
   
@@ -372,7 +373,8 @@ public:
 
   // load a .path file
   static void loadPathFile(std::string name,
-                           std::vector<PathEntry> &buffer);
+                           std::vector<PathEntry> &buffer,
+                           std::vector<DataRecEntry> &dataRecEntries);
 
   static void getKTestFilesInDir(std::string directoryPath,
                                  std::vector<std::string> &results);
@@ -381,7 +383,7 @@ public:
 };
 
 KleeHandler::KleeHandler(int argc, char **argv)
-    : m_interpreter(0), m_pathWriter(0), m_symPathWriter(0),
+    : m_interpreter(0), m_pathWriter(0), m_pathDataRecWriter(0), m_symPathWriter(0),
       m_stackPathWriter(0), m_consPathWriter(0), m_statsPathWriter(0),
       m_outputDirectory(), m_numTotalTests(0), m_numGeneratedTests(0),
       m_pathsExplored(0), m_argc(argc), m_argv(argv) {
@@ -453,6 +455,7 @@ KleeHandler::KleeHandler(int argc, char **argv)
 
 KleeHandler::~KleeHandler() {
   delete m_pathWriter;
+  delete m_pathDataRecWriter;
   delete m_symPathWriter;
   delete m_stackPathWriter;
   delete m_consPathWriter;
@@ -468,6 +471,9 @@ void KleeHandler::setInterpreter(Interpreter *i) {
     m_pathWriter = new TreeStreamWriter(getOutputFilename("paths.ts"));
     assert(m_pathWriter->good());
     m_interpreter->setPathWriter(m_pathWriter);
+    m_pathDataRecWriter = new TreeStreamWriter(getOutputFilename("paths_datarec.ts"));
+    assert(m_pathDataRecWriter->good());
+    m_interpreter->setPathDataRecWriter(m_pathDataRecWriter);
   }
 
   if (WriteSymPaths) {
@@ -602,6 +608,18 @@ void KleeHandler::processTestCase(const ExecutionState &state,
           serialize(*f, pe);
         }
       }
+      f->close();
+      // data recording
+      std::vector<DataRecEntry> dataRecEntries;
+      m_pathDataRecWriter->readStream(m_interpreter->getPathDataRecStreamID(state),
+                                      dataRecEntries);
+      auto data_f = openTestFile("path_datarec", id);
+      if (data_f) {
+        for (const auto &dre: dataRecEntries) {
+          serialize(*data_f, dre);
+        }
+      }
+      data_f->close();
     }
 
     if (errorMessage || WriteKQueries) {
@@ -809,7 +827,8 @@ void KleeHandler::processTestCase(const ExecutionState &state,
 
 // load a .path file
 void KleeHandler::loadPathFile(std::string name,
-                                     std::vector<PathEntry> &buffer) {
+                               std::vector<PathEntry> &buffer,
+                               std::vector<DataRecEntry> &dataRecEntries) {
   std::ifstream f(name.c_str(), std::ios::in | std::ios::binary);
 
   if (!f.good())
@@ -819,6 +838,16 @@ void KleeHandler::loadPathFile(std::string name,
     PathEntry pe;
     deserialize(f, pe);
     buffer.push_back(pe);
+  }
+  f.close();
+
+  std::ifstream data_f((name + "_datarec").c_str(), std::ios::in | std::ios::binary);
+  // .path_datarec is optional. if the correponding .path has "DATAREC" record 
+  // but no .path_datarec provided here, Executor will complain later
+  while (data_f.good()) {
+    DataRecEntry dre;
+    deserialize(data_f, dre);
+    dataRecEntries.push_back(dre);
   }
 }
 
@@ -1636,10 +1665,12 @@ int main(int argc, char **argv, char **envp) {
 
   // load replayPath
   std::vector<PathEntry> replayPath;
+  std::vector<DataRecEntry> dataRecEntries;
 
   if (ReplayPathFile != "") {
-    KleeHandler::loadPathFile(ReplayPathFile, replayPath);
+    KleeHandler::loadPathFile(ReplayPathFile, replayPath, dataRecEntries);
     interpreter->setReplayPath(&replayPath);
+    interpreter->setReplayDataRecEntries(&dataRecEntries);
   }
 
   auto startTime = std::time(nullptr);

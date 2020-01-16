@@ -120,5 +120,20 @@ namespace klee {
   inline static void skip(T &is, const struct PathEntry &pe) {
     is.seekg(sizeof(pe), std::ios::cur);
   }
+  template <typename T> // oinstUniqueIDeam
+  inline static void serialize(T &os, const struct DataRecEntry &dre) {
+    serialize(os, dre.data);
+    serialize(os, dre.instUniqueID);
+  }
+  template <typename T> // iinstUniqueIDeam
+  inline static void deserialize(T &is, struct DataRecEntry &dre) {
+    deserialize(is, dre.data);
+    deserialize(is, dre.instUniqueID);
+  }
+  template <typename T> // iinstUniqueIDeam
+  inline static void skip(T &is, const struct DataRecEntry &dre) {
+    skip(is, dre.data);
+    skip(is, dre.instUniqueID);
+  }
 }
 #endif

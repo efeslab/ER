@@ -132,6 +132,7 @@ public:
   /// @brief History of complete path: represents branches taken to
   /// reach/create this state (both concrete and symbolic)
   TreeOStream pathOS;
+  TreeOStream pathDataRecOS;
 
   /// @brief History of stack for each branch decision: recording entire stack
   //  when each brach decision (both concrete and symbolic) is made
@@ -162,6 +163,7 @@ public:
   /// The index into the current \ref replayKTest or \ref replayPath
   /// object.
   unsigned replayPosition;
+  unsigned replayDataRecEntriesPosition;
   /// The number of branches recorded
   /// regardless of fork or switch or indirectbr, symbolic or concrete
   ///   should record or not (isInPosix, isInUserMain)
@@ -188,7 +190,7 @@ public:
   std::uint64_t steppedInstructions;
 
 private:
-  ExecutionState() : replayPosition(0), nbranches_rec(0), ptreeNode(0) {}
+  ExecutionState() : replayPosition(0), replayDataRecEntriesPosition(0), nbranches_rec(0), ptreeNode(0) {}
 
 public:
   ExecutionState(KFunction *kf);

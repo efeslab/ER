@@ -35,6 +35,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 struct KTest;
@@ -128,7 +129,7 @@ private:
   MemoryManager *memory;
   std::set<ExecutionState*> states;
   StatsTracker *statsTracker;
-  TreeStreamWriter *pathWriter, *symPathWriter;
+  TreeStreamWriter *pathWriter, *pathDataRecWriter, *symPathWriter;
   TreeStreamWriter *stackPathWriter, *consPathWriter, *statsPathWriter;
   SpecialFunctionHandler *specialFunctionHandler;
   TimerGroup timers;
@@ -189,8 +190,12 @@ private:
   /// When non-null, this evaluator knows all inputs of symbolic objects
   OracleEvaluator *oracle_eval;
 
+  /// A list of string, representing the unique ID of a list of instructions to record
+  std::unordered_set<std::string> dataRecInstSet;
+
   /// When non-null a list of branch decisions to be used for replay.
   const std::vector<PathEntry> *replayPath;
+  const std::vector<DataRecEntry> *replayDataRecEntries;
 
   /// The index into the current \ref replayKTest or \ref replayPath
   /// object. (moved inside ExecutionState, since we might replay multiple states at the same time)
@@ -508,6 +513,7 @@ public:
   }
 
   void setPathWriter(TreeStreamWriter *tsw) override { pathWriter = tsw; }
+  void setPathDataRecWriter(TreeStreamWriter *tsw) override { pathDataRecWriter = tsw; }
 
   void setStackPathWriter(TreeStreamWriter *tsw) override { stackPathWriter = tsw; }
 
@@ -533,11 +539,30 @@ public:
     replayPath = path;
   }
 
+  void setReplayDataRecEntries(const std::vector<DataRecEntry> *datarec) override {
+    assert(!replayKTest && "cannot replay both buffer and path");
+    replayDataRecEntries = datarec;
+  }
+
+  void loadDataRecCFG();
+  /// Try load the value of a given KInstuction from recorded path file
+  /// \param[out] true if given KInst is loaded successfully
+  bool tryLoadDataRecording(ExecutionState &state, KInstruction *KI);
+  /// Record given KInstruction if it is selected to do so.
+  /// \param[out] true if given KInst is recorded successfully
+  bool tryStoreDataRecording(ExecutionState &state, KInstruction *KI);
+
   // Read next PathEntry using (and advancing) the cursor in state
   void getNextPathEntry(ExecutionState &state, PathEntry &pe) {
     assert(replayPath && "Trying to get next PathEntry without a valud replayPath");
     assert(state.replayPosition < replayPath->size() && "replayPath exhausts too early");
     pe = (*replayPath)[state.replayPosition++];
+  }
+
+  void getNextDataRecEntry(ExecutionState &state, DataRecEntry &dre) {
+    assert(replayDataRecEntries && "Trying to get next DataRecEntry without a valid replayDataRecEntries");
+    assert(state.replayDataRecEntriesPosition < replayDataRecEntries->size() && "replayDataRecEntries exhausts too early");
+    dre = (*replayDataRecEntries)[state.replayDataRecEntriesPosition++];
   }
 
   llvm::Module *setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
@@ -568,6 +593,7 @@ public:
   /*** State accessor methods ***/
 
   unsigned getPathStreamID(const ExecutionState &state) override;
+  unsigned getPathDataRecStreamID(const ExecutionState &state) override;
 
   unsigned getSymbolicPathStreamID(const ExecutionState &state) override;
 

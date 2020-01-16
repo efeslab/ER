@@ -111,6 +111,7 @@ public:
   // supply a tree stream writer which the interpreter will use
   // to record the concrete path (as a stream of '0' and '1' bytes).
   virtual void setPathWriter(TreeStreamWriter *tsw) = 0;
+  virtual void setPathDataRecWriter(TreeStreamWriter *tsw) = 0;
 
   // supply a tree stream writer which the interpreter will use
   // to record the symbolic path (as a stream of '0' and '1' bytes).
@@ -136,6 +137,7 @@ public:
   // take on forks. this can be used to drive the interpretation down
   // a user specified path. use null to reset.
   virtual void setReplayPath(const std::vector<PathEntry> *path) = 0;
+  virtual void setReplayDataRecEntries(const std::vector<DataRecEntry> *datarec) = 0;
 
   // supply a set of symbolic bindings that will be used as "seeds"
   // for the search. use null to reset.
@@ -162,6 +164,7 @@ public:
   /*** State accessor methods ***/
 
   virtual unsigned getPathStreamID(const ExecutionState &state) = 0;
+  virtual unsigned getPathDataRecStreamID(const ExecutionState &state) = 0;
 
   virtual unsigned getSymbolicPathStreamID(const ExecutionState &state) = 0;
 

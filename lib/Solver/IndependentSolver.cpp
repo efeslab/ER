@@ -15,6 +15,7 @@
 #include "klee/Expr/Expr.h"
 #include "klee/Expr/ExprUtil.h"
 #include "klee/Internal/Support/Debug.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Solver/SolverStats.h"
 #include "klee/TimerStatIncrementer.h"
 #include "klee/Solver/SolverImpl.h"
@@ -191,11 +192,22 @@ bool assertCreatedPointEvaluatesToTrue(
   for (auto const &constraint : query.constraints) {
     ref<Expr> ret = assign.evaluate(constraint);
 
-    assert(isa<ConstantExpr>(ret) &&
-           "assignment evaluation did not result in constant");
-    ref<ConstantExpr> evaluatedConstraint = dyn_cast<ConstantExpr>(ret);
-    if (evaluatedConstraint->isFalse()) {
-      return false;
+    if (!isa<ConstantExpr>(ret)) {
+      std::string constraint_str;
+      std::string evaluated_str;
+      llvm::raw_string_ostream constraint_strOS(constraint_str);
+      llvm::raw_string_ostream evaluated_strOS(evaluated_str);
+      constraint->print(constraint_strOS);
+      ret->print(evaluated_strOS);
+      klee_warning("assignment evaluation did not result in constant:\n"
+          "\tconstraint:%s\n\tevaluated:%s",
+          constraint_strOS.str().c_str(), evaluated_strOS.str().c_str());
+    }
+    else {
+      ref<ConstantExpr> evaluatedConstraint = dyn_cast<ConstantExpr>(ret);
+      if (evaluatedConstraint->isFalse()) {
+        return false;
+      }
     }
   }
   ref<Expr> neg = Expr::createIsZero(query.expr);

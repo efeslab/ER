@@ -82,6 +82,13 @@ llvm::cl::opt<unsigned> AdditionalConcreteValuesRandomRatio(
     llvm::cl::init(5),
     llvm::cl::cat(klee::HASECat));
 
+llvm::cl::opt<bool> SimplifyDrawing(
+    "simplify-drawing",
+    llvm::cl::desc("Simplify dependency graphs by omitting constant nodes and "
+      "transforming \"A->B->C\" to \"A->C\""),
+    llvm::cl::init(false),
+    llvm::cl::cat(klee::HASECat));
+
 enum ToolActions { PrintTokens, PrintAST, PrintSMTLIBv2, Evaluate, Analyze, Draw};
 
 static llvm::cl::opt<ToolActions> ToolAction(
@@ -482,11 +489,17 @@ static bool DrawInputAST(const char *Filename,
   for (Decl *D: Decls) {
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
       ConstraintManager cm(QC->Constraints);
-      std::vector<ref<Expr>> constraints;
-      ExprInPlaceTransformer EIPT(cm, constraints);
-      ConstraintManager new_cm(constraints);
-      GraphvizDOTDrawer drawer(of, new_cm);
-      drawer.draw();
+      if (SimplifyDrawing) {
+        std::vector<ref<Expr>> constraints;
+        ExprInPlaceTransformer EIPT(cm, constraints);
+        ConstraintManager new_cm(constraints);
+        GraphvizDOTDrawer drawer(of, new_cm);
+        drawer.draw();
+      }
+      else {
+        GraphvizDOTDrawer drawer(of, cm);
+        drawer.draw();
+      }
       // Assuming there will only be one QueryComamnd
       break;
     }

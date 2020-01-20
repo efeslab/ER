@@ -24,7 +24,8 @@ namespace klee {
       SWITCH_EXPIDX,     // For Instruction::Switch, used when switch condition is concrete (can be mapped to unique case expression).
       SWITCH_BBIDX,      // For Instruction::Switch, used when switch condition is symbolic (only destination basicblock can be determined)
       INDIRECTBR,        // For Instruction::IndirectBr
-      DATAREC
+      DATAREC,
+      NUM_PATHENTRY_T
     };
     typedef uint16_t switchIndex_t;
     typedef uint8_t indirectbrIndex_t;

@@ -93,8 +93,10 @@ class PyGraph(object):
         all_nodes_topo_order = sorted(self.graph.nodes,
                 key=lambda n: self.topological_map[n.id])
         for n in all_nodes_topo_order:
+            if n.kind == "0":
+                concretized_set.add(n.id)
             # only node has out edges can be concretized
-            if n.id in self.edges:
+            elif n.id in self.edges:
                 concretizable = all([e.target.id in concretized_set
                     for e in self.edges[n.id]])
                 if concretizable:

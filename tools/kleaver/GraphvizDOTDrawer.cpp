@@ -16,7 +16,8 @@ void GraphvizDOTDrawer::declareExpr(const Expr *e, const char *category) {
      << "IDep=" << IDCalc.query(e) << ","
      << "Category=" << category << ","
      << "KInst=\"" << e->getKInstUniqueID() << "\"" << ","
-     << "DbgInfo=\"" << e->getKInstDbgInfo() << "\""
+     << "DbgInfo=\"" << e->getKInstDbgInfo() << "\"" << ","
+     << "Freq=" << e->getKInstLoadedFreq()
      << "];\n";
 }
 
@@ -31,7 +32,8 @@ void GraphvizDOTDrawer::declareLastLevelRead(const ReadExpr *RE, const char *cat
      << "IDep=" << IDCalc.query(RE) << ","
      << "Category=" << category << ","
      << "KInst=\"" << RE->getKInstUniqueID() << "\"" << ","
-     << "DbgInfo=\"" << RE->getKInstDbgInfo() << "\""
+     << "DbgInfo=\"" << RE->getKInstDbgInfo() << "\"" << ","
+     << "Freq=" << RE->getKInstLoadedFreq()
      << "];\n";
 }
 
@@ -43,6 +45,7 @@ void GraphvizDOTDrawer::declareUpdateNode(const UpdateNode *un, const Array *roo
      << "KInst=\"" << un->getKInstUniqueID() << "\"" << ","
      << "DbgInfo=\"" << un->getKInstDbgInfo() << "\"" <<","
      << "Flags=\"" << std::to_string(un->flags) << "\"" << ","
+     << "Freq=" << un->getKInstLoadedFreq()
      <<  "];\n";
 }
 

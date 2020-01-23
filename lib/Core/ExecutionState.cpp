@@ -196,6 +196,7 @@ ExecutionState *ExecutionState::branch() {
 
 void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
   stack.push_back(StackFrame(caller,kf));
+  ++kf->frequency;
   if (!isInUserMain && (kf->function->getName() == PathRecordingEntryPoint)) {
     isInUserMain = true;
   }

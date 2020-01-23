@@ -317,6 +317,12 @@ public:
   static const char *getKindStr(enum Kind k);
   std::string getKInstUniqueID() const { return klee::getKInstUniqueID(kinst); }
   std::string getKInstDbgInfo() const { return klee::getKInstDbgInfo(kinst); }
+  unsigned int getKInstLoadedFreq() const {
+    if (kinst)
+      return kinst->getLoadedFreq();
+    else
+      return 0;
+  }
 
 private:
   typedef llvm::DenseSet<std::pair<const Expr *, const Expr *> > ExprEquivSet;
@@ -530,6 +536,12 @@ public:
   }
   std::string getKInstUniqueID() const { return klee::getKInstUniqueID(kinst); }
   std::string getKInstDbgInfo() const { return klee::getKInstDbgInfo(kinst); }
+  unsigned int getKInstLoadedFreq() const {
+    if (kinst)
+      return kinst->getLoadedFreq();
+    else
+      return 0;
+  }
 
 private:
   UpdateNode() : refCount(0) {}

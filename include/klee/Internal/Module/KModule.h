@@ -52,6 +52,9 @@ namespace klee {
     /// Whether instructions in this function should count as
     /// "coverable" for statistics and search heuristics.
     bool trackCoverage;
+    /// How mant times this Function has been called.
+    /// Maintained at ExecutionState::pushFrame
+    unsigned int frequency = 0;
 
   public:
     explicit KFunction(llvm::Function*, KModule *);
@@ -151,6 +154,13 @@ namespace klee {
     /// Assign a unique ID for each instruction and basic block. The unique ID will
     /// be used in recording.
     void assignID();
+
+    /// Save Instruction and Function frequency to LLVM IR Module as metadata (MDNode).
+    /// Those frequencies were maintained inside KInstruction/KFunction until
+    /// this function is called.
+    /// MDNode can be exported to LLVM bitcode and still accessible when the
+    /// bitcode is loaded again.
+    void saveCntToMDNode();
   };
 } // End klee namespace
 

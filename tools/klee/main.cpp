@@ -1419,7 +1419,7 @@ linkWithUclibc(llvm::StringRef libDir,
 #endif
 
 static void
-saveFinalModuleToFile(llvm::Module *M) {
+saveFinalModuleToFile(llvm::Module *M, const std::string &suffix_msg) {
   if (SaveFinalModulePath == "")
     return;
 
@@ -1433,7 +1433,7 @@ saveFinalModuleToFile(llvm::Module *M) {
 #endif
   fs.close();
 
-  llvm::errs() << "Final module saved to " << SaveFinalModulePath << "\n";
+  llvm::errs() << "Final module saved to " << SaveFinalModulePath << suffix_msg << "\n";
 }
 
 int main(int argc, char **argv, char **envp) {
@@ -1669,7 +1669,7 @@ int main(int argc, char **argv, char **envp) {
   // locale and other data and then calls main.
 
   auto finalModule = interpreter->setModule(loadedModules, Opts);
-  saveFinalModuleToFile(finalModule);
+  saveFinalModuleToFile(finalModule, "(without Freq)");
 
   Function *mainFn = finalModule->getFunction(EntryPoint);
   if (!mainFn) {
@@ -1812,6 +1812,7 @@ int main(int argc, char **argv, char **envp) {
             handler->getInfoStream() << endInfo.str();
     handler->getInfoStream().flush();
   }
+  saveFinalModuleToFile(finalModule, "(with Freq)");
 
   // Free all the args.
   for (unsigned i=0; i<InputArgv.size()+1; i++)

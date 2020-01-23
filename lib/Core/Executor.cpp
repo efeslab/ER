@@ -1707,6 +1707,7 @@ Function* Executor::getTargetFunction(Value *calledVal, ExecutionState &state) {
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
+  ++ki->frequency;
   if (tryLoadDataRecording(state, ki)) {
     return;
   }
@@ -4262,6 +4263,7 @@ void Executor::runFunctionAsMain(Function *f,
 
   if (statsTracker)
     statsTracker->done();
+  kmodule->saveCntToMDNode();
 }
 
 unsigned Executor::getPathStreamID(const ExecutionState &state) {

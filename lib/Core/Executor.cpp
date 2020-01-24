@@ -1708,8 +1708,10 @@ Function* Executor::getTargetFunction(Value *calledVal, ExecutionState &state) {
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
   ++ki->frequency;
+  ref<Expr> LoadedExpr(0);
+  Cell &destCell = getDestCell(state, ki);
   if (tryLoadDataRecording(state, ki)) {
-    return;
+    LoadedExpr = destCell.value;
   }
   switch (i->getOpcode()) {
     // Control flow
@@ -3034,6 +3036,24 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   }
   // Note that above code should only "return" when an execution error happens
   // In that case, the "return" should follow a "terminateStateOnExecError"
+  if (!LoadedExpr.isNull()) {
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(destCell.value)) {
+      if (ConstantExpr *LoadedCE = dyn_cast<ConstantExpr>(LoadedExpr)) {
+        if (LoadedCE->getZExtValue() != CE->getZExtValue()) {
+          klee_warning("Loaded ConstantExpr %lu != Executed %lu",
+              LoadedCE->getZExtValue(), CE->getZExtValue());
+        }
+      }
+      else {
+        klee_warning("Non-ConstantExpr Loaded");
+      }
+    }
+    else {
+      ++stats::dataRecLoadedEffective;
+      klee_message("Effective dataRecLoaded at %u", state.replayDataRecEntriesPosition-1);
+      destCell.value = LoadedExpr;
+    }
+  }
   tryStoreDataRecording(state, ki);
 }
 

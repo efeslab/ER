@@ -57,6 +57,7 @@ namespace stats {
   extern Statistic callTime;
   extern Statistic allocaTime;
   extern Statistic dummy3;
+  extern Statistic dataRecLoadedEffective;
 
   /// The number of process forks.
   extern Statistic forks;

@@ -247,27 +247,41 @@ void ConstraintManager::updateIndependentSet() {
   while (!addedConstraints.empty()) {
     IndependentElementSet* current = new IndependentElementSet(addedConstraints.back());
     addedConstraints.pop_back();
+    // garbage consists of existing factors which are intersected with
+    // this new constraint
     std::vector<IndependentElementSet*> garbage;
     for (auto it = factors.begin(); it != factors.end(); it++ ) {
       if (current->intersects(*(*it))) {
-        current->add(*(*it));
         garbage.push_back(*it);
       }
     }
 
-    // Update representative and factors.
-    for (auto it = current->exprs.begin(); it != current->exprs.end(); it ++ ) {
-      representative[*it] = current;
+    if (garbage.size() == 1) {
+      // special case: newly added constraint falls exactly in one existing factor
+      // we can reuse the existing factor
+      IndependentElementSet *singleIntersect = garbage.back();
+      singleIntersect->add(*current);
+      for (auto &it: current->exprs) {
+        representative[it] = singleIntersect;
+      }
+      delete current;
     }
+    else {
+      for (IndependentElementSet *indepSet: garbage) {
+        current->add(*indepSet);
+      }
+      // Update representative and factors.
+      for (auto it = current->exprs.begin(); it != current->exprs.end(); it ++ ) {
+        representative[*it] = current;
+      }
 
-    while (!garbage.empty()) {
-      IndependentElementSet* victim = garbage.back();
-      garbage.pop_back();
-      factors.erase(victim);
-      delete victim;
+      for (IndependentElementSet *victim: garbage) {
+        factors.erase(victim);
+        delete victim;
+      }
+
+      factors.insert(current);
     }
-
-    factors.insert(current);
   }
 }
 

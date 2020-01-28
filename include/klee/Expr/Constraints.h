@@ -283,6 +283,16 @@ public:
         result.push_back(temp.back());
         temp.pop_back();
       }
+      // work like this:
+      // assume IndependentSet was setup for each constraint independently,
+      // represented by I0, I1, ... In
+      // temp initially has: I1...In
+      // result initially has: I0
+      // then for each IndependentSet Ii in temp, scan the entire result vector,
+      // combine any IndependentSet in result intersecting with Ii and put Ii
+      // in the result vector.
+      //
+      // result vector should only contain exclusive IndependentSet all the time.
 
       while (!temp.empty()) {
         IndependentElementSet* current = temp.back();

@@ -68,6 +68,16 @@ IndependentElementSet getIndependentConstraints(const Query& query,
   for (ConstraintManager::factor_iterator it = query.constraints.factor_begin(), 
                 ie = query.constraints.factor_end(); it != ie; ++it) {
     if (eltsClosure.intersects(*(*it))) {
+      // The eltsClosure represents the IndependentElementSet associated with
+      // the query expr.
+      // At a high level, you just take eltsClosure and try every existing factors.
+      // If it has intersection with any factor, associated expressions should
+      // be put in result vector.
+      //
+      // Note that factors managed by ConstraintManager should be exclusive.
+      // So there will not exists two factors f1 f2, that eltsClosure.add(f1)
+      // hides expressions in f2.
+      // The if condition commented out bellow is redundant.
       //if (eltsClosure.add(*(*it))) {
         for (auto eb = (*it)->exprs.begin(), ee =  (*it)->exprs.end(); eb != ee; eb++) {
            result.push_back(*eb);

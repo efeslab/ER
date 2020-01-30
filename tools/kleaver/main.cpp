@@ -43,9 +43,9 @@
 #include "GraphvizDOTDrawer.h"
 #include "ExprInPlaceTransformation.h"
 
-using namespace llvm;
 using namespace klee;
 using namespace klee::expr;
+using llvm::MemoryBuffer;
 
 namespace {
 llvm::cl::opt<std::string> InputFile(llvm::cl::desc("<input query log>"),
@@ -180,8 +180,8 @@ static std::string escapedString(const char *start, unsigned length) {
       s << "\\n";
     } else {
       s << "\\x" 
-        << hexdigit(((unsigned char) c >> 4) & 0xF) 
-        << hexdigit((unsigned char) c & 0xF);
+        << llvm::hexdigit(((unsigned char) c >> 4) & 0xF) 
+        << llvm::hexdigit((unsigned char) c & 0xF);
     }
   }
   return s.str();

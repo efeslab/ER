@@ -6,6 +6,7 @@
 #include "klee/Expr/ExprPPrinter.h"
 #include "klee/util/ExprConcretizer.h"
 #include "ExecutorCmdLine.h"
+using namespace klee;
 
 void debugDumpLLVMIR(llvm::Instruction *llvmir) {
     llvmir->print(llvm::errs());

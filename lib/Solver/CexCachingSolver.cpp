@@ -24,7 +24,7 @@
 #include "llvm/Support/CommandLine.h"
 
 using namespace klee;
-using namespace llvm;
+namespace cl=llvm::cl;
 
 namespace {
 cl::opt<bool> DebugCexCacheCheckBinding(

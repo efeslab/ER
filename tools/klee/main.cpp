@@ -65,8 +65,14 @@
 #include <cstdarg>
 
 
-using namespace llvm;
 using namespace klee;
+namespace cl=llvm::cl;
+namespace sys=llvm::sys;
+using llvm::SmallString;
+using llvm::BasicBlock;
+using llvm::Function;
+using llvm::Module;
+using llvm::Constant;
 
 namespace {
   cl::opt<std::string>
@@ -392,8 +398,8 @@ KleeHandler::KleeHandler(int argc, char **argv)
   bool dir_given = OutputDir != "";
   SmallString<128> directory(dir_given ? OutputDir : InputFile);
 
-  if (!dir_given) sys::path::remove_filename(directory);
-  if (auto ec = sys::fs::make_absolute(directory)) {
+  if (!dir_given) llvm::sys::path::remove_filename(directory);
+  if (auto ec = llvm::sys::fs::make_absolute(directory)) {
     klee_error("unable to determine absolute path: %s", ec.message().c_str());
   }
 
@@ -409,7 +415,7 @@ KleeHandler::KleeHandler(int argc, char **argv)
     for (; i <= INT_MAX; ++i) {
       SmallString<128> d(directory);
       llvm::sys::path::append(d, "klee-out-");
-      raw_svector_ostream ds(d);
+      llvm::raw_svector_ostream ds(d);
       ds << i;
       // SmallString is always up-to-date, no need to flush. See Support/raw_ostream.h
 
@@ -503,7 +509,7 @@ void KleeHandler::setInterpreter(Interpreter *i) {
 
 std::string KleeHandler::getOutputFilename(const std::string &filename) {
   SmallString<128> path = m_outputDirectory;
-  sys::path::append(path,filename);
+  llvm::sys::path::append(path,filename);
   return path.str();
 }
 
@@ -935,7 +941,7 @@ preparePOSIX(std::vector<std::unique_ptr<llvm::Module>> &loadedModules,
              llvm::StringRef libCPrefix) {
   // Get the main function from the main module and rename it such that it can
   // be called after the POSIX setup
-  Function *mainFn = nullptr;
+  llvm::Function *mainFn = nullptr;
   for (auto &module : loadedModules) {
     mainFn = module->getFunction(EntryPoint);
     if (mainFn)
@@ -1141,7 +1147,7 @@ void externalsAndGlobalsCheck(const llvm::Module *m) {
   if (WithPOSIXRuntime)
     dontCare.insert("syscall");
 
-  for (Module::const_iterator fnIt = m->begin(), fn_ie = m->end();
+  for (llvm::Module::const_iterator fnIt = m->begin(), fn_ie = m->end();
        fnIt != fn_ie; ++fnIt) {
     if (fnIt->isDeclaration() && !fnIt->use_empty())
       externals.insert(std::make_pair(fnIt->getName(), false));
@@ -1149,8 +1155,8 @@ void externalsAndGlobalsCheck(const llvm::Module *m) {
          bbIt != bb_ie; ++bbIt) {
       for (BasicBlock::const_iterator it = bbIt->begin(), ie = bbIt->end();
            it != ie; ++it) {
-        if (const CallInst *ci = dyn_cast<CallInst>(it)) {
-          if (isa<InlineAsm>(ci->getCalledValue())) {
+        if (const llvm::CallInst *ci = dyn_cast<llvm::CallInst>(it)) {
+          if (isa<llvm::InlineAsm>(ci->getCalledValue())) {
             klee_warning_once(&*fnIt,
                               "function \"%s\" has inline asm",
                               fnIt->getName().data());
@@ -1160,14 +1166,14 @@ void externalsAndGlobalsCheck(const llvm::Module *m) {
     }
   }
 
-  for (Module::const_global_iterator
+  for (llvm::Module::const_global_iterator
          it = m->global_begin(), ie = m->global_end();
        it != ie; ++it)
     if (it->isDeclaration() && !it->use_empty())
       externals.insert(std::make_pair(it->getName(), true));
   // and remove aliases (they define the symbol after global
   // initialization)
-  for (Module::const_alias_iterator
+  for (llvm::Module::const_alias_iterator
          it = m->alias_begin(), ie = m->alias_end();
        it != ie; ++it) {
     std::map<std::string, bool>::iterator it2 =
@@ -1286,7 +1292,7 @@ static void halt_via_gdb(int pid) {
 
 #ifndef SUPPORT_KLEE_UCLIBC
 static void
-linkWithUclibc(StringRef libDir,
+linkWithUclibc(llvm::StringRef libDir,
                std::vector<std::unique_ptr<llvm::Module>> &modules) {
   klee_error("invalid libc, no uclibc support!\n");
 }
@@ -1347,15 +1353,15 @@ createLibCWrapper(std::vector<std::unique_ptr<llvm::Module>> &modules,
                "number of arguments",
                libcMainFunction.str().c_str());
 
-  std::vector<Type *> fArgs;
+  std::vector<llvm::Type *> fArgs;
   fArgs.push_back(ft->getParamType(1)); // argc
   fArgs.push_back(ft->getParamType(2)); // argv
   // Here LibC creates another wrapper named "main" to call
   // original user main function (renamed to "__user_main" above), or
   // the POSIX wrapper ("__klee_posix_wrapper", renamed to "__user_main" as well before setting up uClibc)
   Function *stub =
-      Function::Create(FunctionType::get(Type::getInt32Ty(ctx), fArgs, false),
-                       GlobalVariable::ExternalLinkage, intendedFunction,
+      Function::Create(llvm::FunctionType::get(llvm::Type::getInt32Ty(ctx), fArgs, false),
+                       llvm::GlobalVariable::ExternalLinkage, intendedFunction,
                        libcMainFn->getParent());
   BasicBlock *bb = BasicBlock::Create(ctx, "entry", stub);
   llvm::IRBuilder<> Builder(bb);
@@ -1383,9 +1389,9 @@ createLibCWrapper(std::vector<std::unique_ptr<llvm::Module>> &modules,
 }
 
 static void
-linkWithUclibc(StringRef libDir,
+linkWithUclibc(llvm::StringRef libDir,
                std::vector<std::unique_ptr<llvm::Module>> &modules) {
-  LLVMContext &ctx = modules[0]->getContext();
+  llvm::LLVMContext &ctx = modules[0]->getContext();
 
   size_t newModules = modules.size();
 
@@ -1408,21 +1414,25 @@ linkWithUclibc(StringRef libDir,
 #endif
 
 static void
-saveFinalModuleToFile(Module *M) {
+saveFinalModuleToFile(llvm::Module *M) {
   if (SaveFinalModulePath == "")
     return;
 
   std::error_code EC;
-  raw_fd_ostream fs(SaveFinalModulePath, EC, llvm::sys::fs::F_None);
+  llvm::raw_fd_ostream fs(SaveFinalModulePath, EC, llvm::sys::fs::F_None);
 
-  WriteBitcodeToFile(M, fs);
+#if LLVM_VERSION_CODE >= LLVM_VERSION(7, 0)
+  llvm::WriteBitcodeToFile(*M, fs);
+#else
+  llvm::WriteBitcodeToFile(M, fs);
+#endif
   fs.close();
 
   llvm::errs() << "Final module saved to " << SaveFinalModulePath << "\n";
 }
 
 int main(int argc, char **argv, char **envp) {
-  atexit(llvm_shutdown);  // Call llvm_shutdown() on exit.
+  atexit(llvm::llvm_shutdown);  // Call llvm_shutdown() on exit.
 
   KCommandLine::HideOptions(llvm::cl::GeneralCategory);
 
@@ -1507,7 +1517,7 @@ int main(int argc, char **argv, char **envp) {
 
   // Load the bytecode...
   std::string errorMsg;
-  LLVMContext ctx;
+  llvm::LLVMContext ctx;
   std::vector<std::unique_ptr<llvm::Module>> loadedModules;
   if (!klee::loadFile(InputFile, ctx, loadedModules, errorMsg)) {
     klee_error("error loading program '%s': %s", InputFile.c_str(),

@@ -30,7 +30,9 @@
 #include <map>
 #include <cstring>
 
-using namespace llvm;
+using llvm::MemoryBuffer;
+using llvm::StringRef;
+using llvm::APInt;
 using namespace klee;
 using namespace klee::expr;
 
@@ -122,7 +124,7 @@ namespace {
     unsigned NumErrors;
 
     std::vector<std::unique_ptr<llvm::Module>> loadedModules;
-    LLVMContext ctx;
+    llvm::LLVMContext ctx;
 
     // FIXME: Use LLVM symbol tables?
     IdentifierTabTy IdentifierTab;
@@ -144,7 +146,7 @@ namespace {
     const Identifier *GetOrCreateIdentifier(const Token &Tok);
     const Identifier *GetOrCreateIdentifier(const std::string &Name);
 
-    Instruction *GetLLVMIR(
+    llvm::Instruction *GetLLVMIR(
           StringRef &_func, StringRef &_bb, StringRef &_inst);
 
     void GetNextNonCommentToken() {
@@ -403,16 +405,16 @@ const Identifier *ParserImpl::GetOrCreateIdentifier(const std::string &Name) {
   return I;
 }
 
-Instruction *ParserImpl::GetLLVMIR(
+llvm::Instruction *ParserImpl::GetLLVMIR(
       StringRef &_func, StringRef &_bb, StringRef &_inst) {
-  Module *M = loadedModules[0].get();
-  for (Function &F : *M) {
+  llvm::Module *M = loadedModules[0].get();
+  for (llvm::Function &F : *M) {
     if (F.getName() != _func)
       continue;
-    for (BasicBlock &BB : F) {
+    for (llvm::BasicBlock &BB : F) {
       if (BB.getName() != _bb)
         continue;
-      for (Instruction &I : BB) {
+      for (llvm::Instruction &I : BB) {
         if (I.getName() == _inst)
           return &I;
       }

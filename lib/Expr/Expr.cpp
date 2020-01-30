@@ -26,10 +26,11 @@
 #include <sstream>
 
 using namespace klee;
-using namespace llvm;
+using llvm::APInt;
+namespace cl=llvm::cl;
 
 namespace klee {
-llvm::cl::OptionCategory
+cl::OptionCategory
     ExprCat("Expression building and printing options",
             "These options impact the way expressions are build and printed.");
 }
@@ -94,8 +95,8 @@ std::string klee::getKInstUniqueID(const KInstruction *ki) {
 }
 
 std::string klee::getInstUniqueID(const llvm::Instruction *I) {
-  const BasicBlock *BB = I->getParent();
-  const Function *F = BB->getParent();
+  const llvm::BasicBlock *BB = I->getParent();
+  const llvm::Function *F = BB->getParent();
   return F->getName().str() + ":" + BB->getName().str() + ":" + I->getName().str();
 }
 
@@ -398,8 +399,8 @@ void Expr::print(llvm::raw_ostream &os) const {
 }
 
 void Expr::dump() const {
-  this->print(errs());
-  errs() << "\n";
+  this->print(llvm::errs());
+  llvm::errs() << "\n";
 }
 
 /***/

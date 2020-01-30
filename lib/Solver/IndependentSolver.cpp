@@ -96,7 +96,7 @@ IndependentElementSet getIndependentConstraints(const Query& query,
     errs() << "\telts: " << IndependentElementSet(query.expr) << "\n";
     int i = 0;
     for (ConstraintManager::const_iterator it = query.constraints.begin(),
-        ie = query.constraints.end(); it != ie; ++it) {
+      ie = query.constraints.end(); it != ie; ++it) {
       errs() << "C" << i++ << ": " << *it;
       errs() << " " << (reqset.count(*it) ? "(required)" : "(independent)") << "\n";
       errs() << "\telts: " << IndependentElementSet(*it) << "\n";

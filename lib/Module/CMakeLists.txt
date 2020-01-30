@@ -22,6 +22,7 @@ set(KLEE_MODULE_COMPONENT_SRCS
   PhiCleaner.cpp
   RaiseAsm.cpp
   AssignIDPass.cpp
+  PTWritePass.cpp
 )
 
 if (USE_WORKAROUND_LLVM_PR39177)

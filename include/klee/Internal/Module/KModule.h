@@ -151,6 +151,9 @@ namespace klee {
     /// Assign a unique ID for each instruction and basic block. The unique ID will
     /// be used in recording.
     void assignID();
+
+    /// Add PTWrite instruction after specified instructions
+    void addPTWrite(std::string &cfg);
   };
 } // End klee namespace
 

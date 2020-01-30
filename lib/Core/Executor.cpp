@@ -587,6 +587,10 @@ Executor::setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
   // assign an unique ID for each instruction and basic block
   kmodule->assignID();
 
+  if (DataRecordingCFG != "") {
+    kmodule->addPTWrite(DataRecordingCFG);
+  }
+
   return kmodule->module.get();
 }
 

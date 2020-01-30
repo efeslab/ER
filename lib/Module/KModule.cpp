@@ -385,6 +385,12 @@ void KModule::assignID() {
   pm.run(*module);
 }
 
+void KModule::addPTWrite(std::string &cfg) {
+  legacy::PassManager pm;
+  pm.add(new PTWritePass(cfg));
+  pm.run(*module);
+}
+
 KConstant* KModule::getKConstant(const Constant *c) {
   auto it = constantMap.find(c);
   if (it != constantMap.end())

@@ -9,6 +9,7 @@ How to reload this module:
 
 Some Initialization process was copied from the preload.py (of scripting).
 Nodes should already have an integer attr named "idepi" representing indirect depth.
+    e.g., for v in g.nodes: v.idepi = int(v.idep)
 """
 # initialize
 import org.openide.util.Lookup as Lookup
@@ -18,17 +19,26 @@ import org.gephi.visualization.VizController
 VizController = Lookup.getDefault().lookup(org.gephi.visualization.VizController)
 import org.gephi.layout.plugin.forceAtlas2.ForceAtlas2Builder as ForceAtlas2
 import java.awt.Color as jcolor
+import time
 
 def RunForceAtlas2_nooverlap(iters):
     fa2 = ForceAtlas2().buildLayout()
-    fa2.setScalingRatio(5.0)
+    LayoutController.setLayout(fa2)
+    fa2.setScalingRatio(2.0)
     fa2.setGravity(-2)
-    fa2.setAdjustSizes(False)
-    LayoutController.setLayout(fa2)
+    fa2.setAdjustSizes(0)
     LayoutController.executeLayout(iters)
-    fa2.setAdjustSizes(True)
+    while (LayoutController.getModel().isRunning()):
+        time.sleep(0.2)
+    print("%d iters with False AdjustSizes done" % (iters))
     LayoutController.setLayout(fa2)
-    LayoutController.executeLayout(iters)
+    fa2.setScalingRatio(2.0)
+    fa2.setGravity(-2)
+    fa2.setAdjustSizes(1)
+    LayoutController.executeLayout(200)
+    while (LayoutController.getModel().isRunning()):
+        time.sleep(0.2)
+    print(" done")
 
 class PyGraph(object):
     graph = None
@@ -152,14 +162,14 @@ class HaseUtils(object):
             if v.idepi == 0:
                 self.all_root_nodes.add(v.id)
                 self.idep_index_score[v.id] = 0
-                v.size = 20
+                v.size = 15
         # nodes pointed by cross-layer edges but no intra-layer edges are roots
         # nodes pointed by cross-layer edges will be enlarged
         for e in self.g.edges:
             if e.weight==1.5:
                 if e.target.idepi == e.source.idepi + 1:
                     self.all_root_nodes.add(e.target.id)
-                    e.target.size = 20
+                    e.target.size = 15
                 self.idep_index_score[e.target.id] = self.idep_index_score.get(e.target.id, 0) + e.source.idepi
         for e in self.g.edges:
             if (e.target.idepi == e.source.idepi) and \
@@ -247,7 +257,7 @@ class HaseUtils(object):
     Make nodes from given level the only nodes visible on workspace
     """
     def visible_idep(self, idep):
-        self.globals['visible'] = self.idep_subg[idep]
+        self.setVisible(self.idep_subg[idep])
 
     """
     Move nodes with indirect depth >= `start_idep` to the right by distance `dist`
@@ -256,6 +266,32 @@ class HaseUtils(object):
         subg = self.g.filter(self.attr_idepi >= start_idep)
         for v in subg.nodes:
             v.x += dist
+    def move_right_auto(self, start_idep):
+        if start_idep > 0:
+            subg = self.g.filter(self.attr_idepi >= start_idep)
+            cur_minx = min([v.x for v in subg.nodes])
+            prev_maxx = max([v.x for v in self.idep_subg[start_idep-1].nodes])
+            self.move_right(start_idep, prev_maxx + 100 - cur_minx)
+
+    def auto_layout_all(self, iters=500):
+        for i in range(self.maxIDep+1):
+            self.focus_idep(i)
+            RunForceAtlas2_nooverlap(iters)
+            self.move_right_auto(i)
+        self.setAllVisible()
+
+    def auto_relayout_all(self, iters=500):
+        for i in range(self.maxIDep+1):
+            self.visible_idep(i)
+            RunForceAtlas2_nooverlap(iters)
+            self.move_right_auto(i)
+        self.setAllVisible()
+
+    def setVisible(self, subg):
+        self.globals['visible'] = subg
+
+    def setAllVisible(self):
+        self.setVisible(self.g)
 
 def setVisible(gs, subgraph):
     gs['visible'] = subgraph

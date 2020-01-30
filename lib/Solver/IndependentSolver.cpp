@@ -16,6 +16,7 @@
 #include "klee/Expr/ExprUtil.h"
 #include "klee/Internal/Support/Debug.h"
 #include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/Internal/Support/IndependentElementSet.h"
 #include "klee/Solver/SolverStats.h"
 #include "klee/TimerStatIncrementer.h"
 #include "klee/Solver/SolverImpl.h"
@@ -28,7 +29,7 @@
 #include <vector>
 
 using namespace klee;
-using namespace llvm;
+using llvm::errs;
 
 // Breaks down a constraint into all of it's individual pieces, returning a
 // list of IndependentElementSets or the independent factors.
@@ -115,7 +116,7 @@ static
 void calculateArrayReferences(const IndependentElementSet & ie,
                               std::vector<const Array *> &returnVector){
   std::set<const Array*> thisSeen;
-  for(std::map<const Array*, ::DenseSet<unsigned> >::const_iterator it = ie.elements.begin();
+  for(std::map<const Array*, DenseSet<unsigned> >::const_iterator it = ie.elements.begin();
       it != ie.elements.end(); it ++){
     thisSeen.insert(it->first);
   }
@@ -273,7 +274,7 @@ bool IndependentSolver::computeInitialValues(const Query& query,
           std::vector<unsigned char> * tempPtr = &retMap[arraysInFactor[i]];
           assert(tempPtr->size() == tempValues[i].size() &&
                  "we're talking about the same array here");
-          ::DenseSet<unsigned> * ds = &(it->elements[arraysInFactor[i]]);
+          DenseSet<unsigned> * ds = &(it->elements[arraysInFactor[i]]);
           for (std::set<unsigned>::iterator it2 = ds->begin(); it2 != ds->end(); it2++){
             unsigned index = * it2;
             (* tempPtr)[index] = tempValues[i][index];

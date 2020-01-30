@@ -848,6 +848,7 @@ void KleeHandler::loadPathFile(std::string name,
   f.close();
 
   std::ifstream data_f((name + "_datarec").c_str(), std::ios::in | std::ios::binary);
+  data_f.peek();
   // .path_datarec is optional. if the correponding .path has "DATAREC" record 
   // but no .path_datarec provided here, Executor will complain later
   while (data_f.good()) {

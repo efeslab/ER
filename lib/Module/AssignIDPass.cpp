@@ -39,11 +39,16 @@ char AssignIDPass::ID;
 
 bool AssignIDPass::runOnModule(Module &M) {
   for (Module::iterator f = M.begin(), fe = M.end(); f != fe; ++f) {
+    unsigned bcnt = 0;
     for (Function::iterator b = f->begin(), be = f->end(); b != be; ++b) {
-      b->setName("B" + std::to_string(bcnt++));
+      std::string bname = "B" + std::to_string(bcnt++);
+      b->setName(bname);
+      unsigned icnt = 0;
       for (BasicBlock::iterator i = b->begin(), ie = b->end(); i != ie; ++i) {
-        if (!i->getType()->isVoidTy())
-          i->setName("I" + std::to_string(icnt++));
+        if (!i->getType()->isVoidTy()) {
+          std::string iname = bname + "I" + std::to_string(icnt++);
+          i->setName(iname);
+        }
       }
     }
   }

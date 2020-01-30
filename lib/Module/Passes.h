@@ -220,8 +220,6 @@ public:
 };
 
 class AssignIDPass : public llvm::ModulePass {
-private:
-  unsigned bcnt = 0, icnt = 0;
 public:
   static char ID;
   AssignIDPass() : llvm::ModulePass(ID) {}

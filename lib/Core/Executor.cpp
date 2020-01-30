@@ -63,6 +63,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
@@ -567,6 +568,13 @@ Executor::setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
   kmodule->optimiseAndPrepare(opts, preservedFunctions);
   kmodule->checkModule();
 
+  // 3.5.) Assign ID and add PTWrite
+  // assign an unique ID for each instruction and basic block
+  kmodule->assignID();
+  if (DataRecordingCFG != "") {
+    kmodule->addPTWrite(DataRecordingCFG);
+  }
+
   // 4.) Manifest the module
   kmodule->manifest(interpreterHandler, StatsTracker::useStatistics());
 
@@ -583,13 +591,6 @@ Executor::setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
   DataLayout *TD = kmodule->targetData.get();
   Context::initialize(TD->isLittleEndian(),
                       (Expr::Width)TD->getPointerSizeInBits());
-
-  // assign an unique ID for each instruction and basic block
-  kmodule->assignID();
-
-  if (DataRecordingCFG != "") {
-    kmodule->addPTWrite(DataRecordingCFG);
-  }
 
   return kmodule->module.get();
 }
@@ -2215,7 +2216,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     Value *fp = cs.getCalledValue();
     Function *f = getTargetFunction(fp, state);
 
-    if (isa<InlineAsm>(fp)) {
+    if (llvm::InlineAsm *AI = dyn_cast<llvm::InlineAsm>(fp)) {
+      if (AI->getAsmString() == "ptwrite $0") {
+        llvm::errs() << AI->getAsmString() << "\n";
+      }
+
       terminateStateOnExecError(state, "inline assembly is unsupported");
       break;
     }

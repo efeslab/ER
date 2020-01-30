@@ -83,14 +83,12 @@ PTWritePass::PTWritePass(std::string &cfg) : ModulePass(ID) {
 
 bool PTWritePass::runOnModule(Module &M) {
   for (Module::iterator f = M.begin(), fe = M.end(); f != fe; ++f) {
-    llvm::errs() << f->getName().str() << "\n";
     if (dataRecFuncSet.find(f->getName().str()) == dataRecFuncSet.end()) {
       continue;
     }
 
     for (Function::iterator b = f->begin(), be = f->end(); b != be; ++b) {
       std::string bname = f->getName().str() + ":" + b->getName().str();
-      llvm::errs() << bname << "\n";
       if (dataRecBBSet.find(bname) == dataRecBBSet.end()) {
         continue;
       }
@@ -101,7 +99,6 @@ bool PTWritePass::runOnModule(Module &M) {
         }
 
         std::string iname = f->getName().str() + ":" + b->getName().str() + ":" + i->getName().str();
-        llvm::errs() << iname << "\n";
         if (dataRecInstSet.find(iname) == dataRecInstSet.end()) {
           continue;
         }

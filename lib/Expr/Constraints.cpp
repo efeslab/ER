@@ -175,7 +175,12 @@ bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
 }
 
 void ConstraintManager::updateDelete() {
+  // I believe delete only happens when a constraint is rewritten. But I think
+  // it is unlikely to break a IndependentSet if you rewrite a constraint.
+  // TODO: do we really want to traverse the entire IndependentSet upon delete/rewrite?
   // Get the set for all the IndependentSet that need to be update.
+  // key: factors need to update
+  // value: set of constraints (expressions) to delete in the corresponding factor
   std::unordered_map<IndependentElementSet*, ExprHashSet > updateList;
   for (auto it = deleteConstraints.begin(); it != deleteConstraints.end(); it++) {
     updateList[representative[*it]].insert(*it);
@@ -336,5 +341,76 @@ void ConstraintManager::addConstraint(ref<Expr> e) {
 
   addedConstraints.clear();
   deleteConstraints.clear();
+  // TODO Check factors are exclusive (sum the number of constraints and compare with representative.size())
 }
 
+ConstraintManager::ConstraintManager(const std::vector< ref<Expr> > &_constraints) :
+  constraints(_constraints) {
+    // Need to establish factors and representative
+    std::vector<IndependentElementSet*> temp;
+    for (auto it = _constraints.begin(); it != _constraints.end(); it ++ ) {
+      temp.push_back(new IndependentElementSet(*it));
+    }
+
+    std::vector<IndependentElementSet*> result;
+    if (!temp.empty()) {
+      result.push_back(temp.back());
+      temp.pop_back();
+    }
+    // work like this:
+    // assume IndependentSet was setup for each constraint independently,
+    // represented by I0, I1, ... In
+    // temp initially has: I1...In
+    // result initially has: I0
+    // then for each IndependentSet Ii in temp, scan the entire result vector,
+    // combine any IndependentSet in result intersecting with Ii and put Ii
+    // in the result vector.
+    //
+    // result vector should only contain exclusive IndependentSet all the time.
+
+    while (!temp.empty()) {
+      IndependentElementSet* current = temp.back();
+      temp.pop_back();
+      unsigned int i = 0;
+      while (i < result.size()) {
+        if (current->intersects(*result[i])) {
+          current->add(*result[i]);
+          IndependentElementSet* victim = result[i];
+          result[i] = result.back();
+          result.pop_back();
+          delete victim;
+        } else {
+          i++;
+        }
+      }
+      result.push_back(current);
+    }
+
+    for (auto r = result.begin(); r != result.end(); r++) {
+      factors.insert(*r);
+      for (auto e = (*r)->exprs.begin(); e != (*r)->exprs.end(); e++) {
+        representative[*e] = *r;
+      }
+    }
+  }
+
+ConstraintManager::ConstraintManager(const ConstraintManager &cs) : constraints(cs.constraints) {
+  // Copy constructor needs to make deep copy of factors and representative
+  // Here we assume every IndependentElementSet point in representative also exist in factors.
+  for (auto it = cs.factors.begin(); it != cs.factors.end(); it++) {
+    IndependentElementSet* candidate = new IndependentElementSet(*(*it));
+    factors.insert(candidate);
+    for (auto e = candidate->exprs.begin(); e != candidate->exprs.end(); e++) {
+      representative[*e] = candidate;
+    }
+  }
+}
+
+// Destructor
+ConstraintManager::~ConstraintManager() {
+  // Here we assume every IndependentElementSet point in representative also exist in factors.
+  for (auto it = factors.begin(); it != factors.end(); it++) {
+    delete(*it);
+  }
+  // TODO Double check your assumption
+}

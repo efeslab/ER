@@ -61,6 +61,7 @@ namespace klee {
     ~KFunction();
 
     unsigned getArgRegister(unsigned index) { return index; }
+    KInstruction *getKInstruction(llvm::Instruction *inst);
   };
 
 
@@ -108,6 +109,8 @@ namespace klee {
     // Mark function with functionName as part of the KLEE runtime
     void addInternalFunction(const char* functionName);
 
+    std::map<llvm::Instruction*, KInstruction*> instructionMapCache;
+
   public:
     KModule() = default;
 
@@ -147,6 +150,9 @@ namespace klee {
     /// Run passes that check if module is valid LLVM IR and if invariants
     /// expected by KLEE's Executor hold.
     void checkModule();
+
+    /// Get the corresponding KInstruction of a llvm::Instruction.
+    KInstruction *getKInstruction(llvm::Instruction *inst);
 
     /// Assign a unique ID for each instruction and basic block. The unique ID will
     /// be used in recording.

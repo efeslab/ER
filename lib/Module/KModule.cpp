@@ -391,6 +391,21 @@ void KModule::addPTWrite(std::string &cfg) {
   pm.run(*module);
 }
 
+KInstruction* KModule::getKInstruction(llvm::Instruction *I) {
+  auto it = instructionMapCache.find(I);
+  if (it != instructionMapCache.end())
+    return it->second;
+
+  llvm::Function *f = I->getParent()->getParent();
+  assert(f);
+  KFunction *kf = functionMap[f];
+  KInstruction *target = kf->getKInstruction(I);
+  assert(target);
+
+  instructionMapCache.insert(std::make_pair(I, target));
+  return target;
+}
+
 KConstant* KModule::getKConstant(const Constant *c) {
   auto it = constantMap.find(c);
   if (it != constantMap.end())
@@ -512,3 +527,13 @@ KFunction::~KFunction() {
     delete instructions[i];
   delete[] instructions;
 }
+
+KInstruction *KFunction::getKInstruction(llvm::Instruction *inst) {
+  for (unsigned i = 0; i < numInstructions; i++) {
+    if (instructions[i]->inst == inst) {
+      return instructions[i];
+    }
+  }
+  return nullptr;
+}
+

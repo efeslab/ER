@@ -1712,9 +1712,6 @@ Function* Executor::getTargetFunction(Value *calledVal, ExecutionState &state) {
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
-  if (tryLoadDataRecording(state, ki)) {
-    return;
-  }
   switch (i->getOpcode()) {
     // Control flow
   case Instruction::Ret: {
@@ -2214,16 +2211,25 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     unsigned numArgs = cs.arg_size();
     Value *fp = cs.getCalledValue();
-    Function *f = getTargetFunction(fp, state);
 
     if (llvm::InlineAsm *AI = dyn_cast<llvm::InlineAsm>(fp)) {
       if (AI->getAsmString() == "ptwrite $0") {
-        llvm::errs() << AI->getAsmString() << "\n";
+        llvm::Instruction *recI = dyn_cast<llvm::Instruction>(i->getOperand(0));
+        assert(recI != nullptr);
+        KInstruction *recKI = kmodule->getKInstruction(recI);
+        assert(recKI != nullptr);
+
+        tryLoadDataRecording(state, recKI);
+        tryStoreDataRecording(state, recKI);
+        break;
       }
 
       terminateStateOnExecError(state, "inline assembly is unsupported");
       break;
     }
+
+    Function *f = getTargetFunction(fp, state);
+
     // evaluate arguments
     std::vector< ref<Expr> > arguments;
     arguments.reserve(numArgs);
@@ -3040,9 +3046,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     terminateStateOnExecError(state, "illegal instruction");
     break;
   }
-  // Note that above code should only "return" when an execution error happens
-  // In that case, the "return" should follow a "terminateStateOnExecError"
-  tryStoreDataRecording(state, ki);
 }
 
 void Executor::updateStates(ExecutionState *current) {
@@ -4734,16 +4737,14 @@ void Executor::getNextBranchConstraint(ExecutionState &state, ref<Expr> conditio
 bool Executor::tryLoadDataRecording(ExecutionState &state, KInstruction *KI) {
   if (replayPath && replayDataRecEntries) {
     std::string uniqID = getKInstUniqueID(KI);
-    if (dataRecInstSet.find(uniqID) != dataRecInstSet.end()) {
-      PathEntry pe;
-      DataRecEntry dre;
-      getNextPathEntry(state, pe);
-      getNextDataRecEntry(state, dre);
-      assert((pe.t == PathEntry::DATAREC) && "When try loading DataRecording, PathEntry Type mismatches");
-      assert((pe.body.drec.IDlen = uniqID.size()) && "When try loading DataRecording, uniqID length mismatches");
-      bindLocal(KI, state, ConstantExpr::alloc(dre.data, pe.body.drec.width));
-      return true;
-    }
+    PathEntry pe;
+    DataRecEntry dre;
+    getNextPathEntry(state, pe);
+    getNextDataRecEntry(state, dre);
+    assert((pe.t == PathEntry::DATAREC) && "When try loading DataRecording, PathEntry Type mismatches");
+    assert((pe.body.drec.IDlen = uniqID.size()) && "When try loading DataRecording, uniqID length mismatches");
+    bindLocal(KI, state, ConstantExpr::alloc(dre.data, pe.body.drec.width));
+    return true;
   }
   return false;
 }
@@ -4751,21 +4752,19 @@ bool Executor::tryLoadDataRecording(ExecutionState &state, KInstruction *KI) {
 bool Executor::tryStoreDataRecording(ExecutionState &state, KInstruction *KI) {
   if (pathWriter) {
     std::string uniqID = getKInstUniqueID(KI);
-    if (dataRecInstSet.find(uniqID) != dataRecInstSet.end()) {
-      PathEntry pe;
-      ref<Expr> e = getDestCell(state, KI).value;
-      ConstantExpr *CE = dyn_cast<ConstantExpr>(e);
-      assert(CE && "should only record concrete values");
-      pe.t = PathEntry::DATAREC;
-      pe.body.drec.IDlen = uniqID.size();
-      pe.body.drec.width = CE->getWidth();
-      state.pathOS << pe;
-      DataRecEntry dre;
-      dre.instUniqueID = uniqID;
-      dre.data = CE->getZExtValue();
-      state.pathDataRecOS << dre;
-      return true;
-    }
+    PathEntry pe;
+    ref<Expr> e = getDestCell(state, KI).value;
+    ConstantExpr *CE = dyn_cast<ConstantExpr>(e);
+    assert(CE && "should only record concrete values");
+    pe.t = PathEntry::DATAREC;
+    pe.body.drec.IDlen = uniqID.size();
+    pe.body.drec.width = CE->getWidth();
+    state.pathOS << pe;
+    DataRecEntry dre;
+    dre.instUniqueID = uniqID;
+    dre.data = CE->getZExtValue();
+    state.pathDataRecOS << dre;
+    return true;
   }
   return false;
 }

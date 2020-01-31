@@ -95,6 +95,7 @@ int main(int argc, char **argv) {
     while (fpath.good()) {
       PathEntry pe;
       deserialize(fpath, pe);
+      fpath.peek();
       pathentries.push_back(pe);
     }
     fpath.close();
@@ -107,6 +108,7 @@ int main(int argc, char **argv) {
       while (fdpath.good()) {
         DataRecEntry drec;
         deserialize(fdpath, drec);
+        fdpath.peek();
         dataentries.push_back(drec);
       }
       fdpath.close();

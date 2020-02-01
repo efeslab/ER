@@ -332,6 +332,10 @@ void ConstraintManager::checkConstraintChange() {
 }
 
 void ConstraintManager::addConstraint(ref<Expr> e) {
+  if (representative.find(e) != representative.end()) {
+    // found a duplicated constraint
+    return;
+  }
   // After update the independant, the add and delete vector should be cleaned;
   assert(old.empty() && "old vector is not empty"); 
   assert(deleteConstraints.empty() && "delete Constraints not empty"); 

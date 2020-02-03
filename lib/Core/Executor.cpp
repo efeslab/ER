@@ -418,11 +418,6 @@ cl::opt<bool> DoOutofBoundaryCheck(
     "oob-check", cl::init(true),
     cl::desc("Disable out of boundary check during memory operations"),
     cl::cat(HASECat));
-cl::opt<std::string> DataRecordingCFG(
-    "datarec-cfg", cl::init(""),
-    cl::desc("Which LLVM IR instruction should be recorded. "
-             "One instruction unique ID per line."),
-    cl::cat(HASECat));
 } // namespace
 
 
@@ -493,7 +488,6 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
   if (OracleKTest != "") {
     oracle_eval = new OracleEvaluator(OracleKTest);
   }
-  loadDataRecCFG();
 
   memory = new MemoryManager(&arrayCache);
 
@@ -565,15 +559,12 @@ Executor::setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
   preservedFunctions.push_back("memcmp");
   preservedFunctions.push_back("memmove");
 
+  // Assign ID for newly added instructions
+  std::string prefix = "POST";
+  KModule::assignID(kmodule->module.get(), prefix);
+
   kmodule->optimiseAndPrepare(opts, preservedFunctions);
   kmodule->checkModule();
-
-  // 3.5.) Assign ID and add PTWrite
-  // assign an unique ID for each instruction and basic block
-  kmodule->assignID();
-  if (DataRecordingCFG != "") {
-    kmodule->addPTWrite(DataRecordingCFG);
-  }
 
   // 4.) Manifest the module
   kmodule->manifest(interpreterHandler, StatsTracker::useStatistics());
@@ -4612,18 +4603,6 @@ void Executor::record1BitAtFork(ExecutionState &current, Solver::Validity solval
     pe.t = PathEntry::FORK;
     pe.body.br = ((solvalid == Solver::True)? true: false);
     current.pathOS << pe;
-  }
-}
-
-void Executor::loadDataRecCFG() {
-  if (DataRecordingCFG != "") {
-    std::ifstream f(DataRecordingCFG);
-    while (f.good()) {
-      std::string linestr;
-      std::getline(f, linestr);
-      dataRecInstSet.insert(linestr);
-    }
-    f.close();
   }
 }
 

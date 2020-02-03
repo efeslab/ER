@@ -220,9 +220,11 @@ public:
 };
 
 class AssignIDPass : public llvm::ModulePass {
+private:
+  std::string prefix;
 public:
   static char ID;
-  AssignIDPass() : llvm::ModulePass(ID) {}
+  AssignIDPass(std::string &_prefix);
   bool runOnModule(llvm::Module &M) override;
 };
 

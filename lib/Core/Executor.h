@@ -544,7 +544,6 @@ public:
     replayDataRecEntries = datarec;
   }
 
-  void loadDataRecCFG();
   /// Try load the value of a given KInstuction from recorded path file
   /// \param[out] true if given KInst is loaded successfully
   bool tryLoadDataRecording(ExecutionState &state, KInstruction *KI);

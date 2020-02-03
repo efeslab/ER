@@ -379,16 +379,16 @@ void KModule::checkModule() {
   }
 }
 
-void KModule::assignID() {
+void KModule::assignID(llvm::Module *M, std::string &prefix) {
   legacy::PassManager pm;
-  pm.add(new AssignIDPass());
-  pm.run(*module);
+  pm.add(new AssignIDPass(prefix));
+  pm.run(*M);
 }
 
-void KModule::addPTWrite(std::string &cfg) {
+void KModule::addPTWrite(llvm::Module *M, std::string &cfg) {
   legacy::PassManager pm;
   pm.add(new PTWritePass(cfg));
-  pm.run(*module);
+  pm.run(*M);
 }
 
 KInstruction* KModule::getKInstruction(llvm::Instruction *I) {

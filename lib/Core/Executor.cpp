@@ -4549,22 +4549,30 @@ void Executor::prepareForEarlyExit() {
 
 void Executor::printInfo(llvm::raw_ostream &os) {
   static unsigned int cnt = 0;
-  os << "********************************* Info " << cnt << "***********************\n";
-  os << "Total Instructions: " << stats::instructions.getValue() << '\n';
+  std::string message_buf;
+  llvm::raw_string_ostream msg_oss(message_buf);
+  msg_oss << "********************************* Info " << cnt << "***********************\n";
+  msg_oss << "Total Instructions: " << stats::instructions.getValue() << '\n';
   unsigned int i=0;
   for (auto s: states) {
-    os << "ExecutionState: " << i << '\n'
+    msg_oss << "ExecutionState: " << i << '\n'
        << "  ReplayPosition: " << (replayPath?std::to_string(s->replayPosition):"N/A")
          << " / " << (replayPath?std::to_string(replayPath->size()):"N/A") << '\n'
        << "  Stack:\n";
-    s->dumpStack(os);
+    s->dumpStack(msg_oss);
     char filenamebuf[128];
     std::snprintf(filenamebuf, 128, "constraints_cnt%03u_state%03u.kquery", cnt, i);
     debugDumpConstraints(*s, s->constraints, ref<Expr>(0), filenamebuf);
     ++i;
   }
-  os << "======== Statistics =============\n";
-  dumpStatisticsToLLVMrawos(os);
+  msg_oss << "======== Statistics =============\n";
+  dumpStatisticsToLLVMrawos(msg_oss);
+  char filenamebuf[128];
+  std::snprintf(filenamebuf, 128, "constraints_cnt%03u.info", cnt);
+  std::ofstream ofs(filenamebuf);
+  ofs << msg_oss.str();
+  ofs.close();
+  os << msg_oss.str();
   ++cnt;
 }
 

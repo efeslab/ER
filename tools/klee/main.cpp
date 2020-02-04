@@ -840,7 +840,9 @@ void KleeHandler::loadPathFile(std::string name,
   if (!f.good())
     assert(0 && "unable to open path file");
 
-  while (f.good()) {
+  while (1) {
+    f.peek();
+    if (!f.good()) break;
     PathEntry pe;
     deserialize(f, pe);
     buffer.push_back(pe);
@@ -848,14 +850,16 @@ void KleeHandler::loadPathFile(std::string name,
   f.close();
 
   std::ifstream data_f((name + "_datarec").c_str(), std::ios::in | std::ios::binary);
-  data_f.peek();
   // .path_datarec is optional. if the correponding .path has "DATAREC" record 
   // but no .path_datarec provided here, Executor will complain later
-  while (data_f.good()) {
+  while (1) {
+    data_f.peek();
+    if (!data_f.good()) break;
     DataRecEntry dre;
     deserialize(data_f, dre);
     dataRecEntries.push_back(dre);
   }
+  data_f.close();
 }
 
 void KleeHandler::getKTestFilesInDir(std::string directoryPath,

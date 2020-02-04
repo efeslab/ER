@@ -95,6 +95,7 @@ bool ConstraintManager::rewriteConstraints(ExprVisitor &visitor) {
       ref<Expr> e = visitor.visit(ce);
 
       if (e!=ce) {
+        // TODO: maybe I can check if the rewritten expr has the same IndependentSet as previous one.
         addConstraintInternal(e); // enable further reductions
         changed = true;
       } else {

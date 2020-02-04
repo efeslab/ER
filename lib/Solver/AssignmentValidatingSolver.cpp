@@ -132,8 +132,7 @@ void AssignmentValidatingSolver::dumpAssignmentQuery(
        it != ie; ++it) {
     constraints.push_back(*it);
   }
-  ConstraintManager augmentedConstraints(constraints);
-  Query augmentedQuery(augmentedConstraints, query.expr);
+  Query augmentedQuery(query.constraintMgr, constraints, query.expr);
 
   // Ask the solver for the log for this query.
   char *logText = solver->getConstraintLog(augmentedQuery);

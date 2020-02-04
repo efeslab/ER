@@ -14,14 +14,15 @@
 #include "klee/Internal/Support/IndependentElementSet.h"
 #include <unordered_set>
 
-// FIXME: Currently we use ConstraintManager for two things: to pass
-// sets of constraints around, and to optimize constraints. We should
-// move the first usage into a separate data structure
-// (ConstraintSet?) which ConstraintManager could embed if it likes.
 namespace klee {
 
 class ExprVisitor;
-
+// Constraints_ty is an abstract type representing a collection of constraints.
+// (ref<Expr> or Expr or etc.)
+// Currently it is a vector and other data structures are used to guarantee
+// uniqueness.
+// TODO: In the future I hope it can be changed to std::unordered_set
+typedef std::vector<ref<Expr>> Constraints_ty;
 class ConstraintManager {
 public:
   using constraints_ty = std::vector<ref<Expr>>;
@@ -41,7 +42,7 @@ public:
   // Destructor
   ~ConstraintManager();
 
-  typedef std::vector< ref<Expr> >::const_iterator constraint_iterator;
+  typedef Constraints_ty::const_iterator constraint_iterator;
   typedef std::unordered_set<klee::IndependentElementSet*>::const_iterator factor_iterator;
 
   // given a constraint which is known to be valid, attempt to
@@ -68,8 +69,10 @@ public:
     return constraints != other.constraints;
   }
 
+  const Constraints_ty& getAllConstraints() const { return constraints; }
+
 private:
-  std::vector<ref<Expr>> constraints;
+  Constraints_ty constraints;
   std::vector<ref<Expr>> old;
   ExprHashMap<klee::IndependentElementSet*> representative;
   std::vector<ref<Expr>> deleteConstraints;

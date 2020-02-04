@@ -39,13 +39,13 @@ private:
                    IncompleteSolver::PartialValidity &result);
   
   struct CacheEntry {
-    CacheEntry(const ConstraintManager &c, ref<Expr> q)
+    CacheEntry(const Constraints_ty &c, ref<Expr> q)
       : constraints(c), query(q) {}
 
     CacheEntry(const CacheEntry &ce)
       : constraints(ce.constraints), query(ce.query) {}
     
-    ConstraintManager constraints;
+    Constraints_ty constraints;
     ref<Expr> query;
 
     bool operator==(const CacheEntry &b) const {

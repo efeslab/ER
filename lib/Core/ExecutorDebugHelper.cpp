@@ -51,7 +51,7 @@ void debugDumpConstraints(ExecutionState &state, ConstraintManager &cm, ref<Expr
     evalExprsBegin = &expr;
     evalExprsEnd = evalExprsBegin + 1;
   }
-  ExprPPrinter::printQuery(os, cm, ConstantExpr::alloc(false, Expr::Bool),
+  ExprPPrinter::printQuery(os, cm.getAllConstraints(), ConstantExpr::alloc(false, Expr::Bool),
       evalExprsBegin, evalExprsEnd,
       evalArraysBegin, evalArraysEnd, true);
   ofs << os.str();

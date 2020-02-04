@@ -337,7 +337,7 @@ static bool EvaluateInputAST(const char *Filename,
           llvm::raw_string_ostream os(str);
           std::ofstream ofs(DumpConcretizedConstraints);
           if (ofs.good()) {
-            ExprPPrinter::printQuery(os, cm, ConstantExpr::alloc(false, Expr::Bool),
+            ExprPPrinter::printQuery(os, cm.getAllConstraints(), ConstantExpr::alloc(false, Expr::Bool),
                     0, 0, 0, 0, true);
             ofs << os.str();
             ofs.close();

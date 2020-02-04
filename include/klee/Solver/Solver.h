@@ -11,6 +11,7 @@
 #define KLEE_SOLVER_H
 
 #include "klee/Expr/Expr.h"
+#include "klee/Expr/Constraints.h"
 #include "klee/Internal/System/Time.h"
 #include "klee/Solver/SolverCmdLine.h"
 
@@ -20,27 +21,44 @@
 #include <string>
 
 namespace klee {
-  class ConstraintManager;
-  class Expr;
   class SolverImpl;
 
   struct Query {
   public:
-    const ConstraintManager &constraints;
+    // constraintMgr - Contain important data structure related to the this query.
+    // It actually belongs to an ExecutionState from which this Query is generated.
+    // So far only IndependentSolver requires IndependentSets information from
+    // this Query field to do its job.
+    const ConstraintManager &constraintMgr;
+    // constraints - Contain constraints directly related to the expr in this query.
+    // Note that constraints here are not necessarily equivalent to all
+    // constraints managed by the ConstraintManager above.
+    // If you use IndependentSolver, only constraints directly related to the query
+    // itself will be forwarded to later solver to reason about.
+    const Constraints_ty &constraints;
+    // expr - a single symbolic expression to reason about.
+    // For Assignment Query (computeInitialValues), this expr should be useless.
     ref<Expr> expr;
 
-    Query(const ConstraintManager& _constraints, ref<Expr> _expr)
-      : constraints(_constraints), expr(_expr) {
+    // constructor requires an explicit specification of each component.
+    Query(const ConstraintManager &_constraintMgr,
+          const Constraints_ty& _constraints, ref<Expr> _expr)
+      : constraintMgr(_constraintMgr), constraints(_constraints), expr(_expr) {
     }
+    // constructor omits a collection of constraints. Then we use all
+    // constraints associated with the ConstraintManager by default.
+    Query(const ConstraintManager &_constraintMgr, ref<Expr> _expr)
+      : constraintMgr(_constraintMgr),
+        constraints(_constraintMgr.getAllConstraints()), expr(_expr) {}
 
     /// withExpr - Return a copy of the query with the given expression.
     Query withExpr(ref<Expr> _expr) const {
-      return Query(constraints, _expr);
+      return Query(constraintMgr, constraints, _expr);
     }
 
     /// withFalse - Return a copy of the query with a false expression.
     Query withFalse() const {
-      return Query(constraints, ConstantExpr::alloc(0, Expr::Bool));
+      return Query(constraintMgr, constraints, ConstantExpr::alloc(0, Expr::Bool));
     }
 
     /// negateExpr - Return a copy of the query with the expression negated.

@@ -4346,7 +4346,7 @@ void Executor::getConstraintLog(const ExecutionState &state, std::string &res,
         evalArraysEnd = &(objects[0]) + objects.size();
     }
     
-    ExprPPrinter::printQuery(info, state.constraints, ConstantExpr::alloc(false, Expr::Bool),
+    ExprPPrinter::printQuery(info, state.constraints.getAllConstraints(), ConstantExpr::alloc(false, Expr::Bool),
                         evalExprsBegin, evalExprsEnd,
                         evalArraysBegin, evalArraysEnd);
     res = info.str();
@@ -4413,7 +4413,7 @@ bool Executor::getSymbolicSolution(const ExecutionState &state,
   solver->setTimeout(time::Span());
   if (!success) {
     klee_warning("unable to compute initial values (invalid constraints?)!");
-    ExprPPrinter::printQuery(llvm::errs(), state.constraints,
+    ExprPPrinter::printQuery(llvm::errs(), state.constraints.getAllConstraints(),
                              ConstantExpr::alloc(0, Expr::Bool));
     return false;
   }

@@ -48,8 +48,8 @@ getAllIndependentConstraintsSets(const Query &query) {
     current = IndependentElementSet(neg);
   }
 
-  for (ConstraintManager::factor_iterator it = query.constraints.factor_begin(), 
-                ie = query.constraints.factor_end(); it != ie; ++it) {
+  for (ConstraintManager::factor_iterator it = query.constraintMgr.factor_begin(),
+                ie = query.constraintMgr.factor_end(); it != ie; ++it) {
     if (current.intersects(*(*it))) {
       current.add(*(*it));
     } else {
@@ -66,8 +66,8 @@ IndependentElementSet getIndependentConstraints(const Query& query,
   
   IndependentElementSet eltsClosure(query.expr);
 
-  for (ConstraintManager::factor_iterator it = query.constraints.factor_begin(), 
-                ie = query.constraints.factor_end(); it != ie; ++it) {
+  for (ConstraintManager::factor_iterator it = query.constraintMgr.factor_begin(),
+                ie = query.constraintMgr.factor_end(); it != ie; ++it) {
     if (eltsClosure.intersects(*(*it))) {
       // The eltsClosure represents the IndependentElementSet associated with
       // the query expr.
@@ -157,8 +157,7 @@ bool IndependentSolver::computeValidity(const Query& query,
   std::vector< ref<Expr> > required;
   IndependentElementSet eltsClosure =
     getIndependentConstraints(query, required);
-  ConstraintManager tmp(required);
-  return solver->impl->computeValidity(Query(tmp, query.expr), 
+  return solver->impl->computeValidity(Query(query.constraintMgr, required, query.expr),
                                        result);
 }
 
@@ -167,8 +166,7 @@ bool IndependentSolver::computeTruth(const Query& query, bool &isValid) {
   std::vector< ref<Expr> > required;
   IndependentElementSet eltsClosure = 
     getIndependentConstraints(query, required);
-  ConstraintManager tmp(required);
-  return solver->impl->computeTruth(Query(tmp, query.expr), 
+  return solver->impl->computeTruth(Query(query.constraintMgr, required, query.expr),
                                     isValid);
 }
 
@@ -177,8 +175,7 @@ bool IndependentSolver::computeValue(const Query& query, ref<Expr> &result) {
   std::vector< ref<Expr> > required;
   IndependentElementSet eltsClosure = 
     getIndependentConstraints(query, required);
-  ConstraintManager tmp(required);
-  return solver->impl->computeValue(Query(tmp, query.expr), result);
+  return solver->impl->computeValue(Query(query.constraintMgr, required, query.expr), result);
 }
 
 // Helper function used only for assertions to make sure point created
@@ -252,9 +249,8 @@ bool IndependentSolver::computeInitialValues(const Query& query,
     if (arraysInFactor.size() == 0){
       continue;
     }
-    ConstraintManager tmp(it->exprs);
     std::vector<std::vector<unsigned char> > tempValues;
-    if (!solver->impl->computeInitialValues(Query(tmp, ConstantExpr::alloc(0, Expr::Bool)),
+    if (!solver->impl->computeInitialValues(Query(query.constraintMgr, it->exprs, ConstantExpr::alloc(0, Expr::Bool)),
                                             arraysInFactor, tempValues, hasSolution)){
       values.clear();
       delete factors;

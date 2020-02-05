@@ -1012,7 +1012,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     // replaying, read recorded branch condition
     if (replayPath && !isInternal) {
       if (current.replayPosition >= replayPath->size()) {
-        terminateStateEarly(current, "Run out of recorded path");
+        terminateStateOnError(current, "Run out of recorded path", ReplayPath);
         return StatePair(0, 0);
       }
       if (res==Solver::True) { // Concrete branch
@@ -4031,6 +4031,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     }
   }
   TimerStatIncrementer timerErrHandl(stats::executeMemopTimeErrHandl);
+  klee_warning("Out of bound memory access, forking in Memory Model, address kinst: %s", address->getKInstUniqueID().c_str());
 
   // we are on an error path (no resolution, multiple resolution, one
   // resolution with out of bounds)

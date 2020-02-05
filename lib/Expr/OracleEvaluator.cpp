@@ -14,6 +14,7 @@ ref<Expr> OracleEvaluator::getInitialValue(const Array &array, unsigned index) {
     // it.first == array name, it.second == index at ktest->objects
     arrayname2idx_ty::const_iterator it = arrayname2idx.find(array.name);
     if (it == arrayname2idx.end()) {
+        //FIXME: refer to ExprEvaluator.h: return a new ReadExpr here is a better option
         klee_message("Cannot find symbolic array %s in KTest", array.name.c_str());
         abort();
     }

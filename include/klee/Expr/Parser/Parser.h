@@ -11,6 +11,7 @@
 #define KLEE_PARSER_H
 
 #include "klee/Expr/Expr.h"
+#include "klee/Expr/Constraints.h"
 
 #include <vector>
 #include <string>
@@ -169,7 +170,7 @@ namespace expr {
 
     /// Constraints - The list of constraints to assume for this
     /// expression.
-    const std::vector<ExprHandle> Constraints;
+    const Constraints_ty Constraints;
     
     /// Query - The expression being queried.
     ExprHandle Query;

@@ -50,9 +50,9 @@ namespace klee {
     std::unordered_map<std::string, UpdateList *> farthestUpdates;
 
     void cleanUp();
-    std::vector<ref<Expr>> doEvaluate(
-            const std::vector<ref<Expr>>::const_iterator ib,
-            const std::vector<ref<Expr>>::const_iterator ie);
+    Constraints_ty doEvaluate(
+            const Constraints_ty::const_iterator ib,
+            const Constraints_ty::const_iterator ie);
 
   protected:
     ref<Expr> getInitialValue(const Array &mo, unsigned index);
@@ -69,8 +69,7 @@ namespace klee {
     /* TODO test addConcretizedExprValue */
     void addConcretizedExprValue(ref<Expr> e, uint64_t val);
     // Try to concretize every constraints in the given constraint manager
-    ConstraintManager evaluate(ConstraintManager &cm);
-    std::vector<ref<Expr>> evaluate(const std::vector<ref<Expr>> &cm);
+    Constraints_ty evaluate(const Constraints_ty &constraints);
   };
 
   /// Here we define the notion of Indirect Depth
@@ -131,7 +130,7 @@ namespace klee {
 
   public:
     // all calculation is done in the constructor
-    IndirectReadDepthCalculator(const ConstraintManager &cm);
+    IndirectReadDepthCalculator(const Constraints_ty &constraints);
     int getMax() { return maxLevel; }
     std::set<ref<ReadExpr>>& getLastLevelReads() { return lastLevelReads; }
     int query(const Expr *e);

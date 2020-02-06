@@ -330,8 +330,7 @@ static bool EvaluateInputAST(const char *Filename,
           ec.addConcretizedInputValue(ciit->first, ciit->second);
         }
         constraints = ec.evaluate(QC->Constraints);
-        ConstraintManager cm(constraints);
-        IndirectReadDepthCalculator ic(cm);
+        IndirectReadDepthCalculator ic(constraints);
         llvm::outs() << "Concretized Depth: " << ic.getMax() << "\n";
 
         if (DumpConcretizedConstraints != "") {
@@ -339,7 +338,7 @@ static bool EvaluateInputAST(const char *Filename,
           llvm::raw_string_ostream os(str);
           std::ofstream ofs(DumpConcretizedConstraints);
           if (ofs.good()) {
-            ExprPPrinter::printQuery(os, cm.getAllConstraints(), ConstantExpr::alloc(false, Expr::Bool),
+            ExprPPrinter::printQuery(os, constraints, ConstantExpr::alloc(false, Expr::Bool),
                     0, 0, 0, 0, true);
             ofs << os.str();
             ofs.close();
@@ -452,8 +451,7 @@ static bool AnalyzeInputAST(const char *Filename,
   llvm::raw_ostream &os = llvm::errs();
   for (Decl *D: Decls) {
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
-      ConstraintManager cm(QC->Constraints);
-      IndirectReadDepthCalculator IDCalc(cm);
+      IndirectReadDepthCalculator IDCalc(QC->Constraints);
       std::set<ref<ReadExpr>> &lastLevelReads = IDCalc.getLastLevelReads();
       std::vector<ref<ReadExpr>> tosort(lastLevelReads.begin(), lastLevelReads.end());
       std::sort(tosort.begin(), tosort.end(),
@@ -490,16 +488,14 @@ static bool DrawInputAST(const char *Filename,
   std::ofstream of(std::string(Filename) + ".dot");
   for (Decl *D: Decls) {
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
-      ConstraintManager cm(QC->Constraints);
       if (SimplifyDrawing) {
-        std::vector<ref<Expr>> constraints;
-        ExprInPlaceTransformer EIPT(cm, constraints);
-        ConstraintManager new_cm(constraints);
-        GraphvizDOTDrawer drawer(of, new_cm);
+        Constraints_ty simplified_constraints;
+        ExprInPlaceTransformer EIPT(QC->Constraints, simplified_constraints);
+        GraphvizDOTDrawer drawer(of, simplified_constraints);
         drawer.draw();
       }
       else {
-        GraphvizDOTDrawer drawer(of, cm);
+        GraphvizDOTDrawer drawer(of, QC->Constraints);
         drawer.draw();
       }
       // Assuming there will only be one QueryComamnd

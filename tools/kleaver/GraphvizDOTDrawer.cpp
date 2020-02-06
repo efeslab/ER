@@ -75,10 +75,10 @@ void GraphvizDOTDrawer::printFooter() {
      << "}\n";
 }
 GraphvizDOTDrawer::GraphvizDOTDrawer(std::ostream &_os,
-    const ConstraintManager &_cm): os(_os), cm(_cm), IDCalc(_cm) {
+    const Constraints_ty &_constraints): os(_os), constraints(_constraints), IDCalc(_constraints) {
   printHeader();
   // add each top-level constraint to drawing todo-list
-  for (const ref<Expr> &e: cm) {
+  for (const ref<Expr> &e: constraints) {
     ensureExprDeclared(e.get(), "C");
   }
 }

@@ -68,9 +68,9 @@ void printDebugLibVersion(llvm::raw_ostream &os) {
 }
 
 void debugAnalyzeIndirectMemoryAccess(ExecutionState &state, llvm::raw_ostream &os) {
-  ConstraintManager &constraints = state.constraints;
+  ConstraintManager &cm = state.constraints;
 
-  IndirectReadDepthCalculator c1(constraints);
+  IndirectReadDepthCalculator c1(cm.getAllConstraints());
   auto lastLevelReads = c1.getLastLevelReads();
   for (auto it = lastLevelReads.begin(), ie = lastLevelReads.end();
             it != ie; it++) {

@@ -3,12 +3,12 @@ using namespace klee;
 static Expr *under_processing_expr = (Expr*)(0x1);
 static const UpdateNode *under_processing_un = (const UpdateNode*)(0x1);
 
-ExprInPlaceTransformer::ExprInPlaceTransformer(ConstraintManager &_cm,
-    std::vector<ref<Expr>> &constraints): cm(_cm) {
-  constraints.clear();
-  for (const ref<Expr> &e: cm) {
+ExprInPlaceTransformer::ExprInPlaceTransformer(const Constraints_ty &_constraints,
+    Constraints_ty &out_constraints): constraints(_constraints) {
+  out_constraints.clear();
+  for (const ref<Expr> &e: constraints) {
     visitDFS(e.get());
-    constraints.push_back(popKidExpr());
+    out_constraints.push_back(popKidExpr());
   }
 }
 // TODO UpdateNode* memory leak

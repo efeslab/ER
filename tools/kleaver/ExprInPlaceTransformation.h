@@ -12,7 +12,7 @@ using namespace klee;
 // unreliable
 class ExprInPlaceTransformer {
   // top-level constraints
-  ConstraintManager &cm;
+  const Constraints_ty &constraints;
   struct WorkListEntry {
     enum EntryType { EExpr, EUNode};
     EntryType t;
@@ -76,9 +76,9 @@ class ExprInPlaceTransformer {
 
   void rebuild_pop_expr();
   public:
-    // \param _cm input constraints
-    // \output constraints will be cleared and put into transformed constraints
-    ExprInPlaceTransformer(ConstraintManager &_cm, std::vector<ref<Expr>> &constraints);
+    // \param _constraints input constraints
+    // \output out_constraints will be cleared and put into transformed constraints
+    ExprInPlaceTransformer(const Constraints_ty &_constraints, Constraints_ty &out_constraints);
     // return bool: changed or not.
     void visitExpr(Expr *e);
     // this is actually a post-order traversal

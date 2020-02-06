@@ -27,7 +27,7 @@ class GraphvizDOTDrawer {
   // Arrays are considered visited if declared.
   std::unordered_set<const Array *> visited_array;
 
-  const ConstraintManager &cm;
+  const Constraints_ty &constraints;
   IndirectReadDepthCalculator IDCalc;
 
   void printHeader();
@@ -47,7 +47,7 @@ class GraphvizDOTDrawer {
   void ensureArrayDeclared(const Array *root);
 
   public:
-  GraphvizDOTDrawer(std::ostream &_os, const ConstraintManager &_cm);
+  GraphvizDOTDrawer(std::ostream &_os, const Constraints_ty &_constraints);
   ~GraphvizDOTDrawer() { printFooter(); }
   // actually start drawing, which is a pre-order traversal
   void draw();

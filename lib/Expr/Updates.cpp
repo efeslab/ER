@@ -55,6 +55,9 @@ extern "C" void vc_DeleteExpr(void*);
 // non-recursively.
 UpdateNode::~UpdateNode() {
     assert(refCount == 0 && "Deleted UpdateNode when a reference is still held");
+#ifdef EXPRINPLACE_MEMLEAK_DEBUG
+    fprintf(stderr, "~UpdateNode: %p\n", this);
+#endif
 }
 
 int UpdateNode::compare(const UpdateNode &b) const {

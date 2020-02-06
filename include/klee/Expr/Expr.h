@@ -495,10 +495,13 @@ public:
 };
 
 
+#undef EXPRINPLACE_MEMLEAK_DEBUG
 /// Class representing a byte update of an array.
 class UpdateNode {
   friend class UpdateList;  
-
+#ifdef EXPRINPLACE_MEMLEAK_DEBUG
+public:
+#endif
   mutable unsigned refCount;
   // cache instead of recalc
   unsigned hashValue;
@@ -525,10 +528,8 @@ public:
 
   int compare(const UpdateNode &b) const;  
   unsigned hash() const { return hashValue; }
-  void resetRefCount(const UpdateNode &un) {
-    refCount = un.refCount;
-  }
   // this refCount helper is added to ease mem mangement in ExprInPlaceTransformer
+  void inc() const { ++refCount; }
   void dec() const {
     if (--refCount == 0) {
       delete this;

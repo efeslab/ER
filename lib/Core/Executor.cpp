@@ -3052,6 +3052,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       ++stats::dataRecLoadedEffective;
       klee_message("Effective dataRecLoaded at %u", state.replayDataRecEntriesPosition-1);
       destCell.value = LoadedExpr;
+      if (i->getOpcode() == Instruction::Load) {
+        klee_message("Effective dataRecLoaded for LoadInst, also concretize the memory");
+        ref<Expr> base = eval(ki, 0, state).value;
+        executeMemoryOperation(state, true, base, LoadedExpr, ki);
+      }
     }
   }
   tryStoreDataRecording(state, ki);

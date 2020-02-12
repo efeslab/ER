@@ -459,7 +459,7 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
                    InterpreterHandler *ih)
     : Interpreter(opts), interpreterHandler(ih), searcher(0),
       externalDispatcher(new ExternalDispatcher(ctx)), statsTracker(0),
-      pathWriter(0), symPathWriter(0),
+      pathWriter(0), pathDataRecWriter(0), symPathWriter(0),
       stackPathWriter(0), consPathWriter(0), statsPathWriter(0),
       specialFunctionHandler(0), timers{time::Span(TimerInterval)},
       replayKTest(0), oracle_eval(0), replayPath(0), usingSeeds(0),

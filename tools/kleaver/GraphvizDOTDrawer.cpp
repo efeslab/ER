@@ -40,6 +40,7 @@ void GraphvizDOTDrawer::declareLastLevelRead(const ReadExpr *RE, const char *cat
 void GraphvizDOTDrawer::declareUpdateNode(const UpdateNode *un, const Array *root) {
   os << (size_t)un
      << "[ label=\"UN\", Kind=UN , Category=UN,"
+     << "Width=8,"
      << "Root=" << root->name << ","
      << "IDep=" << IDCalc.query(un) << ","
      << "KInst=\"" << un->getKInstUniqueID() << "\"" << ","

@@ -54,6 +54,10 @@ graph
 @type freq: int
 @param freq: how many times this instruction got executed in the entire trace
 
+@type max_idep: int
+@param max_idep: the maximum indirect depth of nodes which still cannot be
+concretized
+
 @type rec_nodes: List(node.id)
 @param rec_nodes: what symbolic nodes are directly recorded if you record this instruction
 
@@ -87,8 +91,8 @@ class RecordableInst(object):
             raise RuntimeError("Zero Width instruction")
 
     def __str__(self):
-        return "kinst: %s, freq: %d, %d nodes recorded, %d nodes hidden,"\
-                "%d nodes concretized" % (self.kinst, self.freq,\
+        return "kinst: %s, width: %d, freq: %d, %d nodes recorded, %d nodes hidden,"\
+                "%d nodes concretized" % (self.kinst, self.width, self.freq,\
                 len(self.rec_nodes), len(self.hidden_nodes),
                 len(self.concretized_nodes))
 
@@ -146,6 +150,11 @@ class PyGraph(object):
     # The assigned topological id: [dependant] > [dependency]
     # aka [result] > [operands]
     topological_map = None
+    # @type: List(GyNode)
+    # list of nodes from small topo id to large topo id
+    # (from high indirect depth to low indirect depth)
+    all_nodes_topo_order = None
+
     # innodes: no in edges, outnodes: no out edges
     # content is node
     innodes = None
@@ -168,6 +177,8 @@ class PyGraph(object):
                 self.outnodes.add(n)
         self.topological_sort()
         self.build_kinst2nodes()
+        self.all_nodes_topo_order = sorted(self.graph.nodes,
+                key=lambda n: self.topological_map[n.id])
 
     """
     Perform topological sort and store the result in self.topological_map
@@ -202,9 +213,7 @@ class PyGraph(object):
     """
     def build_kinst2nodes(self):
         self.kinst2nodes = {}
-        all_nodes_topo_order = sorted(self.graph.nodes,
-                key=lambda n: self.topological_map[n.id])
-        for node in all_nodes_topo_order:
+        for node in self.graph.nodes:
             if isKInstValid(node):
                 self.kinst2nodes.setdefault(node.kinst, []).append(node.id)
 
@@ -234,29 +243,43 @@ class PyGraph(object):
         # or the already recorded instructions
         # @type Set(node.id)
         concretized_set = set()
+        # populate data structures using input recinsts
         for recinst in recinsts:
             for nid in recinst.rec_nodes:
                 concretized_set.add(nid)
+                checked_kinst_set.add(nid)
+            for nid in recinst.hidden_nodes:
+                checked_kinst_set.add(nid)
+
         # @type: List(RecordableInst)
         result = []
-        all_nodes_topo_order = sorted(self.graph.nodes,
-                key=lambda n: self.topological_map[n.id])
         # Pre Process
-        for node in all_nodes_topo_order:
+        for node in self.all_nodes_topo_order:
             # find the closure of given concretized_set
             if node.id in self.edges and \
                all([(e.target.kind == "0") or (e.target.id in concretized_set) \
                     for e in self.edges[node.id]]):
-                concretized_set.add(node)
+                concretized_set.add(node.id)
+        # union the sets of concretized nodes from multiple recordable
+        # instructions
+        in_all_concretized_nodes = set()
+        for recinst in recinsts:
+            for nid in recinst.concretized_nodes:
+                in_all_concretized_nodes.add(nid)
 
-        for seqid, n in enumerate(all_nodes_topo_order):
+        if concretized_set != in_all_concretized_nodes:
+            print("Warn: input graph is not simplified, "
+                  "dangling constant nodes detected")
+
+        for seqid, n in enumerate(self.all_nodes_topo_order):
             if (isKInstValid(n)) and (n.id not in checked_kinst_set):
                 local_concretized_set = concretized_set.copy()
                 hidden_nodes = []
+                max_unconcretized_depth = 0
                 for nid in self.kinst2nodes[n.kinst]:
                     checked_kinst_set.add(nid)
                     local_concretized_set.add(nid)
-                for node in all_nodes_topo_order[seqid+1:]:
+                for node in self.all_nodes_topo_order[seqid+1:]:
                     # skip ConstantExpr and nodes without out edges
                     # only consider nontrivial intermediate nodes
                     if (node.kind != "0") and (node.id in self.edges) and \
@@ -266,39 +289,22 @@ class PyGraph(object):
                         known_symbolic_nodes = [e.target.id for e in
                                 self.edges[node.id] if e.target.id in
                                 local_concretized_set]
+                        # this node can be concretized
                         if len(const_nodes) + len(known_symbolic_nodes) == \
                         len(self.edges[node.id]):
                             local_concretized_set.add(node.id)
+                            # this node is hidden if it can be concretized and
+                            # it has a valid KInst
+                            if len(known_symbolic_nodes) > 0 and isKInstValid(node):
+                                checked_kinst_set.add(node.id)
+                                hidden_nodes.append(node.id)
                         if len(const_nodes) + len(known_symbolic_nodes) > \
                         self.edges[node.id]:
                             raise RuntimeError("sum of out edges wrong")
-                        if len(known_symbolic_nodes) > 0 and isKInstValid(node):
-                            checked_kinst_set.add(node.id)
-                            hidden_nodes.append(node.id)
                 result.append(RecordableInst(n.kinst, int(n.Width), int(n.Freq),
                     self.kinst2nodes[n.kinst], hidden_nodes,
                     local_concretized_set - concretized_set))
         return result
-
-    """
-    Concretize the graph given nodes in `nodes_id_set` are already concretized
-    Mark all nodes can be concretized with a special color (like white)
-    """
-    def concretize_set(self, nodes_id_set):
-        # set of node.id, which can be concretized
-        concretized_set = set(nodes_id_set)
-        all_nodes_topo_order = sorted(self.graph.nodes,
-                key=lambda n: self.topological_map[n.id])
-        for n in all_nodes_topo_order:
-            if n.kind == "0":
-                concretized_set.add(n.id)
-            # only node has out edges can be concretized
-            elif n.id in self.edges:
-                concretizable = all([e.target.id in concretized_set
-                    for e in self.edges[n.id]])
-                if concretizable:
-                    concretized_set.add(n.id)
-        return concretized_set
 
     """
     @rtype: float
@@ -335,12 +341,72 @@ class PyGraph(object):
         return sorted(recinsts, key=lambda n: self.coverageScoreFreq(n))
 
     """
+    @type recinsts: List(RecordableInst)
+    @param recinsts: list of recordable instructions selected in one or more
+    iterations to record. These instructions will be considered as one entity.
+
     @rtype: str
     @return: A string represents important information of recorded nodes in a
     RecordableInst
     """
-    def getRecNodesInfo(self, recinst):
-        return ', '.join([self.id_map[nid].label for nid in recinst.rec_nodes])
+    def getRecInstsInfo(self, recinsts):
+        concretized_nodes = set()
+        max_unconcretized_depth = 0
+        for recinst in recinsts:
+            if concretized_nodes & recinst.concretized_nodes:
+                raise RuntimeError(
+                "recordable instruction list has concretized_nodes overlap")
+            concretized_nodes |=  recinst.concretized_nodes
+        msgstring = ""
+        for seq, recinst in enumerate(recinsts):
+            msgstring += "Rec[%d]: " % seq
+            msgstring += recinst.__str__() + "\n"
+            msgstring += 'rec_nodes_label: ' + \
+                ', '.join([self.id_map[nid].label for nid in recinst.rec_nodes])
+            msgstring += "\n"
+
+        msgstring += "Total: "
+        percent_concretized = \
+        (float(len(concretized_nodes))/len(self.graph.nodes)*100)
+        msgstring += '%d(%f%%) nodes concretized, max idep %d.' % \
+                (len(concretized_nodes), percent_concretized,\
+                        self.getUnconcretizedMaxIdep(recinsts))
+        return msgstring
+
+    """
+    Print all recordable instruction candiadates in the given order
+    @type recinsts: List(RecordableInst)
+    @param recinsts: list of recordable instructions from analyze_recordable()
+    or sorted by some heuristics
+
+    @rtype: None
+    """
+    def printCandidateRecInstsInfo(self, recinsts):
+        for seq, recinst in enumerate(recinsts):
+            print(("###(%4d)###" % seq) + self.getRecInstsInfo([recinst]) + '\n')
+
+    """
+    @type recinsts: List(RecordableInst)
+    @param recinsts: list of instruction already decide to record
+
+    @rtype: int
+    @return: The maximum indirect depth of nodes which still cannot be
+    concretized
+    """
+    def getUnconcretizedMaxIdep(self, recinsts):
+        concretized_nodes = set()
+        max_unconcretized_depth = 0
+        for recinst in recinsts:
+            if concretized_nodes & recinst.concretized_nodes:
+                raise RuntimeError(
+                "recordable instruction list has concretized_nodes overlap")
+            concretized_nodes |=  recinst.concretized_nodes
+        for node in self.all_nodes_topo_order:
+            if (node.kind != '0') and (node.id not in concretized_nodes):
+                idep = int(node.idep)
+                if idep > max_unconcretized_depth:
+                    max_unconcretized_depth = idep
+        return max_unconcretized_depth
 
     def ColorCSet(self, nodes_id_set):
         s = self.concretize_set(nodes_id_set)

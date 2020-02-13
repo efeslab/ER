@@ -20,6 +20,7 @@ VizController = Lookup.getDefault().lookup(org.gephi.visualization.VizController
 import org.gephi.layout.plugin.forceAtlas2.ForceAtlas2Builder as ForceAtlas2
 import java.awt.Color as jcolor
 import time
+import org.gephi.scripting.wrappers.GyNode as GyNode
 
 def RunForceAtlas2_nooverlap(iters):
     fa2 = ForceAtlas2().buildLayout()
@@ -40,6 +41,95 @@ def RunForceAtlas2_nooverlap(iters):
         time.sleep(0.2)
     print(" done")
 
+"""
+Represent a recordable instruction (valid kinst) in the expression/constraint
+graph
+
+@type kinst: str
+@param kinst: a global unique identifier of this instruction
+
+@type width:int
+@param width: the width of the result(destination register) of this instruction
+
+@type freq: int
+@param freq: how many times this instruction got executed in the entire trace
+
+@type rec_nodes: List(node.id)
+@param rec_nodes: what symbolic nodes are directly recorded if you record this instruction
+
+@type hidden_nodes: List(node.id)
+@param hidden_nodes: what symbolic nodes related to other instruction but still can be
+concretized if you record this instruction
+
+@type concretized_nodes: set(node.id)
+@param concretized_nodes: what symbolic nodes (not ConstantExpr) can be
+concretized after you record this instruction. Note that this list will include
+rec_nodes and hidden_nodes, but will not include any ConstantExpr nodes.
+
+A RecordableInstruction will be represented by a list of RecordableNode
+"""
+class RecordableInst(object):
+    def __init__(self, kinst, width, freq, rec_nodes, hidden_nodes, concretized_nodes):
+        self.kinst = kinst
+        self.width = width
+        self.freq = freq
+        self.rec_nodes = rec_nodes
+        self.hidden_nodes = hidden_nodes
+        self.concretized_nodes = concretized_nodes
+        # sanity check
+        if len(set(rec_nodes)) != len(rec_nodes):
+            raise RuntimeError("duplicate nodes in rec_nodes")
+        if len(set(hidden_nodes)) != len(hidden_nodes):
+            raise RuntimeError("duplicate nodes in hidden_nodes")
+        if len(set(concretized_nodes)) != len(concretized_nodes):
+            raise RuntimeError("duplicate nodes in concretized_nodes")
+        if width == 0:
+            raise RuntimeError("Zero Width instruction")
+
+    def __str__(self):
+        return "kinst: %s, freq: %d, %d nodes recorded, %d nodes hidden,"\
+                "%d nodes concretized" % (self.kinst, self.freq,\
+                len(self.rec_nodes), len(self.hidden_nodes),
+                len(self.concretized_nodes))
+
+    def __repr__(self):
+        return self.__str__()
+
+    """
+    Create easy to check dict
+    @type recinsts: List(RecordableInst)
+    @param recinsts: a list of RecordableInstructions
+
+    @rtype Dict(str->RecordableInst)
+    @return: a dict maps kinst string to associated RecordableInst object
+    """
+    @staticmethod
+    def getStrDict(recinsts):
+        d = {}
+        for r in recinsts:
+            d[r.kinst] = r
+        return d
+"""
+Check if the kinst of a GyNode is valid
+node(GyNode)
+"""
+def isKInstValid(node):
+    return (node.kinst is not None) and \
+            (len(node.kinst) > 0) and \
+            node.kinst != 'N/A'
+
+"""
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!IMPORTANT!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+The GyNode type (python wrapper of a Java object) is buggy in terms of Set
+operations.
+E.g. Bellow python code segment will give you "False"
+```
+l = [ x for x in g.nodes ]
+l[0] in g.nodes
+```
+"""
 class PyGraph(object):
     graph = None
     # edge map node.id -> list of edges starting from node
@@ -49,12 +139,19 @@ class PyGraph(object):
     # map node.id -> node
     id_map = {}
     # node.id -> topological id (0..|V|-1)
+    # note that the klee expression graph looks like
+    # [operator] -> [operand0]
+    #            -> [operand1]
+    # so the edge represents [dependant] -> [dependency]
+    # The assigned topological id: [dependant] > [dependency]
+    # aka [result] > [operands]
     topological_map = None
-    topological_cnt = None
     # innodes: no in edges, outnodes: no out edges
     # content is node
     innodes = None
     outnodes= None
+    # @type: Dict(str->List(GyNode))
+    kinst2nodes = None
 
     def __init__(self, graph):
         self.graph = graph
@@ -70,9 +167,13 @@ class PyGraph(object):
             if n.outdegree == 0:
                 self.outnodes.add(n)
         self.topological_sort()
+        self.build_kinst2nodes()
 
+    """
+    Perform topological sort and store the result in self.topological_map
+    """
     def topological_sort(self):
-        self.topological_cnt = 0
+        topological_cnt = 0
         self.topological_map = {}
         # set of node.id
         visited_nodes = set()
@@ -90,9 +191,95 @@ class PyGraph(object):
                                 worklist.append(e.target)
                     else:
                         if n.id not in self.topological_map:
-                            self.topological_map[n.id] = self.topological_cnt
-                            self.topological_cnt = self.topological_cnt + 1
+                            self.topological_map[n.id] = topological_cnt
+                            topological_cnt = topological_cnt + 1
                         worklist.pop()
+
+    """
+    Dependency: topological_map
+    build the mapping from recordable instructions to all associated nodes in
+    the constraint graph
+    """
+    def build_kinst2nodes(self):
+        self.kinst2nodes = {}
+        all_nodes_topo_order = sorted(self.graph.nodes,
+                key=lambda n: self.topological_map[n.id])
+        for node in all_nodes_topo_order:
+            if isKInstValid(node):
+                self.kinst2nodes.setdefault(node.kinst, []).append(node.id)
+
+
+    """
+    Dependency: topological_map
+    Dependency: kinst2nodes
+    Analyze all recordable nodes on the constraint graph
+    Optimization:
+    Given two recordable nodes n1 and n2, if only concretize n1 will also
+    concretize n2, then n2 will be considered unnecessary to record and only n1
+    will be reported (if no other recordable nodes can concretize n1).
+    @type recinsts: List(RecordableInst)
+    @param recinsts: list of recordable instructions we already decided to
+    record
+
+    @rtype: List(RecordableInst)
+    @return: a list all beneficial recordable instructions
+    instruction)
+    """
+    def analyze_recordable(self, recinsts=[]):
+        # checked_kinst_set contains nodes no long require analysis
+        # @type Set(node.id)
+        checked_kinst_set = set()
+
+        # concretized_set contains all nodes concretized by either ConstantExpr
+        # or the already recorded instructions
+        # @type Set(node.id)
+        concretized_set = set()
+        for recinst in recinsts:
+            for nid in recinst.rec_nodes:
+                concretized_set.add(nid)
+        # @type: List(RecordableInst)
+        result = []
+        all_nodes_topo_order = sorted(self.graph.nodes,
+                key=lambda n: self.topological_map[n.id])
+        # Pre Process
+        for node in all_nodes_topo_order:
+            # find the closure of given concretized_set
+            if node.id in self.edges and \
+               all([(e.target.kind == "0") or (e.target.id in concretized_set) \
+                    for e in self.edges[node.id]]):
+                concretized_set.add(node)
+
+        for seqid, n in enumerate(all_nodes_topo_order):
+            if (isKInstValid(n)) and (n.id not in checked_kinst_set):
+                local_concretized_set = concretized_set.copy()
+                hidden_nodes = []
+                for nid in self.kinst2nodes[n.kinst]:
+                    checked_kinst_set.add(nid)
+                    local_concretized_set.add(nid)
+                for node in all_nodes_topo_order[seqid+1:]:
+                    # skip ConstantExpr and nodes without out edges
+                    # only consider nontrivial intermediate nodes
+                    if (node.kind != "0") and (node.id in self.edges) and \
+                    (node.id not in local_concretized_set):
+                        const_nodes = [e.target.id for e in self.edges[node.id]
+                                if e.target.kind == "0"]
+                        known_symbolic_nodes = [e.target.id for e in
+                                self.edges[node.id] if e.target.id in
+                                local_concretized_set]
+                        if len(const_nodes) + len(known_symbolic_nodes) == \
+                        len(self.edges[node.id]):
+                            local_concretized_set.add(node.id)
+                        if len(const_nodes) + len(known_symbolic_nodes) > \
+                        self.edges[node.id]:
+                            raise RuntimeError("sum of out edges wrong")
+                        if len(known_symbolic_nodes) > 0 and isKInstValid(node):
+                            checked_kinst_set.add(node.id)
+                            hidden_nodes.append(node.id)
+                result.append(RecordableInst(n.kinst, int(n.Width), int(n.Freq),
+                    self.kinst2nodes[n.kinst], hidden_nodes,
+                    local_concretized_set - concretized_set))
+        return result
+
     """
     Concretize the graph given nodes in `nodes_id_set` are already concretized
     Mark all nodes can be concretized with a special color (like white)
@@ -112,6 +299,48 @@ class PyGraph(object):
                 if concretizable:
                     concretized_set.add(n.id)
         return concretized_set
+
+    """
+    @rtype: float
+    @return: the heuristic score of this Recordable Instruction. expression
+    width and indirect depth are considered
+    """
+    def coverageScore(self, recinst):
+        return float(sum([int(self.id_map[nid].Width)*int(self.id_map[nid].idep)\
+                for nid in recinst.concretized_nodes]))
+    """
+    @type recinsts: List(RecordableInst)
+    @param recinsts: list of recordable instructions from analyze_recordable()
+
+    @rtype: List(RecordableInst)
+    @return: sorted list, sorted according to coverageScore
+    """
+    def sortRecInstsbyCoverageScore(self, recinsts):
+        return sorted(recinsts, key=lambda n: self.coverageScore(n))
+
+    """
+    @rtype: float
+    @return: Heuristics take instruction frequency into consideration
+    """
+    def coverageScoreFreq(self, recinst):
+        if recinst.freq == 0:
+            return 0
+        else:
+            return self.coverageScore(recinst) / (recinst.freq * recinst.width)
+
+    """
+    same as above
+    """
+    def sortRecInstsbyCoverageScoreFreq(self, recinsts):
+        return sorted(recinsts, key=lambda n: self.coverageScoreFreq(n))
+
+    """
+    @rtype: str
+    @return: A string represents important information of recorded nodes in a
+    RecordableInst
+    """
+    def getRecNodesInfo(self, recinst):
+        return ', '.join([self.id_map[nid].label for nid in recinst.rec_nodes])
 
     def ColorCSet(self, nodes_id_set):
         s = self.concretize_set(nodes_id_set)
@@ -135,6 +364,19 @@ class PyGraph(object):
 
     def MarkNodesRedByID(self, nodes_id):
         self.ColorNodesByID(nodes_id, jcolor.red)
+
+    """
+    Visualize a RecordableInst on the graph
+    @type recinst: RecordableInst
+    @param recinst: the inst to show
+    """
+    def VisualizeRecordableInst(self, recinst):
+        non_hidden_nodes = recinst.concretized_nodes - set(recinst.rec_nodes) - \
+            set(recinst.hidden_nodes)
+        self.MarkNodesRedByID(recinst.rec_nodes)
+        self.MarkNodesWhiteByID(non_hidden_nodes)
+        self.ColorNodesByID(recinst.hidden_nodes, jcolor.green)
+
 
 class HaseUtils(object):
     def __init__(self, globals_ref):

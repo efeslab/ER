@@ -122,10 +122,6 @@ public:
   bool isInPOSIX;
   unsigned POSIXDepth;
 
-  /// @brief Weight assigned for importance of this state.  Can be
-  /// used for searchers to decide what paths to explore
-  double weight;
-
   /// @brief Exploration depth, i.e., number of times KLEE branched for this state
   unsigned depth;
 

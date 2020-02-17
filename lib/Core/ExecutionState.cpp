@@ -83,7 +83,6 @@ ExecutionState::ExecutionState(KFunction *kf) :
     isInUserMain(false),
     isInPOSIX(false),
     POSIXDepth(0),
-    weight(1),
     depth(0),
 
     instsSinceCovNew(0),
@@ -137,7 +136,6 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     isInUserMain(state.isInUserMain),
     isInPOSIX(state.isInPOSIX),
     POSIXDepth(state.POSIXDepth),
-    weight(state.weight),
     depth(state.depth),
 
     pathOS(state.pathOS),
@@ -171,9 +169,6 @@ ExecutionState *ExecutionState::branch() {
   ExecutionState *falseState = new ExecutionState(*this);
   falseState->coveredNew = false;
   falseState->coveredLines.clear();
-
-  weight *= .5;
-  falseState->weight -= weight;
 
   // initialize PathOS based on existence of existing PathOS field
   if (pathOS.isValid()) {

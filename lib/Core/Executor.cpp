@@ -464,10 +464,10 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
 
   const time::Span maxTime{MaxTime};
   if (maxTime) timers.add(
-      std::move(std::make_unique<Timer>(maxTime, [&]{
+        std::make_unique<Timer>(maxTime, [&]{
         klee_message("HaltTimer invoked");
         setHaltExecution(true);
-      })));
+      }));
 
   coreSolverTimeout = time::Span{MaxCoreSolverTime};
   if (coreSolverTimeout) UseForkedCoreSolver = true;
@@ -3063,12 +3063,6 @@ void Executor::updateStates(ExecutionState *current) {
     delete es;
   }
   removedStates.clear();
-
-  if (searcher) {
-    searcher->update(nullptr, continuedStates, pausedStates);
-    pausedStates.clear();
-    continuedStates.clear();
-  }
 }
 
 template <typename TypeIt>
@@ -3258,14 +3252,6 @@ void Executor::run(ExecutionState &initialState) {
 
     klee_message("seeding done (%d states remain)", (int) states.size());
 
-    // XXX total hack, just because I like non uniform better but want
-    // seed results to be equally weighted.
-    for (std::set<ExecutionState*>::iterator
-           it = states.begin(), ie = states.end();
-         it != ie; ++it) {
-      (*it)->weight = 1.;
-    }
-
     if (OnlySeed) {
       doDumpStates();
       return;
@@ -3356,29 +3342,6 @@ std::string Executor::getAddressInfo(ExecutionState &state,
   return info.str();
 }
 
-void Executor::pauseState(ExecutionState &state){
-  auto it = std::find(continuedStates.begin(), continuedStates.end(), &state);
-  // If the state was to be continued, but now gets paused again
-  if (it != continuedStates.end()){
-    // ...just don't continue it
-    std::swap(*it, continuedStates.back());
-    continuedStates.pop_back();
-  } else {
-    pausedStates.push_back(&state);
-  }
-}
-
-void Executor::continueState(ExecutionState &state){
-  auto it = std::find(pausedStates.begin(), pausedStates.end(), &state);
-  // If the state was to be paused, but now gets continued again
-  if (it != pausedStates.end()){
-    // ...don't pause it
-    std::swap(*it, pausedStates.back());
-    pausedStates.pop_back();
-  } else {
-    continuedStates.push_back(&state);
-  }
-}
 
 void Executor::terminateState(ExecutionState &state) {
   if (replayKTest && state.replayPosition!=replayKTest->numObjects) {
@@ -4662,7 +4625,6 @@ void Executor::dumpStates() {
 
       *os << "{";
       *os << "'depth' : " << es->depth << ", ";
-      *os << "'weight' : " << es->weight << ", ";
       *os << "'queryCost' : " << es->queryCost << ", ";
       *os << "'coveredNew' : " << es->coveredNew << ", ";
       *os << "'instsSinceCovNew' : " << es->instsSinceCovNew << ", ";

@@ -12,26 +12,14 @@
 
 #include "klee/Expr/Expr.h"
 
-#include <ciso646>
-#ifdef _LIBCPP_VERSION
 #include <unordered_map>
 #include <unordered_set>
-#define unordered_map std::unordered_map
-#define unordered_set std::unordered_set
-#else
-#include <tr1/unordered_map>
-#include <tr1/unordered_set>
-#define unordered_map std::tr1::unordered_map
-#define unordered_set std::tr1::unordered_set
-#endif
 
 namespace klee {
 
   namespace util {
     struct ExprHash  {
-      unsigned operator()(const ref<Expr> e) const {
-        return e->hash();
-      }
+      unsigned operator()(const ref<Expr> &e) const { return e->hash(); }
     };
     
     struct ExprCmp {
@@ -40,18 +28,14 @@ namespace klee {
       }
     };
   }
-  
-  template <typename T> using ExprHashMap = unordered_map<ref<Expr>, T,
+
+  template <typename T> using ExprHashMap = std::unordered_map<ref<Expr>, T,
                        klee::util::ExprHash,
                        klee::util::ExprCmp>;
-  
-  typedef unordered_set<ref<Expr>,
-                        klee::util::ExprHash,
-                        klee::util::ExprCmp> ExprHashSet;
 
-}
-
-#undef unordered_map
-#undef unordered_set
+  typedef std::unordered_set<ref<Expr>, klee::util::ExprHash,
+                             klee::util::ExprCmp>
+      ExprHashSet;
+} // namespace klee
 
 #endif /* KLEE_EXPRHASHMAP_H */

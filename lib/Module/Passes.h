@@ -19,6 +19,8 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 
+#include <unordered_set>
+
 namespace llvm {
 class Function;
 class Instruction;
@@ -219,10 +221,21 @@ public:
 
 class AssignIDPass : public llvm::ModulePass {
 private:
-  unsigned bcnt = 0, icnt = 0;
+  std::string prefix;
 public:
   static char ID;
-  AssignIDPass() : llvm::ModulePass(ID) {}
+  AssignIDPass(std::string &_prefix);
+  bool runOnModule(llvm::Module &M) override;
+};
+
+class PTWritePass : public llvm::ModulePass {
+private:
+  std::unordered_set<std::string> dataRecFuncSet;
+  std::unordered_set<std::string> dataRecBBSet;
+  std::unordered_set<std::string> dataRecInstSet;
+public:
+  static char ID;
+  PTWritePass(std::string &cfg);
   bool runOnModule(llvm::Module &M) override;
 };
 } // namespace klee

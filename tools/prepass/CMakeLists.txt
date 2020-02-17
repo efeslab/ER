@@ -6,14 +6,14 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
-add_subdirectory(gen-bout)
-add_subdirectory(gen-random-bout)
-add_subdirectory(kleaver)
-add_subdirectory(klee)
-add_subdirectory(klee-replay)
-add_subdirectory(klee-stats)
-add_subdirectory(ktest-tool)
-add_subdirectory(oracle-ktest)
-add_subdirectory(concretizer)
-add_subdirectory(pathviewer)
-add_subdirectory(prepass)
+add_executable(prepass
+  main.cpp
+)
+
+set(KLEE_LIBS
+  kleeCore
+)
+
+target_link_libraries(prepass ${KLEE_LIBS})
+
+install(TARGETS prepass RUNTIME DESTINATION bin)

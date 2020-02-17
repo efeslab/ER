@@ -63,6 +63,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
@@ -417,11 +418,6 @@ cl::opt<bool> DoOutofBoundaryCheck(
     "oob-check", cl::init(true),
     cl::desc("Disable out of boundary check during memory operations"),
     cl::cat(HASECat));
-cl::opt<std::string> DataRecordingCFG(
-    "datarec-cfg", cl::init(""),
-    cl::desc("Which LLVM IR instruction should be recorded. "
-             "One instruction unique ID per line."),
-    cl::cat(HASECat));
 } // namespace
 
 
@@ -492,7 +488,6 @@ Executor::Executor(LLVMContext &ctx, const InterpreterOptions &opts,
   if (OracleKTest != "") {
     oracle_eval = new OracleEvaluator(OracleKTest);
   }
-  loadDataRecCFG();
 
   memory = new MemoryManager(&arrayCache);
 
@@ -564,6 +559,10 @@ Executor::setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
   preservedFunctions.push_back("memcmp");
   preservedFunctions.push_back("memmove");
 
+  // Assign ID for newly added instructions
+  std::string prefix = "POST";
+  KModule::assignID(kmodule->module.get(), prefix);
+
   kmodule->optimiseAndPrepare(opts, preservedFunctions);
   kmodule->checkModule();
 
@@ -583,9 +582,6 @@ Executor::setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
   DataLayout *TD = kmodule->targetData.get();
   Context::initialize(TD->isLittleEndian(),
                       (Expr::Width)TD->getPointerSizeInBits());
-
-  // assign an unique ID for each instruction and basic block
-  kmodule->assignID();
 
   return kmodule->module.get();
 }
@@ -1708,11 +1704,6 @@ Function* Executor::getTargetFunction(Value *calledVal, ExecutionState &state) {
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
   ++ki->frequency;
-  ref<Expr> LoadedExpr(0);
-  Cell &destCell = getDestCell(state, ki);
-  if (tryLoadDataRecording(state, ki)) {
-    LoadedExpr = destCell.value;
-  }
   switch (i->getOpcode()) {
     // Control flow
   case Instruction::Ret: {
@@ -2212,12 +2203,25 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     unsigned numArgs = cs.arg_size();
     Value *fp = cs.getCalledValue();
-    Function *f = getTargetFunction(fp, state);
 
-    if (isa<InlineAsm>(fp)) {
+    if (llvm::InlineAsm *AI = dyn_cast<llvm::InlineAsm>(fp)) {
+      if (AI->getAsmString() == "ptwrite $0") {
+        llvm::Instruction *recI = dyn_cast<llvm::Instruction>(i->getOperand(0));
+        assert(recI != nullptr);
+        KInstruction *recKI = kmodule->getKInstruction(recI);
+        assert(recKI != nullptr);
+
+        tryLoadDataRecording(state, recKI);
+        tryStoreDataRecording(state, recKI);
+        break;
+      }
+
       terminateStateOnExecError(state, "inline assembly is unsupported");
       break;
     }
+
+    Function *f = getTargetFunction(fp, state);
+
     // evaluate arguments
     std::vector< ref<Expr> > arguments;
     arguments.reserve(numArgs);
@@ -3034,32 +3038,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     terminateStateOnExecError(state, "illegal instruction");
     break;
   }
-  // Note that above code should only "return" when an execution error happens
-  // In that case, the "return" should follow a "terminateStateOnExecError"
-  if (!LoadedExpr.isNull()) {
-    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(destCell.value)) {
-      if (ConstantExpr *LoadedCE = dyn_cast<ConstantExpr>(LoadedExpr)) {
-        if (LoadedCE->getZExtValue() != CE->getZExtValue()) {
-          klee_warning("Loaded ConstantExpr %lu != Executed %lu",
-              LoadedCE->getZExtValue(), CE->getZExtValue());
-        }
-      }
-      else {
-        klee_warning("Non-ConstantExpr Loaded");
-      }
-    }
-    else {
-      ++stats::dataRecLoadedEffective;
-      klee_message("Effective dataRecLoaded at %u", state.replayDataRecEntriesPosition-1);
-      destCell.value = LoadedExpr;
-      if (i->getOpcode() == Instruction::Load) {
-        klee_message("Effective dataRecLoaded for LoadInst, also concretize the memory");
-        ref<Expr> base = eval(ki, 0, state).value;
-        executeMemoryOperation(state, true, base, LoadedExpr, ki);
-      }
-    }
-  }
-  tryStoreDataRecording(state, ki);
 }
 
 void Executor::updateStates(ExecutionState *current) {
@@ -4639,18 +4617,6 @@ void Executor::record1BitAtFork(ExecutionState &current, Solver::Validity solval
   }
 }
 
-void Executor::loadDataRecCFG() {
-  if (DataRecordingCFG != "") {
-    std::ifstream f(DataRecordingCFG);
-    while (f.good()) {
-      std::string linestr;
-      std::getline(f, linestr);
-      dataRecInstSet.insert(linestr);
-    }
-    f.close();
-  }
-}
-
 void Executor::dumpPTree() {
   if (!::dumpPTree) return;
 
@@ -4758,41 +4724,76 @@ void Executor::getNextBranchConstraint(ExecutionState &state, ref<Expr> conditio
   }
 }
 
+/*
+ * try to load data for KInstruction KI from recorded data (do nothing if we are
+ * not replaying)
+ * 
+ * If KI was a symbolic value during replay and now we load a concrete value for
+ *   it, then we say this is an effective DataRec.
+ * If KI was a LoadInstruction and it read a symbolic value during the replay,
+ *   then we not only load recorded data to the corresponding register, but also
+ *   do symbolic memory access to overwrite memory to be concrete.
+ *   We assume the additional memory access introduced will be negligible to all
+ *   other symbolic memory access.
+ * If KI was already a concrete value but we load a different concrete value, a
+ *   warning will be display.
+ */
 bool Executor::tryLoadDataRecording(ExecutionState &state, KInstruction *KI) {
   if (replayPath && replayDataRecEntries) {
     std::string uniqID = getKInstUniqueID(KI);
-    if (dataRecInstSet.find(uniqID) != dataRecInstSet.end()) {
-      PathEntry pe;
-      DataRecEntry dre;
-      getNextPathEntry(state, pe);
-      getNextDataRecEntry(state, dre);
-      assert((pe.t == PathEntry::DATAREC) && "When try loading DataRecording, PathEntry Type mismatches");
-      assert((pe.body.drec.IDlen = uniqID.size()) && "When try loading DataRecording, uniqID length mismatches");
-      bindLocal(KI, state, ConstantExpr::alloc(dre.data, pe.body.drec.width));
-      return true;
+    PathEntry pe;
+    DataRecEntry dre;
+    getNextPathEntry(state, pe);
+    getNextDataRecEntry(state, dre);
+    assert((pe.t == PathEntry::DATAREC) && "When try loading DataRecording, PathEntry Type mismatches");
+    assert((pe.body.drec.IDlen = uniqID.size()) && "When try loading DataRecording, uniqID length mismatches");
+    ref<Expr> replayedValue = getDestCell(state, KI).value;
+    ref<ConstantExpr> loadedValue = ConstantExpr::alloc(dre.data, pe.body.drec.width);
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(replayedValue)) {
+      if (loadedValue->getZExtValue() != CE->getZExtValue()) {
+        klee_warning("Loaded ConstantExpr %lu != Replayed %lu",
+            loadedValue->getZExtValue(), CE->getZExtValue());
+      }
     }
+    else {
+      ++stats::dataRecLoadedEffective;
+      klee_message("Effective dataRecLoaded at %u", state.replayDataRecEntriesPosition-1);
+      if (replayedValue->getWidth() != loadedValue->getWidth()) {
+        klee_warning("Width mismatch: Loaded ConstantExpr %u != Replayed %u",
+            loadedValue->getWidth(), replayedValue->getWidth());
+      }
+      if (KI->inst->getOpcode() == Instruction::Load) {
+        klee_message("Effective dataRecLoaded for LoadInst, also concretize the memory");
+        ref<Expr> base = eval(KI, 0, state).value;
+        executeMemoryOperation(state, true, base, loadedValue, KI);
+      }
+    }
+    bindLocal(KI, state, ConstantExpr::alloc(dre.data, pe.body.drec.width));
+    return true;
   }
   return false;
 }
 
+/*
+ * try to record intermediate data from KInstruction KI (do nothing if path
+ * recording is disabled)
+ */
 bool Executor::tryStoreDataRecording(ExecutionState &state, KInstruction *KI) {
   if (pathWriter) {
     std::string uniqID = getKInstUniqueID(KI);
-    if (dataRecInstSet.find(uniqID) != dataRecInstSet.end()) {
-      PathEntry pe;
-      ref<Expr> e = getDestCell(state, KI).value;
-      ConstantExpr *CE = dyn_cast<ConstantExpr>(e);
-      assert(CE && "should only record concrete values");
-      pe.t = PathEntry::DATAREC;
-      pe.body.drec.IDlen = uniqID.size();
-      pe.body.drec.width = CE->getWidth();
-      state.pathOS << pe;
-      DataRecEntry dre;
-      dre.instUniqueID = uniqID;
-      dre.data = CE->getZExtValue();
-      state.pathDataRecOS << dre;
-      return true;
-    }
+    PathEntry pe;
+    ref<Expr> e = getDestCell(state, KI).value;
+    ConstantExpr *CE = dyn_cast<ConstantExpr>(e);
+    assert(CE && "should only record concrete values");
+    pe.t = PathEntry::DATAREC;
+    pe.body.drec.IDlen = uniqID.size();
+    pe.body.drec.width = CE->getWidth();
+    state.pathOS << pe;
+    DataRecEntry dre;
+    dre.instUniqueID = uniqID;
+    dre.data = CE->getZExtValue();
+    state.pathDataRecOS << dre;
+    return true;
   }
   return false;
 }

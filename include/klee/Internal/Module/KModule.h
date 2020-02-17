@@ -64,6 +64,7 @@ namespace klee {
     ~KFunction();
 
     unsigned getArgRegister(unsigned index) { return index; }
+    KInstruction *getKInstruction(llvm::Instruction *inst);
   };
 
 
@@ -111,6 +112,8 @@ namespace klee {
     // Mark function with functionName as part of the KLEE runtime
     void addInternalFunction(const char* functionName);
 
+    std::map<llvm::Instruction*, KInstruction*> instructionMapCache;
+
   public:
     KModule() = default;
 
@@ -151,9 +154,15 @@ namespace klee {
     /// expected by KLEE's Executor hold.
     void checkModule();
 
+    /// Get the corresponding KInstruction of a llvm::Instruction.
+    KInstruction *getKInstruction(llvm::Instruction *inst);
+
     /// Assign a unique ID for each instruction and basic block. The unique ID will
     /// be used in recording.
-    void assignID();
+    static void assignID(llvm::Module *M, std::string &prefix);
+
+    /// Add PTWrite instruction after specified instructions
+    static void addPTWrite(llvm::Module *M, std::string &cfg);
 
     /// Save Instruction and Function frequency to LLVM IR Module as metadata (MDNode).
     /// Those frequencies were maintained inside KInstruction/KFunction until

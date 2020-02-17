@@ -379,10 +379,31 @@ void KModule::checkModule() {
   }
 }
 
-void KModule::assignID() {
+void KModule::assignID(llvm::Module *M, std::string &prefix) {
   legacy::PassManager pm;
-  pm.add(new AssignIDPass());
-  pm.run(*module);
+  pm.add(new AssignIDPass(prefix));
+  pm.run(*M);
+}
+
+void KModule::addPTWrite(llvm::Module *M, std::string &cfg) {
+  legacy::PassManager pm;
+  pm.add(new PTWritePass(cfg));
+  pm.run(*M);
+}
+
+KInstruction* KModule::getKInstruction(llvm::Instruction *I) {
+  auto it = instructionMapCache.find(I);
+  if (it != instructionMapCache.end())
+    return it->second;
+
+  llvm::Function *f = I->getParent()->getParent();
+  assert(f);
+  KFunction *kf = functionMap[f];
+  KInstruction *target = kf->getKInstruction(I);
+  assert(target);
+
+  instructionMapCache.insert(std::make_pair(I, target));
+  return target;
 }
 
 void KModule::saveCntToMDNode() {
@@ -523,3 +544,13 @@ KFunction::~KFunction() {
     delete instructions[i];
   delete[] instructions;
 }
+
+KInstruction *KFunction::getKInstruction(llvm::Instruction *inst) {
+  for (unsigned i = 0; i < numInstructions; i++) {
+    if (instructions[i]->inst == inst) {
+      return instructions[i];
+    }
+  }
+  return nullptr;
+}
+

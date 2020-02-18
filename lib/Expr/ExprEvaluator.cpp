@@ -34,11 +34,6 @@ ExprVisitor::Action ExprEvaluator::evalRead(const UpdateList &ul,
     if (index < ul.root->size) {
       return Action::changeTo(ul.root->constantValues[index]);
     }
-    else {
-      fprintf(stderr, "out of bound access to %s[%u < %u]\n",
-          ul.root->name.c_str(), ul.root->size, index);
-      //abort();
-    }
   }
 
   return Action::changeTo(getInitialValue(*ul.root, index));

@@ -107,20 +107,35 @@ bool PTWritePass::runOnModule(Module &M) {
           llvm::errs() << "recorded instruction not integer\n";
           continue;
         }
+        // to assign each additional CastInst a unique ID
+        static unsigned int ptwrite_cnt = 0;
 
         Instruction &I = *i;
 
         std::vector<llvm::Type *> argTypes;
-        argTypes.push_back(Type::getInt64Ty(f->getContext()));
-        llvm::Type *voidTy = Type::getVoidTy(f->getContext());
+        llvm::LLVMContext &C = f->getContext();
+        llvm::Type *TyInt64 = Type::getInt64Ty(C);
+        argTypes.push_back(TyInt64);
+        llvm::Type *voidTy = Type::getVoidTy(C);
         llvm::FunctionType *FTy = FunctionType::get(voidTy, argTypes, false);
         llvm::InlineAsm *IA =
           llvm::InlineAsm::get(FTy, "ptwrite $0", "r,~{dirflag},~{fpsr},~{flags}", true, false);
 
         std::vector<llvm::Value *> args;
-        args.push_back(&I);
+        Instruction *insertAfterI = &I;
+        if (I.getType() != TyInt64) {
+          // need type cast
+          Twine castname = Twine("ptwritecast") + Twine(ptwrite_cnt++);
+          CastInst *castI = CastInst::CreateZExtOrBitCast(&I, TyInt64, castname);
+          castI->insertAfter(&I);
+          args.push_back(castI);
+          insertAfterI = castI;
+        }
+        else {
+          args.push_back(&I);
+        }
         Instruction *CI = llvm::CallInst::Create(IA, args, "");
-        b->getInstList().insertAfter(i, CI);
+        CI->insertAfter(insertAfterI);
       }
     }
   }

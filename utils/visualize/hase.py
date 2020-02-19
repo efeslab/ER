@@ -21,6 +21,7 @@ import org.gephi.layout.plugin.forceAtlas2.ForceAtlas2Builder as ForceAtlas2
 import java.awt.Color as jcolor
 import time
 import org.gephi.scripting.wrappers.GyNode as GyNode
+import org.gephi.scripting.wrappers.GyGraph as GyGraph
 
 def RunForceAtlas2_nooverlap(iters):
     fa2 = ForceAtlas2().buildLayout()
@@ -162,22 +163,64 @@ class PyGraph(object):
     # @type: Dict(str->set(GyNode))
     kinst2nodes = None
 
-    def __init__(self, graph):
-        self.graph = graph
+    """
+    @type gygraph: GyGraph
+    @param gygraph: the origin graph available in the python script plugin ('g')
+
+    @rtype: PyGraph
+    @return: A new PyGraph built from the given GyGraph
+    """
+    @classmethod
+    def buildFromGyGraph(cls, gygraph):
+        if isinstance(gygraph, GyGraph):
+            gynodes = set([n for n in gygraph.nodes if n.kind is not None])
+            gyedges = set([e for e in gygraph.edges if e.source.kind is not None
+                and e.target.kind is not None])
+            return PyGraph(gynodes, gyedges)
+        else:
+            return None
+
+    """
+    @type pygraph: PyGraph
+    @param pygraph: the base graph you are working on
+    @type deleted_nodes: set(node_id)
+    @param deleted_nodes: a set of node_id you want to delete from pygraph
+    """
+    @classmethod
+    def buildFromPyGraph(cls, pygraph, deleted_nodes):
+        if isinstance(pygraph, PyGraph) and isinstance(deleted_nodes, set):
+            subgynodes = set([ n for n in pygraph.gynodes if n.id not in
+                deleted_nodes])
+            subgyedges = set([e for e in pygraph.gyedges if e.source.id not in
+                deleted_nodes and e.target.id not in deleted_nodes])
+            return PyGraph(subgynodes, subgyedges)
+        else:
+            return None
+
+    """
+    @type GyNodeSet: set(GyNode)
+    @param GyNodeSet: set of GyNodes you want build graph from
+    @type GyEdgeSet: set(GyEdge)
+    @param GyEdgeSet: set of GyEdges you want to build graph from
+    """
+    def __init__(self, GyNodeSet, GyEdgeSet):
+        self.gynodes = GyNodeSet
+        self.gyedges = GyEdgeSet
+
         self.innodes = set()
         self.outnodes = set()
-        for e in graph.edges:
+        for e in self.gyedges:
             self.edges.setdefault(e.source.id, set()).add(e)
             self.redges.setdefault(e.target.id, set()).add(e)
-        for n in graph.nodes:
+        for n in self.gynodes:
             self.id_map[n.id] = n
             if n.indegree == 0:
-                self.innodes.add(n)
+                self.innodes.add(n.id)
             if n.outdegree == 0:
-                self.outnodes.add(n)
+                self.outnodes.add(n.id)
         self.topological_sort()
         self.build_kinst2nodes()
-        self.all_nodes_topo_order = sorted(self.graph.nodes,
+        self.all_nodes_topo_order = sorted(self.gynodes,
                 key=lambda n: self.topological_map[n.id])
 
     """
@@ -190,7 +233,7 @@ class PyGraph(object):
         visited_nodes = set()
         # list of node
         worklist = []
-        for node in self.graph.nodes:
+        for node in self.gynodes:
             if node.id not in visited_nodes:
                 worklist.append(node)
                 while len(worklist) > 0:
@@ -213,7 +256,7 @@ class PyGraph(object):
     """
     def build_kinst2nodes(self):
         self.kinst2nodes = {}
-        for node in self.graph.nodes:
+        for node in self.gynodes:
             if isKInstValid(node):
                 self.kinst2nodes.setdefault(node.kinst, set()).add(node.id)
 
@@ -367,7 +410,7 @@ class PyGraph(object):
 
         msgstring += "Total: "
         percent_concretized = \
-        (float(len(concretized_nodes))/len(self.graph.nodes)*100)
+        (float(len(concretized_nodes))/len(self.gynodes)*100)
         msgstring += '%d(%f%%) nodes concretized, max idep %d.' % \
                 (len(concretized_nodes), percent_concretized,\
                         self.getUnconcretizedMaxIdep(recinsts))
@@ -424,6 +467,10 @@ class PyGraph(object):
     def ColorNodesByID(self, nodes_id, color):
         for nid in nodes_id:
             self.id_map[nid].color = color
+
+    def ColorAllNodes(self, color):
+        for n in self.gynodes:
+            n.color = color;
 
     def MarkNodesWhiteByID(self, nodes_id):
         self.ColorNodesByID(nodes_id, jcolor.white)

@@ -202,6 +202,9 @@ class PyGraph(object):
 
         # @type: Dict(str->set(GyNode))
         self.kinst2nodes = None
+        # @type: Dict(node_id->int)
+        # map a node_id to indirect depth
+        self.idep_map = None
 
         # innodes: no in edges, outnodes: no out edges
         # @type: set(node_id)
@@ -220,6 +223,7 @@ class PyGraph(object):
         self.build_kinst2nodes()
         self.all_nodes_topo_order = sorted(self.gynodes,
                 key=lambda n: self.topological_map[n.id])
+        self.calculate_idep()
 
     """
     Perform topological sort and store the result in self.topological_map
@@ -248,7 +252,38 @@ class PyGraph(object):
                         worklist.pop()
 
     """
-    Dependency: topological_map
+    Dependency: all_nodes_topo_order
+    calculate indirect depth of all nodes.
+    Will traverse nodes in the reverse topological order.
+    @rtype: None
+    """
+    def calculate_idep(self):
+        self.idep_map = {}
+        for node in reversed(self.all_nodes_topo_order):
+            if node.id not in self.redges:
+                self.idep_map[node.id] = 0
+            else:
+                possible_idep = []
+                for e in self.redges[node.id]:
+                    parent_idep = self.idep_map[e.source.id]
+                    if e.weight == 1.0:
+                        possible_idep.append(parent_idep)
+                    elif e.weight == 1.5:
+                        possible_idep.append(parent_idep + 1)
+                    else:
+                        print("edge: " + e + " has invalid weight")
+                        raise RuntimeError("Invalid edge weight")
+                self.idep_map[node.id] = max(possible_idep)
+
+    """
+    Dependency: calculate_idep
+    @rtype: int
+    @return: the max indirect depth in the current graph
+    """
+    def max_idep(self):
+        return max(self.idep_map.values())
+
+    """
     build the mapping from recordable instructions to all associated nodes in
     the constraint graph
     """
@@ -398,6 +433,8 @@ class PyGraph(object):
                 raise RuntimeError(
                 "recordable instruction list has concretized_nodes overlap")
             concretized_nodes |=  recinst.concretized_nodes
+        # the subgraph after deleting all concretized nodes
+        subgraph = self.buildFromPyGraph(self, concretized_nodes)
         msgstring = ""
         for seq, recinst in enumerate(recinsts):
             msgstring += "Rec[%d]: " % seq
@@ -411,7 +448,7 @@ class PyGraph(object):
         (float(len(concretized_nodes))/len(self.gynodes)*100)
         msgstring += '%d(%f%%) nodes concretized, max idep %d.' % \
                 (len(concretized_nodes), percent_concretized,\
-                        self.getUnconcretizedMaxIdep(recinsts))
+                        subgraph.max_idep())
         return msgstring
 
     """
@@ -425,29 +462,6 @@ class PyGraph(object):
     def printCandidateRecInstsInfo(self, recinsts):
         for seq, recinst in enumerate(recinsts):
             print(("###(%4d)###" % seq) + self.getRecInstsInfo([recinst]) + '\n')
-
-    """
-    @type recinsts: List(RecordableInst)
-    @param recinsts: list of instruction already decide to record
-
-    @rtype: int
-    @return: The maximum indirect depth of nodes which still cannot be
-    concretized
-    """
-    def getUnconcretizedMaxIdep(self, recinsts):
-        concretized_nodes = set()
-        max_unconcretized_depth = 0
-        for recinst in recinsts:
-            if concretized_nodes & recinst.concretized_nodes:
-                raise RuntimeError(
-                "recordable instruction list has concretized_nodes overlap")
-            concretized_nodes |=  recinst.concretized_nodes
-        for node in self.all_nodes_topo_order:
-            if (node.kind != '0') and (node.id not in concretized_nodes):
-                idep = int(node.idep)
-                if idep > max_unconcretized_depth:
-                    max_unconcretized_depth = idep
-        return max_unconcretized_depth
 
     def ColorCSet(self, nodes_id_set):
         s = self.concretize_set(nodes_id_set)

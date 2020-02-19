@@ -136,32 +136,6 @@ l[0] in g.nodes
 ```
 """
 class PyGraph(object):
-    graph = None
-    # edge map node.id -> set of edges starting from node
-    edges = {}
-    # reverse edge map, node.id -> set of edges ending in node
-    redges = {}
-    # map node.id -> node
-    id_map = {}
-    # node.id -> topological id (0..|V|-1)
-    # note that the klee expression graph looks like
-    # [operator] -> [operand0]
-    #            -> [operand1]
-    # so the edge represents [dependant] -> [dependency]
-    # The assigned topological id: [dependant] > [dependency]
-    # aka [result] > [operands]
-    topological_map = None
-    # @type: List(GyNode)
-    # list of nodes from small topo id to large topo id
-    # (from high indirect depth to low indirect depth)
-    all_nodes_topo_order = None
-
-    # innodes: no in edges, outnodes: no out edges
-    # @type: set(node_id)
-    innodes = None
-    outnodes= None
-    # @type: Dict(str->set(GyNode))
-    kinst2nodes = None
 
     """
     @type gygraph: GyGraph
@@ -207,6 +181,30 @@ class PyGraph(object):
         self.gynodes = GyNodeSet
         self.gyedges = GyEdgeSet
 
+        # edge map node.id -> set of edges starting from node
+        self.edges = {}
+        # reverse edge map, node.id -> set of edges ending in node
+        self.redges = {}
+        # map node.id -> node
+        self.id_map = {}
+        # node.id -> topological id (0..|V|-1)
+        # note that the klee expression graph looks like
+        # [operator] -> [operand0]
+        #            -> [operand1]
+        # so the edge represents [dependant] -> [dependency]
+        # The assigned topological id: [dependant] > [dependency]
+        # aka [result] > [operands]
+        self.topological_map = None
+        # @type: List(GyNode)
+        # list of nodes from small topo id to large topo id
+        # (from high indirect depth to low indirect depth)
+        self.all_nodes_topo_order = None
+
+        # @type: Dict(str->set(GyNode))
+        self.kinst2nodes = None
+
+        # innodes: no in edges, outnodes: no out edges
+        # @type: set(node_id)
         self.innodes = set()
         self.outnodes = set()
         for e in self.gyedges:

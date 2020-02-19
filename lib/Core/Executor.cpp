@@ -4714,6 +4714,31 @@ bool Executor::tryLoadDataRecording(ExecutionState &state, KInstruction *KI) {
     assert((pe.body.drec.IDlen = uniqID.size()) && "When try loading DataRecording, uniqID length mismatches");
     ref<Expr> replayedValue = getDestCell(state, KI).value;
     ref<ConstantExpr> loadedValue = ConstantExpr::alloc(dre.data, pe.body.drec.width);
+    if (!isa<ConstantExpr>(replayedValue)) {
+      ++stats::dataRecLoadedEffective;
+      klee_message("Effective dataRecLoaded at %u", state.replayDataRecEntriesPosition-1);
+    }
+    concretizeKInst(state, KI, loadedValue);
+    return true;
+  }
+  return false;
+}
+
+/*
+ * Use a given constant value to concretize the result of a given KInstruction.
+ * Will add constraint (Eq loadedValue replayedValue) to the given state
+ * Will symbolically write memory if the loadedValue is for a LoadInst
+ * In case of recording < 64B data by ptwrite, there needs to be a explicit type
+ * cast, this function will also recursively concertize the expression before
+ * the type cast.
+ * \param[in] state The ExecutionState in which the register associated with KI
+ * will be concretized
+ * \param[in] KI The KInstruction you recorded and want to concretize now
+ * \param[in] loadedValue the recorded value from trace
+ */
+void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
+    ref<ConstantExpr> loadedValue) {
+  ref<Expr> replayedValue = getDestCell(state, KI).value;
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(replayedValue)) {
       if (loadedValue->getZExtValue() != CE->getZExtValue()) {
         klee_warning("Loaded ConstantExpr %lu != Replayed %lu",
@@ -4721,22 +4746,36 @@ bool Executor::tryLoadDataRecording(ExecutionState &state, KInstruction *KI) {
       }
     }
     else {
-      ++stats::dataRecLoadedEffective;
-      klee_message("Effective dataRecLoaded at %u", state.replayDataRecEntriesPosition-1);
       if (replayedValue->getWidth() != loadedValue->getWidth()) {
         klee_warning("Width mismatch: Loaded ConstantExpr %u != Replayed %u",
             loadedValue->getWidth(), replayedValue->getWidth());
       }
       if (KI->inst->getOpcode() == Instruction::Load) {
-        klee_message("Effective dataRecLoaded for LoadInst, also concretize the memory");
         ref<Expr> base = eval(KI, 0, state).value;
         executeMemoryOperation(state, true, base, loadedValue, KI);
       }
+      if (CastExpr *castE = dyn_cast<CastExpr>(replayedValue)) {
+        // Further concretization opportunity:
+        // e.g. if we can concretize (ZExt w64 (Read w8 xxx))
+        // Then we can also concretize the inner ReadExpr
+        // Note that we do not add constraints for the CastExpr but add
+        // constraints to the expression inside instead.
+        KInstruction *innerKInst = castE->src->kinst;
+        if (innerKInst) {
+          klee_message("Further CastExpr concretization base on %s",
+              KI->inst->getName().str().c_str());
+          concretizeKInst(state, innerKInst,
+              loadedValue->Extract(0, castE->src->getWidth()));
+        }
+      }
+      else {
+        // we avoid adding multiple constraints in case of CastExpr
+        // we only constrain the inner expression
+        // here we add a new constraint: replayedValue == loadedValue
+        addConstraint(state, EqExpr::create(replayedValue, loadedValue));
+      }
+      bindLocal(KI, state, loadedValue);
     }
-    bindLocal(KI, state, ConstantExpr::alloc(dre.data, pe.body.drec.width));
-    return true;
-  }
-  return false;
 }
 
 /*

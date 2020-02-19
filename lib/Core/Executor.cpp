@@ -1228,7 +1228,8 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
       }
     }
     else {
-      assert(0 && "NonConstant Expr returned by OracleEvaluator");
+      terminateStateOnError(state,
+          "NonConstant Expr returned by OracleEvaluator", Abort);
     }
   }
   state.addConstraint(condition);

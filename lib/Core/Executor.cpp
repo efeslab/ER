@@ -4497,9 +4497,11 @@ void Executor::prepareForEarlyExit() {
 void Executor::printInfo(llvm::raw_ostream &os) {
   static unsigned int cnt = 0;
   std::string message_buf;
+  std::time_t walltime = std::time(nullptr);
   llvm::raw_string_ostream msg_oss(message_buf);
   llvm::raw_ostream &infoStream = interpreterHandler->getInfoStream();
   msg_oss << "********************************* Info " << cnt << "***********************\n";
+  msg_oss << "Wall Time: " << std::asctime(std::localtime(&walltime)) << '\n';
   msg_oss << "Total Instructions: " << stats::instructions.getValue() << '\n';
   unsigned int i=0;
   for (auto s: states) {

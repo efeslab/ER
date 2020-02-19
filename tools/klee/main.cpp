@@ -1235,6 +1235,9 @@ static void interrupt_handle() {
     halt_execution();
   } else {
     llvm::errs() << "KLEE: interrupt detected, exiting.\n";
+    std::time_t walltime = std::time(nullptr);
+    klee_message("%s: KLEE: interrupt detected twice, exiting.",
+        std::asctime(std::localtime(&walltime)));
     exit(1);
   }
   interrupted = true;
@@ -1801,7 +1804,7 @@ int main(int argc, char **argv, char **envp) {
     std::tie(h,m,s) = time::seconds(endTime - startTime).toHMS();
     std::stringstream endInfo;
     endInfo << "Finished: "
-            << std::put_time(std::localtime(&endTime), "%Y-%m-%d %H:%M:%S") << '\n'
+            << std::put_time(std::localtime(&endTime), klee::time::fmt_str) << '\n'
             << "Elapsed: "
             << std::setfill('0') << std::setw(2) << h
             << ':'

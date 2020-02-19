@@ -149,7 +149,9 @@ void ExprInPlaceTransformer::visitUNode(const UpdateNode *un) {
 #endif
         // concrete UNode, need to be omitted
         visited_un[un] = next;
-        next->inc();
+        if (next) {
+          next->inc();
+        }
         //un->dec();
         expr_kidstack.push_back(next);
       }
@@ -184,7 +186,9 @@ void ExprInPlaceTransformer::visitUNode(const UpdateNode *un) {
         // Note that all commented out un->dec() is the place I should decrease
         // refCount of an UpdateNode. But I cannot do that now (otherwise there
         // will be use-after-free) due to above complaints.
-        new_un->inc();
+        if (new_un) {
+          new_un->inc();
+        }
         //un->dec();
       }
     }
@@ -205,7 +209,9 @@ void ExprInPlaceTransformer::visitUNode(const UpdateNode *un) {
 #ifdef EXPRINPLACE_MEMLEAK_DEBUG
     fprintf(stderr, "processed %p(%u) dec, new is %p(%u) inc\n", un, un->refCount, new_un, new_un->refCount);
 #endif
-    new_un->inc();
+    if (new_un) {
+      new_un->inc();
+    }
     //un->dec();
     expr_kidstack.push_back(new_un);
     expr_worklist.pop_back();

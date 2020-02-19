@@ -58,10 +58,10 @@ graph
 @param max_idep: the maximum indirect depth of nodes which still cannot be
 concretized
 
-@type rec_nodes: List(node.id)
+@type rec_nodes: set(node.id)
 @param rec_nodes: what symbolic nodes are directly recorded if you record this instruction
 
-@type hidden_nodes: List(node.id)
+@type hidden_nodes: set(node.id)
 @param hidden_nodes: what symbolic nodes related to other instruction but still can be
 concretized if you record this instruction
 
@@ -81,12 +81,12 @@ class RecordableInst(object):
         self.hidden_nodes = hidden_nodes
         self.concretized_nodes = concretized_nodes
         # sanity check
-        if len(set(rec_nodes)) != len(rec_nodes):
-            raise RuntimeError("duplicate nodes in rec_nodes")
-        if len(set(hidden_nodes)) != len(hidden_nodes):
-            raise RuntimeError("duplicate nodes in hidden_nodes")
-        if len(set(concretized_nodes)) != len(concretized_nodes):
-            raise RuntimeError("duplicate nodes in concretized_nodes")
+        if not isinstance(rec_nodes, set):
+            raise RuntimeError("rec_nodes is not a set ")
+        if not isinstance(hidden_nodes, set):
+            raise RuntimeError("hidden_nodes is not a set ")
+        if not isinstance(concretized_nodes, set):
+            raise RuntimeError("concretized_nodes is not a set ")
         if width == 0:
             raise RuntimeError("Zero Width instruction")
 
@@ -136,9 +136,9 @@ l[0] in g.nodes
 """
 class PyGraph(object):
     graph = None
-    # edge map node.id -> list of edges starting from node
+    # edge map node.id -> set of edges starting from node
     edges = {}
-    # reverse edge map, node.id -> list of edges ending in node
+    # reverse edge map, node.id -> set of edges ending in node
     redges = {}
     # map node.id -> node
     id_map = {}
@@ -156,10 +156,10 @@ class PyGraph(object):
     all_nodes_topo_order = None
 
     # innodes: no in edges, outnodes: no out edges
-    # content is node
+    # @type: set(node_id)
     innodes = None
     outnodes= None
-    # @type: Dict(str->List(GyNode))
+    # @type: Dict(str->set(GyNode))
     kinst2nodes = None
 
     def __init__(self, graph):
@@ -167,8 +167,8 @@ class PyGraph(object):
         self.innodes = set()
         self.outnodes = set()
         for e in graph.edges:
-            self.edges.setdefault(e.source.id, []).append(e)
-            self.redges.setdefault(e.target.id, []).append(e)
+            self.edges.setdefault(e.source.id, set()).add(e)
+            self.redges.setdefault(e.target.id, set()).add(e)
         for n in graph.nodes:
             self.id_map[n.id] = n
             if n.indegree == 0:
@@ -215,7 +215,7 @@ class PyGraph(object):
         self.kinst2nodes = {}
         for node in self.graph.nodes:
             if isKInstValid(node):
-                self.kinst2nodes.setdefault(node.kinst, []).append(node.id)
+                self.kinst2nodes.setdefault(node.kinst, set()).add(node.id)
 
 
     """
@@ -274,7 +274,7 @@ class PyGraph(object):
         for seqid, n in enumerate(self.all_nodes_topo_order):
             if (isKInstValid(n)) and (n.id not in checked_kinst_set):
                 local_concretized_set = concretized_set.copy()
-                hidden_nodes = []
+                hidden_nodes = set()
                 max_unconcretized_depth = 0
                 for nid in self.kinst2nodes[n.kinst]:
                     checked_kinst_set.add(nid)
@@ -297,9 +297,9 @@ class PyGraph(object):
                             # it has a valid KInst
                             if len(known_symbolic_nodes) > 0 and isKInstValid(node):
                                 checked_kinst_set.add(node.id)
-                                hidden_nodes.append(node.id)
+                                hidden_nodes.add(node.id)
                         if len(const_nodes) + len(known_symbolic_nodes) > \
-                        self.edges[node.id]:
+                        len(self.edges[node.id]):
                             raise RuntimeError("sum of out edges wrong")
                 result.append(RecordableInst(n.kinst, int(n.Width), int(n.Freq),
                     self.kinst2nodes[n.kinst], hidden_nodes,

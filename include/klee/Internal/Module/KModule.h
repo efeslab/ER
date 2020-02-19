@@ -52,7 +52,7 @@ namespace klee {
     /// Whether instructions in this function should count as
     /// "coverable" for statistics and search heuristics.
     bool trackCoverage;
-    /// How mant times this Function has been called.
+    /// How many times this Function has been called.
     /// Maintained at ExecutionState::pushFrame
     unsigned int frequency = 0;
 

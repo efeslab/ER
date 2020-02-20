@@ -529,20 +529,19 @@ class HaseUtils(object):
             if v.idepi == 0:
                 self.all_root_nodes.add(v.id)
                 self.idep_index_score[v.id] = 0
-                v.size = 15
-        # nodes pointed by cross-layer edges but no intra-layer edges are roots
+        # nodes pointed by cross-layer edges but not by intra-layer edges are roots
         # nodes pointed by cross-layer edges will be enlarged
         for e in self.g.edges:
             if e.weight==1.5:
                 if e.target.idepi == e.source.idepi + 1:
                     self.all_root_nodes.add(e.target.id)
-                    e.target.size = 15
                 self.idep_index_score[e.target.id] = self.idep_index_score.get(e.target.id, 0) + e.source.idepi
         for e in self.g.edges:
             if (e.target.idepi == e.source.idepi) and \
                     (e.target.id in self.all_root_nodes):
                         self.all_root_nodes.remove(e.target.id)
                         del self.idep_index_score[e.target.id]
+        self.resize_root_nodes()
         self.idep_roots = []
 
         """
@@ -552,7 +551,8 @@ class HaseUtils(object):
         """
         self.idep_roots.append(
                 sorted(
-                    [v for v in self.idep_subg[0].nodes if v.indegree == 0],
+                    [v for v in self.idep_subg[0].nodes if v.indegree == 0 and \
+                        v.id in self.all_root_nodes],
                     key=lambda v: v.outdegree
                 )
         )
@@ -580,6 +580,13 @@ class HaseUtils(object):
         self.layout_idep_root(idep)
         self.lock_idep(idep)
         self.visible_idep(idep)
+
+    def resize_root_nodes(self):
+        for n in self.g.nodes:
+            if n.id in self.all_root_nodes:
+                n.size = 17
+            else:
+                n.size = 10
     """
     Layout the root nodes of a given level
     Will evenly spread roots (sorted) along Y-axis on the left most border

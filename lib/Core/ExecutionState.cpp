@@ -175,6 +175,7 @@ ExecutionState *ExecutionState::branch() {
     // Need to update the pathOS.id field of falseState, otherwise the same id
     // is used for both falseState and trueState.
     falseState->pathOS = pathOS.branch();
+    falseState->pathDataRecOS = pathDataRecOS.branch();
   }
   if (stackPathOS.isValid()) {
     falseState->stackPathOS = stackPathOS.branch();

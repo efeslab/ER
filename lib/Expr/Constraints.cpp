@@ -332,18 +332,21 @@ void ConstraintManager::checkConstraintChange() {
   }
 }
 
-void ConstraintManager::addConstraint(ref<Expr> e) {
+bool ConstraintManager::addConstraint(ref<Expr> e) {
   if (representative.find(e) != representative.end()) {
     // found a duplicated constraint
-    return;
+    return true;
   }
   // After update the independant, the add and delete vector should be cleaned;
   assert(old.empty() && "old vector is not empty"); 
   assert(deleteConstraints.empty() && "delete Constraints not empty"); 
   assert(addedConstraints.empty() && "add Constraints not empty"); 
 
-  e = simplifyExpr(e);
-  bool changed = addConstraintInternal(e);
+  ref<Expr> simplified = simplifyExpr(e);
+  if (simplified->isFalse()) {
+    return false;
+  }
+  bool changed = addConstraintInternal(simplified);
 
   // If the constraints are changed by rewriteConstraints. Check what has been
   // modified; Important clear the old vector after finish running.
@@ -361,6 +364,7 @@ void ConstraintManager::addConstraint(ref<Expr> e) {
   addedConstraints.clear();
   deleteConstraints.clear();
   // TODO Check factors are exclusive (sum the number of constraints and compare with representative.size())
+  return true;
 }
 
 ConstraintManager::ConstraintManager(const std::vector< ref<Expr> > &_constraints) :

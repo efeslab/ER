@@ -1099,7 +1099,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     }
     // dump first, then add new constraint
     if (!new_constraint.isNull()) {
-      addConstraint(current, new_constraint);
+      bool valid_constraint = addConstraint(current, new_constraint);
+      if (!valid_constraint) {
+        terminateStateOnError(current, "add a invalid constraint", Abort);
+      }
     }
     if (res == Solver::True) {
       return StatePair(&current, 0);
@@ -1178,8 +1181,12 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
 
     // when current state forks, all dump is done before actually adding constraint
     // Such behaviour should be consistent with no-fork situation.
-    addConstraint(*trueState, true_constraint);
-    addConstraint(*falseState, false_constraint);
+    if (!addConstraint(*trueState, true_constraint)) {
+      trueState = nullptr;
+    }
+    if (!addConstraint(*falseState, false_constraint)) {
+      falseState = nullptr;
+    }
 
     // Kinda gross, do we even really still want this option?
     if (MaxDepth && MaxDepth<=trueState->depth) {
@@ -1192,11 +1199,11 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   }
 }
 
-void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
+bool Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(condition)) {
     if (!CE->isTrue())
       llvm::report_fatal_error("attempt to add invalid constraint");
-    return;
+    return false;
   }
 
   // Check to see if this constraint violates seeds.
@@ -1225,17 +1232,20 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(res)) {
       if (!CE->isTrue()) {
         terminateStateOnError(state, "Adding False Constaint", Abort);
+        return false;
       }
     }
     else {
       terminateStateOnError(state,
           "NonConstant Expr returned by OracleEvaluator", Abort);
+      return false;
     }
   }
-  state.addConstraint(condition);
+  bool valid = state.addConstraint(condition);
   if (ivcEnabled)
     doImpliedValueConcretization(state, condition,
                                  ConstantExpr::alloc(1, Expr::Bool));
+  return valid;
 }
 
 const Cell& Executor::eval(KInstruction *ki, unsigned index,

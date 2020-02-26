@@ -205,7 +205,8 @@ public:
   void popFrame();
 
   void addSymbolic(const MemoryObject *mo, const Array *array);
-  void addConstraint(ref<Expr> e) { constraints.addConstraint(e); }
+  /// return true if e could be True
+  bool addConstraint(ref<Expr> e) { return constraints.addConstraint(e); }
 
   bool merge(const ExecutionState &b);
   void dumpConstraints(llvm::raw_ostream &out) const;

@@ -51,7 +51,8 @@ public:
 
   ref<Expr> simplifyExpr(ref<Expr> e) const;
 
-  void addConstraint(ref<Expr> e);
+  // \param[out] if constraint added successfully (if it is valid)
+  bool addConstraint(ref<Expr> e);
 
   bool empty() const noexcept { return constraints.empty(); }
   ref<Expr> back() const { return constraints.back(); }

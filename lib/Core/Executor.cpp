@@ -410,13 +410,26 @@ cl::opt<bool> DebugCheckForImpliedValues(
     cl::desc("Debug the implied value optimization"),
     cl::cat(DebugCat));
 /*** HASE related Options ***/
-cl::opt<bool> CallSolver(
-    "call-solver", cl::init(true),
-    cl::desc("Call solver at Executor::fork. (default=true)"),
+cl::opt<bool>
+    CallSolver("call-solver", cl::init(true),
+               cl::desc("Call solver at Executor::fork. (default=true)"),
+               cl::cat(HASECat));
+cl::opt<bool>
+    DoOutofBoundaryCheck("oob-check", cl::init(true),
+                         cl::desc("Disable out of boundary check during memory "
+                                  "operations (default=true)"),
+                         cl::cat(HASECat));
+cl::opt<bool> AllowSymbolicPOSIXCall(
+    "sym-posix-call", cl::init(false),
+    cl::desc("Try concretizing symbolic POSIX call args. If disable this flag, "
+             "klee will stop replaying or dump symbolic args for "
+             "ptwrite instrumentation (default=false)"),
     cl::cat(HASECat));
-cl::opt<bool> DoOutofBoundaryCheck(
-    "oob-check", cl::init(true),
-    cl::desc("Disable out of boundary check during memory operations"),
+cl::opt<bool> AllowSymbolicMalloc(
+    "sym-malloc", cl::init(false),
+    cl::desc("Try concretizing the size of a malloc. If disable this flag, "
+             "klee will stop replaying and dump symbolic args for "
+             "ptwrite instrumentation (default=false)"),
     cl::cat(HASECat));
 } // namespace
 
@@ -1655,6 +1668,25 @@ void Executor::executeCall(ExecutionState &state,
     unsigned numFormals = f->arg_size();
     for (unsigned i=0; i<numFormals; ++i)
       bindArgument(kf, i, state, arguments[i]);
+    if (kf->function->hasFnAttribute("InPOSIX")) {
+      bool hasSymbolicArgs = false;
+      std::vector<ref<Expr>> symbolicArgs;
+      for (unsigned i=0; i<numFormals; ++i) {
+        if (arguments[i].get() && !isa<ConstantExpr>(arguments[i])) {
+          symbolicArgs.push_back(arguments[i]);
+          hasSymbolicArgs = true;
+        }
+      }
+      if (!AllowSymbolicPOSIXCall && hasSymbolicArgs) {
+        std::string sbuf;
+        llvm::raw_string_ostream sos(sbuf);
+        state.dumpStack(sos);
+        klee_message("Calling POSIX Runtime with symbolic args:\n%s\n", sos.str().c_str());
+        std::string file_path = interpreterHandler->getOutputFilename("symbolicPOSIX.kquery");
+        debugDumpConstraintsEval(state, state.constraints, symbolicArgs, file_path.c_str());
+        terminateStateOnError(state, "symbolic args in the POSIX", Abort);
+      }
+    }
   }
 }
 
@@ -3717,6 +3749,18 @@ void Executor::executeAlloc(ExecutionState &state,
         state.addressSpace.unbindObject(reallocFrom->getObject());
       }
     }
+  } else if (!AllowSymbolicMalloc) {
+    // we need to stop replaying and dump the symbolic "size" so that ptwrite
+    // can be instrumented and help us concretize this in the next iteration.
+    std::string sbuf;
+    llvm::raw_string_ostream sos(sbuf);
+    state.dumpStack(sos);
+    std::vector<ref<Expr>> symbolicEvals;
+    symbolicEvals.push_back(size);
+    klee_message("Calling malloc with symbolic size:\n%s\n", sos.str().c_str());
+    std::string file_path = interpreterHandler->getOutputFilename("symbolicMalloc.kquery");
+    debugDumpConstraintsEval(state, state.constraints, symbolicEvals, file_path.c_str());
+    terminateStateOnError(state, "calling malloc with symbolic size", Abort);
   } else {
     // XXX For now we just pick a size. Ideally we would support
     // symbolic sizes fully but even if we don't it would be better to

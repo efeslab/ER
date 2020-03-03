@@ -1,15 +1,23 @@
 #include "ExprInPlaceTransformation.h"
 using namespace klee;
+using namespace klee::expr;
 static Expr *under_processing_expr = (Expr*)(0x1);
 static const UpdateNode *under_processing_un = (const UpdateNode*)(0x1);
 
-ExprInPlaceTransformer::ExprInPlaceTransformer(const Constraints_ty &_constraints,
-    Constraints_ty &out_constraints): constraints(_constraints) {
-  out_constraints.clear();
-  for (const ref<Expr> &e: constraints) {
+ExprInPlaceTransformer::ExprInPlaceTransformer(const QueryCommand &_QC)
+    : QC(_QC) {
+  Constraints_ty out_Constraints;
+  std::vector<ref<Expr>> out_Values;
+  for (const ref<Expr> &e : QC.Constraints) {
     visitDFS(e.get());
-    out_constraints.push_back(popKidExpr());
+    out_Constraints.push_back(popKidExpr());
   }
+  for (const ref<Expr> &e : QC.Values) {
+    visitDFS(e.get());
+    out_Values.push_back(popKidExpr());
+  }
+  new_QCp =
+      new QueryCommand(out_Constraints, QC.Query, out_Values, QC.Objects);
 }
 // TODO UpdateNode* memory leak
 void ExprInPlaceTransformer::visitDFS(Expr *e) {

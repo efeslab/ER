@@ -5,6 +5,7 @@
 #include "klee/Config/Version.h"
 #include "klee/Expr/Expr.h"
 #include "klee/Expr/Constraints.h"
+#include "klee/Expr/Parser/Parser.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Expr/ExprPPrinter.h"
 #include "klee/Expr/ExprUtil.h"
@@ -131,6 +132,7 @@ namespace klee {
   public:
     // all calculation is done in the constructor
     IndirectReadDepthCalculator(const Constraints_ty &constraints);
+    IndirectReadDepthCalculator(const expr::QueryCommand &constraints);
     int getMax() { return maxLevel; }
     std::set<ref<ReadExpr>>& getLastLevelReads() { return lastLevelReads; }
     int query(const Expr *e);

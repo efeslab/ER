@@ -289,6 +289,19 @@ IndirectReadDepthCalculator::IndirectReadDepthCalculator(
   }
 }
 
+IndirectReadDepthCalculator::IndirectReadDepthCalculator(
+    const expr::QueryCommand &QC) {
+  maxLevel = 0;
+  for (const ref<Expr> &e: QC.Constraints) {
+    int m = assignDepth(e, 0);
+    if (m > maxLevel) maxLevel = m;
+  }
+  for (const ref<Expr> &e: QC.Values) {
+    int m = assignDepth(e, 0);
+    if (m > maxLevel) maxLevel = m;
+  }
+}
+
 
 int IndirectReadDepthCalculator::query(const Expr *e) {
   auto it = depthStore.find(e);

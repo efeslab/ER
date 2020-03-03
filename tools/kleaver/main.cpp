@@ -490,12 +490,12 @@ static bool DrawInputAST(const char *Filename,
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
       if (SimplifyDrawing) {
         Constraints_ty simplified_constraints;
-        ExprInPlaceTransformer EIPT(QC->Constraints, simplified_constraints);
-        GraphvizDOTDrawer drawer(of, simplified_constraints);
+        ExprInPlaceTransformer EIPT(*QC);
+        GraphvizDOTDrawer drawer(of, *(EIPT.getNewQCptr()));
         drawer.draw();
       }
       else {
-        GraphvizDOTDrawer drawer(of, QC->Constraints);
+        GraphvizDOTDrawer drawer(of, *QC);
         drawer.draw();
       }
       // Assuming there will only be one QueryComamnd

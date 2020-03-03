@@ -306,8 +306,15 @@ class PyGraph(object):
     @param recinsts: list of recordable instructions we already decided to
     record
 
-    @rtype: List(RecordableInst)
-    @return: a list all beneficial recordable instructions
+    @rtype: List(List(RecordableInst))
+    @return: a list all beneficial recordable instructions, each entry is a list
+    of interesting recordable instructions accumulated so far.
+    note that each outer list entry represents a sequence of accumulated
+    recordable instructions. And each inner list entry represent a recordable
+    instruction. All outer list entries are lists of the same length x. And the
+    first x-1 inner list entries of each outer list entries are same. Only the
+    last inner list entry (newly added interesting RecordableInst) differs,
+    which we should sort as key.
     instruction)
     """
     def analyze_recordable(self, recinsts=[]):
@@ -327,7 +334,7 @@ class PyGraph(object):
             for nid in recinst.hidden_nodes:
                 checked_kinst_set.add(nid)
 
-        # @type: List(RecordableInst)
+        # @type: List(List(RecordableInst))
         result = []
         # Pre Process
         for node in self.all_nodes_topo_order:
@@ -369,17 +376,21 @@ class PyGraph(object):
                         if len(const_nodes) + len(known_symbolic_nodes) == \
                         len(self.edges[node.id]):
                             local_concretized_set.add(node.id)
-                            # this node is hidden if it can be concretized and
-                            # it has a valid KInst
+                            # this node is hidden if:
+                            # 1) it can be concretized here
+                            # 2) it has a valid KInst
+                            # 3) (TODO) recording this node is guaranteed to
+                            # record more data than recording the recordable
+                            # instruction we are currently looking at.
                             if len(known_symbolic_nodes) > 0 and isKInstValid(node):
                                 checked_kinst_set.add(node.id)
                                 hidden_nodes.add(node.id)
                         if len(const_nodes) + len(known_symbolic_nodes) > \
                         len(self.edges[node.id]):
                             raise RuntimeError("sum of out edges wrong")
-                result.append(RecordableInst(n.kinst, int(n.Width), int(n.Freq),
-                    self.kinst2nodes[n.kinst], hidden_nodes,
-                    local_concretized_set - concretized_set))
+                result.append(recinsts + [RecordableInst(n.kinst, int(n.Width),
+                    int(n.Freq), self.kinst2nodes[n.kinst], hidden_nodes,
+                    local_concretized_set - concretized_set)])
         return result
 
     """
@@ -391,14 +402,16 @@ class PyGraph(object):
         return float(sum([int(self.id_map[nid].Width)*int(self.id_map[nid].idep)\
                 for nid in recinst.concretized_nodes]))
     """
-    @type recinsts: List(RecordableInst)
-    @param recinsts: list of recordable instructions from analyze_recordable()
+    @type recinstsL: List(List(RecordableInst))
+    @param recinstsL: list of list of recordable instructions from
+    analyze_recordable()
 
-    @rtype: List(RecordableInst)
+    @rtype: List(List(RecordableInst))
     @return: sorted list, sorted according to coverageScore
     """
-    def sortRecInstsbyCoverageScore(self, recinsts):
-        return sorted(recinsts, key=lambda n: self.coverageScore(n))
+    def sortRecInstsbyCoverageScore(self, recinstsL):
+        return sorted(recinstsL, key=lambda recinsts:
+                self.coverageScore(recinsts[-1]))
 
     """
     @rtype: float
@@ -408,13 +421,17 @@ class PyGraph(object):
         if recinst.freq == 0:
             return 0
         else:
-            return self.coverageScore(recinst) / (recinst.freq * recinst.width)
+            # since we cannot just record 8B in a ptwrite instruction
+            # we have to assume each recordable instructions cost 64B
+            # so we use 64B instead of recinst.width
+            return self.coverageScore(recinst) / (recinst.freq * 64)
 
     """
     same as above
     """
-    def sortRecInstsbyCoverageScoreFreq(self, recinsts):
-        return sorted(recinsts, key=lambda n: self.coverageScoreFreq(n))
+    def sortRecInstsbyCoverageScoreFreq(self, recinstsL):
+        return sorted(recinstsL, key=lambda recinsts:
+                self.coverageScoreFreq(recinsts[-1]))
 
     """
     @type recinsts: List(RecordableInst)
@@ -453,15 +470,15 @@ class PyGraph(object):
 
     """
     Print all recordable instruction candiadates in the given order
-    @type recinsts: List(RecordableInst)
-    @param recinsts: list of recordable instructions from analyze_recordable()
-    or sorted by some heuristics
+    @type recinstsL: List(List(RecordableInst))
+    @param recinstsL: list of list of recordable instructions from
+    analyze_recordable() or sorted by some heuristics.
 
     @rtype: None
     """
-    def printCandidateRecInstsInfo(self, recinsts):
-        for seq, recinst in enumerate(recinsts):
-            print(("###(%4d)###" % seq) + self.getRecInstsInfo([recinst]) + '\n')
+    def printCandidateRecInstsInfo(self, recinstsL):
+        for seq, recinsts in enumerate(recinstsL):
+            print(("###(%4d)###\n" % seq) + self.getRecInstsInfo(recinsts) + '\n')
 
     def ColorCSet(self, nodes_id_set):
         s = self.concretize_set(nodes_id_set)
@@ -492,15 +509,44 @@ class PyGraph(object):
 
     """
     Visualize a RecordableInst on the graph
-    @type recinst: RecordableInst
-    @param recinst: the inst to show
+    @type recinsts: List(RecordableInst)
+    @param recinsts: a recording configuration
     """
-    def VisualizeRecordableInst(self, recinst):
-        non_hidden_nodes = recinst.concretized_nodes - set(recinst.rec_nodes) - \
-            set(recinst.hidden_nodes)
-        self.MarkNodesRedByID(recinst.rec_nodes)
-        self.MarkNodesWhiteByID(non_hidden_nodes)
-        self.ColorNodesByID(recinst.hidden_nodes, jcolor.green)
+    def VisualizeRecordableInst(self, recinsts):
+        colorednodes = set()
+        for recinst in recinsts:
+            # sanity check: should not color the same node twice
+            overlap = recinst.concretized_nodes & colorednodes
+            if len(overlap) != 0:
+                print("The following nodes will be colored twice:")
+                for nid in overlap:
+                    print("id: %s, label %s\n", nid, self.id_map[nid].label)
+                raise RuntimeError("Color the same node twice")
+            # end of sanity check
+            # color 3 types of nodes in different colors:
+            # 1) the nodes will be directly recorded
+            # 2) the nodes will be hidden (hidden is defined in func
+            # analyze_recordable)
+            # 3) other nodes
+            non_hidden_nodes = recinst.concretized_nodes -\
+            set(recinst.rec_nodes) - set(recinst.hidden_nodes)
+            self.MarkNodesRedByID(recinst.rec_nodes)
+            self.MarkNodesWhiteByID(non_hidden_nodes)
+            self.ColorNodesByID(recinst.hidden_nodes, jcolor.green)
+            colorednodes |= recinst.concretized_nodes
+
+    """
+    Filter list of RecordableInst which can concretize the given node.
+    This is helpful when you encounter a symbolic external function call.
+    """
+    def FilterMustRecordQuery(self, recinstsL, nid):
+        filtered = []
+        for recinsts in recinstsL:
+            for recinst in recinsts:
+                if nid in recinst.concretized_nodes:
+                    filtered.append(recinsts)
+                break
+        return filtered
 
 
 class HaseUtils(object):

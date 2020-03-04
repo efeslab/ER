@@ -84,6 +84,8 @@ ExecutionState::ExecutionState(KFunction *kf) :
     isInUserMain(false),
     isInPOSIX(false),
     POSIXDepth(0),
+    isInLIBC(false),
+    LIBCDepth(0),
     depth(0),
 
     instsSinceCovNew(0),
@@ -137,6 +139,8 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     isInUserMain(state.isInUserMain),
     isInPOSIX(state.isInPOSIX),
     POSIXDepth(state.POSIXDepth),
+    isInLIBC(state.isInLIBC),
+    LIBCDepth(state.LIBCDepth),
     depth(state.depth),
 
     pathOS(state.pathOS),
@@ -201,10 +205,16 @@ void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
   // into a POSIX function call (i.e. the entry point func belongs to POSIX)
   // So we should only reason about prop "InPOSIX" inside UserMain
   if (isInUserMain && IgnorePOSIXPath && kf->function->hasFnAttribute("InPOSIX")) {
-    if(POSIXDepth == 0) {
-      isInPOSIX=true;
+    if (POSIXDepth == 0) {
+      isInPOSIX = true;
     }
     ++POSIXDepth;
+  }
+  if (isInUserMain && kf->function->hasFnAttribute("InLIBC")) {
+    if (LIBCDepth == 0) {
+      isInLIBC = true;
+    }
+    ++LIBCDepth;
   }
 }
 
@@ -220,6 +230,12 @@ void ExecutionState::popFrame() {
     --POSIXDepth;
     if (POSIXDepth == 0) {
       isInPOSIX = false;
+    }
+  }
+  if (isInUserMain && sf.kf->function->hasFnAttribute("InLIBC")) {
+    --LIBCDepth;
+    if (LIBCDepth == 0) {
+      isInLIBC = false;
     }
   }
   stack.pop_back();

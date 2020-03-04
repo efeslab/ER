@@ -1395,6 +1395,16 @@ createLibCWrapper(std::vector<std::unique_ptr<llvm::Module>> &modules,
   Builder.CreateCall(libcMainFn, args);
   Builder.CreateUnreachable();
 }
+static void markPOSIXModuleFnAttr(llvm::Module *pM) {
+  for (auto &f: *pM) {
+    f.addFnAttr("InPOSIX", "AddFnAttr!");
+  }
+}
+static void markLibCModuleFnAttr(llvm::Module *pM) {
+  for (auto &f: *pM) {
+    f.addFnAttr("InLIBC", "AddFnAttr!");
+  }
+}
 
 static void
 linkWithUclibc(llvm::StringRef libDir,
@@ -1407,7 +1417,8 @@ linkWithUclibc(llvm::StringRef libDir,
   SmallString<128> uclibcBCA(libDir);
   std::string errorMsg;
   llvm::sys::path::append(uclibcBCA, KLEE_UCLIBC_BCA_NAME);
-  if (!klee::loadFile(uclibcBCA.c_str(), ctx, modules, errorMsg))
+  if (!klee::loadFile(uclibcBCA.c_str(), ctx, modules, errorMsg,
+                      markLibCModuleFnAttr))
     klee_error("Cannot find klee-uclibc '%s': %s", uclibcBCA.c_str(),
                errorMsg.c_str());
 
@@ -1556,7 +1567,7 @@ int main(int argc, char **argv, char **envp) {
     llvm::sys::path::append(Path, "libkleeRuntimePOSIX.bca");
     klee_message("NOTE: Using POSIX model: %s", Path.c_str());
     if (!klee::loadFile(Path.c_str(), mainModule->getContext(), loadedModules,
-                        errorMsg))
+                        errorMsg, markPOSIXModuleFnAttr))
       klee_error("error loading POSIX support '%s': %s", Path.c_str(),
                  errorMsg.c_str());
     for (auto &pM:loadedModules) {
@@ -1590,7 +1601,7 @@ int main(int argc, char **argv, char **envp) {
     SmallString<128> Path(Opts.LibraryDir);
     llvm::sys::path::append(Path, "libklee-libc.bca");
     if (!klee::loadFile(Path.c_str(), mainModule->getContext(), loadedModules,
-                        errorMsg))
+                        errorMsg, markLibCModuleFnAttr))
       klee_error("error loading klee libc '%s': %s", Path.c_str(),
                  errorMsg.c_str());
   }
@@ -1599,7 +1610,7 @@ int main(int argc, char **argv, char **envp) {
     SmallString<128> Path(Opts.LibraryDir);
     llvm::sys::path::append(Path, "libkleeRuntimeFreeStanding.bca");
     if (!klee::loadFile(Path.c_str(), mainModule->getContext(), loadedModules,
-                        errorMsg))
+                        errorMsg, markLibCModuleFnAttr))
       klee_error("error loading free standing support '%s': %s", Path.c_str(),
                  errorMsg.c_str());
     break;
@@ -1611,7 +1622,7 @@ int main(int argc, char **argv, char **envp) {
 
   for (const auto &library : LinkLibraries) {
     if (!klee::loadFile(library, mainModule->getContext(), loadedModules,
-                        errorMsg))
+                        errorMsg, markLibCModuleFnAttr))
       klee_error("error loading bitcode library '%s': %s", library.c_str(),
                  errorMsg.c_str());
   }

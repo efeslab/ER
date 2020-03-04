@@ -1283,8 +1283,15 @@ const Cell& Executor::eval(KInstruction *ki, unsigned index,
 void Executor::bindLocal(KInstruction *target, ExecutionState &state,
                          ref<Expr> value) {
   getDestCell(state, target).value = value;
-  value->kinst = target;
-  value->flags |= Expr::Expr::FLAG_INSTRUCTION_ROOT;
+  // I mark LLVM functions from POSIX and LIBC with special function
+  // attributes. Then we only bind a kinst to a symbolic expression in either of
+  // the following scenarios:
+  //   1) the symbolic expression has not been bound to any kinst
+  //   2) the kinst is from the target program (not from POSIX nor LIBC)
+  if (!value->kinst || state.isInTargetProgram()) {
+    value->kinst = target;
+    value->flags |= Expr::Expr::FLAG_INSTRUCTION_ROOT;
+  }
 }
 
 void Executor::bindArgument(KFunction *kf, unsigned index,

@@ -121,6 +121,8 @@ public:
   /// It is designed to filter out all recording happened inside POSIX runtime
   bool isInPOSIX;
   unsigned POSIXDepth;
+  bool isInLIBC;
+  unsigned LIBCDepth;
 
   /// @brief Exploration depth, i.e., number of times KLEE branched for this state
   unsigned depth;
@@ -217,6 +219,9 @@ public:
   void dumpStatsPathOS();
   void dumpConsPathOS(const std::string &cons);
   inline bool shouldRecord() const { return isInUserMain && !isInPOSIX; }
+  inline bool isInTargetProgram() const {
+    return isInUserMain && !isInPOSIX && !isInLIBC;
+  }
 };
 }
 

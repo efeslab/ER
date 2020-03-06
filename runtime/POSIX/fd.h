@@ -37,6 +37,7 @@
 #endif
 #endif
 
+// model a symbolic regular file
 typedef struct {
   unsigned size;  /* in bytes */
   char* contents;
@@ -45,24 +46,36 @@ typedef struct {
 } exe_disk_file_t;
 
 typedef enum {
-  eOpen         = (1 << 0),
+  eOpen         = (1 << 0), /* eOpen is set when this fd is valid*/
   eCloseOnExec  = (1 << 1),
   eReadable     = (1 << 2),
-  eWriteable    = (1 << 3)
+  eWriteable    = (1 << 3),
+  eIsFile       = (1 << 4),
+  eIsPIPE       = (1 << 5),
+  eIsSocket     = (1 << 6)
 } exe_file_flag_t;
 
-typedef struct {      
-  int fd;                   /* actual fd if not symbolic */
-  unsigned flags;           /* set of exe_file_flag_t values. fields
-                               are only defined when flags at least
-                               has eOpen. */
-  off64_t off;              /* offset */
-  exe_disk_file_t* dfile;   /* ptr to file on disk, if symbolic */
+/* model a linux file descriptor (could be a regular file, pipe, socket, etc.)
+ * If the `dfile` field is a nullptr, then this is a concrete file descriptor.
+ * Otherwise, a symbolic file descriptor
+ */
+typedef struct {
+  int fd;         /* actual fd if not symbolic */
+  unsigned flags; /* set of exe_file_flag_t values. fields
+                     are only defined when flags at least
+                     has eOpen. */
+  off64_t off;    /* offset */
+  void *dfile;    /* type: ext_disk_file_t*, if fd is a regular file; TODO pipe
+                     type; TODO socket type */
 } exe_file_t;
 
 enum sym_file_type {
-  STANDALONE,
-  UNITED
+  STANDALONE, /* file name and size are managed for each file,
+                 user can specify the name and size of each
+                 symbolic file */
+  UNITED      /* file name and size are managed in a predefined
+                 manner. e.g.: file names are A, B, C, each has
+                 the same size */
 };
 
 typedef struct {

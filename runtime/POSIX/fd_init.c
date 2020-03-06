@@ -166,12 +166,15 @@ static void klee_concretize(char *concretize_cfg) {
 
 
 /* n_files: number of symbolic input files, excluding stdin
-   file_length: size in bytes of each symbolic file, including stdin
-   sym_stdout_flag: 1 if stdout should be symbolic, 0 otherwise
-   save_all_writes_flag: 1 if all writes are executed as expected, 0 if 
-                         writes past the initial file size are discarded 
-			 (file offset is always incremented)
-   max_failures: maximum number of system call failures */
+ * file_length: size in bytes of each symbolic file, including stdin
+ * sym_stdout_flag: 1 if stdout should be symbolic, 0 otherwise
+ * save_all_writes_flag: 1 if all writes are executed as expected, 0 if 
+ *                       writes past the initial file size are discarded 
+ *  		 (file offset is always incremented)
+ * max_failures: maximum number of system call failures
+ * sym_file_names and sym_file_lens: when file_length == 0, name and length of
+ * each file is specified separately.
+ */
 void klee_init_fds(unsigned n_files, unsigned file_length,
                    unsigned stdin_length, int sym_file_stdin_flag,
                    int sym_stdout_flag,

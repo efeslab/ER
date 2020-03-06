@@ -201,7 +201,7 @@ usage: (klee_init_env) [options] [program arguments]\n\
                      "cannot be 0\n");
     } else if (__streq(argv[k], "--sym-file") ||
                __streq(argv[k], "-sym-file")) {
-      const char *msg = "--sym-files expect two arguments "
+      const char *msg = "--sym-file expect two arguments "
                         "<sym-file-name> <sym-file-len>";
 
       if (k + 2 >= argc)

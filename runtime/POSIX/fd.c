@@ -192,7 +192,7 @@ int __fd_open(const char *pathname, int flags, mode_t mode) {
 	return -1;
     }
     else
-      f->dfile->stat->st_mode = ((f->dfile->stat->st_mode & ~0777) |
+      df->stat->st_mode = ((df->stat->st_mode & ~0777) |
 				 (mode & ~__exe_env.umask));
   } else {    
     int os_fd = syscall(__NR_open, __concretize_string(pathname), flags, mode);
@@ -392,21 +392,23 @@ ssize_t read(int fd, void *buf, size_t count) {
     if (f->fd != 0)
       f->off += r;
     return r;
-  }
-  else {
+  } else if (f->flags & eIsFile) {
+    exe_disk_file_t *regf = (exe_disk_file_t*)f->dfile;
     assert(f->off >= 0);
-    if (((off64_t)f->dfile->size) < f->off)
+    if (((off64_t)regf->size) < f->off)
       return 0;
 
     /* symbolic file */
-    if (f->off + count > f->dfile->size) {
-      count = f->dfile->size - f->off;
+    if (f->off + count > regf->size) {
+      count = regf->size - f->off;
     }
     
-    memcpy(buf, f->dfile->contents + f->off, count);
+    memcpy(buf, regf->contents + f->off, count);
     f->off += count;
     
     return count;
+  } else {
+    // TODO eIsPIPE?
   }
 }
 
@@ -452,31 +454,35 @@ ssize_t write(int fd, const void *buf, size_t count) {
 
     return r;
   }
-  else {
-    /* symbolic file */    
+  else if (f->flags & eIsFile) {
+    /* symbolic regular file */
+    exe_disk_file_t *regf = (exe_disk_file_t*)f->dfile;
     size_t actual_count = 0;
-    if (f->off + count <= f->dfile->size)
+    if (f->off + count <= regf->size)
       actual_count = count;
     else {
       if (__exe_env.save_all_writes)
-	assert(0);
+        assert(0);
       else {
-	if (f->off < (off64_t) f->dfile->size)
-	  actual_count = f->dfile->size - f->off;	
+        if (f->off < (off64_t) regf->size)
+          actual_count = regf->size - f->off;
       }
     }
     
     if (actual_count)
-      memcpy(f->dfile->contents + f->off, buf, actual_count);
+      memcpy(regf->contents + f->off, buf, actual_count);
     
     if (count != actual_count)
       klee_warning("write() ignores bytes.\n");
 
-    if (f->dfile == __exe_fs.sym_stdout)
+    if (regf == __exe_fs.sym_stdout)
       __exe_fs.stdout_writes += actual_count;
 
     f->off += count;
     return count;
+  }
+  else {
+    // TODO eIsPIPE?
   }
 }
 
@@ -517,23 +523,29 @@ off64_t __fd_lseek(int fd, off64_t offset, int whence) {
     return new_off;
   }
   
-  switch (whence) {
-  case SEEK_SET: new_off = offset; break;
-  case SEEK_CUR: new_off = f->off + offset; break;
-  case SEEK_END: new_off = f->dfile->size + offset; break;
-  default: {
-    errno = EINVAL;
-    return (off64_t) -1;
-  }
-  }
+  if (f->flags & eIsFile) {
+    // symbolic regular file
+    exe_disk_file_t *regf = (exe_disk_file_t*)f->dfile;
+    switch (whence) {
+      case SEEK_SET: new_off = offset; break;
+      case SEEK_CUR: new_off = f->off + offset; break;
+      case SEEK_END: new_off = regf->size + offset; break;
+      default: {
+                 errno = EINVAL;
+                 return (off64_t) -1;
+               }
+    }
 
-  if (new_off < 0) {
-    errno = EINVAL;
-    return (off64_t) -1;
+    if (new_off < 0) {
+      errno = EINVAL;
+      return (off64_t) -1;
+    }
+
+    f->off = new_off;
+    return f->off;
+  } else {
+    // TODO eIsPIPE?
   }
-    
-  f->off = new_off;
-  return f->off;
 }
 
 int __fd_stat(const char *path, struct stat64 *buf) {  
@@ -552,6 +564,8 @@ int __fd_stat(const char *path, struct stat64 *buf) {
   }
 }
 
+// path is assumed to be nonnull. This is checked via compiler attribute
+// __nonnull__
 int fstatat(int fd, const char *path, struct stat *buf, int flags) {  
   if (fd != AT_FDCWD) {
     exe_file_t *f = __get_file(fd);
@@ -574,10 +588,10 @@ int fstatat(int fd, const char *path, struct stat *buf, int flags) {
 
 #if (defined __NR_newfstatat) && (__NR_newfstatat != 0)
   return syscall(__NR_newfstatat, (long)fd,
-                 (path ? __concretize_string(path) : NULL), buf, (long)flags);
+                 __concretize_string(path), buf, (long)flags);
 #else
   return syscall(__NR_fstatat64, (long)fd,
-                 (path ? __concretize_string(path) : NULL), buf, (long)flags);
+                 __concretize_string(path), buf, (long)flags);
 #endif
 }
 
@@ -742,9 +756,15 @@ int __fd_fstat(int fd, struct stat64 *buf) {
     return syscall(__NR_fstat64, f->fd, buf);
 #endif
   }
-  
-  memcpy(buf, f->dfile->stat, sizeof(*f->dfile->stat));
-  return 0;
+  if (f->flags & eIsFile) {
+    exe_disk_file_t *regf = (exe_disk_file_t*)f->dfile;
+    // symbolic regular file
+    memcpy(buf, regf->stat, sizeof(*regf->stat));
+    return 0;
+  }
+  else {
+    // TODO eIsPIPE?
+  }
 }
 
 int __fd_ftruncate(int fd, off64_t length) {
@@ -885,127 +905,132 @@ int ioctl(int fd, unsigned long request, ...) {
   buf = va_arg(ap, void*);
   va_end(ap);
   if (f->dfile) {
-    struct stat *stat = (struct stat*) f->dfile->stat;
+    if (f->flags & eIsFile) {
+      exe_disk_file_t *regf = (exe_disk_file_t*)f->dfile;
+      struct stat *stat = (struct stat *)regf->stat;
 
-    switch (request) {
-    case TCGETS: {      
-      struct termios *ts = buf;
+      switch (request) {
+      case TCGETS: {
+        struct termios *ts = buf;
 
-      klee_warning_once("(TCGETS) symbolic file, incomplete model");
+        klee_warning_once("(TCGETS) symbolic file, incomplete model");
 
-      /* XXX need more data, this is ok but still not good enough */
-      if (S_ISCHR(stat->st_mode)) {
-        /* Just copied from my system, munged to match what fields
-           uclibc thinks are there. */
-        ts->c_iflag = 27906;
-        ts->c_oflag = 5;
-        ts->c_cflag = 1215;
-        ts->c_lflag = 35287;
+        /* XXX need more data, this is ok but still not good enough */
+        if (S_ISCHR(stat->st_mode)) {
+          /* Just copied from my system, munged to match what fields
+             uclibc thinks are there. */
+          ts->c_iflag = 27906;
+          ts->c_oflag = 5;
+          ts->c_cflag = 1215;
+          ts->c_lflag = 35287;
 #ifdef __GLIBC__
-        ts->c_line = 0;
+          ts->c_line = 0;
 #endif
-        ts->c_cc[0] = '\x03';
-        ts->c_cc[1] = '\x1c';
-        ts->c_cc[2] = '\x7f';
-        ts->c_cc[3] = '\x15';
-        ts->c_cc[4] = '\x04';
-        ts->c_cc[5] = '\x00';
-        ts->c_cc[6] = '\x01';
-        ts->c_cc[7] = '\xff';
-        ts->c_cc[8] = '\x11';
-        ts->c_cc[9] = '\x13';
-        ts->c_cc[10] = '\x1a';
-        ts->c_cc[11] = '\xff';
-        ts->c_cc[12] = '\x12';
-        ts->c_cc[13] = '\x0f';
-        ts->c_cc[14] = '\x17';
-        ts->c_cc[15] = '\x16';
-        ts->c_cc[16] = '\xff';
-        ts->c_cc[17] = '\x0';
-        ts->c_cc[18] = '\x0';
-        return 0;
-      } else {
-        errno = ENOTTY;
-        return -1;
+          ts->c_cc[0] = '\x03';
+          ts->c_cc[1] = '\x1c';
+          ts->c_cc[2] = '\x7f';
+          ts->c_cc[3] = '\x15';
+          ts->c_cc[4] = '\x04';
+          ts->c_cc[5] = '\x00';
+          ts->c_cc[6] = '\x01';
+          ts->c_cc[7] = '\xff';
+          ts->c_cc[8] = '\x11';
+          ts->c_cc[9] = '\x13';
+          ts->c_cc[10] = '\x1a';
+          ts->c_cc[11] = '\xff';
+          ts->c_cc[12] = '\x12';
+          ts->c_cc[13] = '\x0f';
+          ts->c_cc[14] = '\x17';
+          ts->c_cc[15] = '\x16';
+          ts->c_cc[16] = '\xff';
+          ts->c_cc[17] = '\x0';
+          ts->c_cc[18] = '\x0';
+          return 0;
+        } else {
+          errno = ENOTTY;
+          return -1;
+        }
       }
-    }
-    case TCSETS: {
-      /* const struct termios *ts = buf; */
-      klee_warning_once("(TCSETS) symbolic file, silently ignoring");
-      if (S_ISCHR(stat->st_mode)) {
-        return 0;
-      } else {
-        errno = ENOTTY;
-        return -1;
+      case TCSETS: {
+        /* const struct termios *ts = buf; */
+        klee_warning_once("(TCSETS) symbolic file, silently ignoring");
+        if (S_ISCHR(stat->st_mode)) {
+          return 0;
+        } else {
+          errno = ENOTTY;
+          return -1;
+        }
       }
-    }
-    case TCSETSW: {
-      /* const struct termios *ts = buf; */
-      klee_warning_once("(TCSETSW) symbolic file, silently ignoring");
-      if (fd==0) {
-        return 0;
-      } else {
-        errno = ENOTTY;
-        return -1;
+      case TCSETSW: {
+        /* const struct termios *ts = buf; */
+        klee_warning_once("(TCSETSW) symbolic file, silently ignoring");
+        if (fd == 0) {
+          return 0;
+        } else {
+          errno = ENOTTY;
+          return -1;
+        }
       }
-    }
-    case TCSETSF: {
-      /* const struct termios *ts = buf; */
-      klee_warning_once("(TCSETSF) symbolic file, silently ignoring");
-      if (S_ISCHR(stat->st_mode)) {        
-        return 0;
-      } else {
-        errno = ENOTTY;
-        return -1;
+      case TCSETSF: {
+        /* const struct termios *ts = buf; */
+        klee_warning_once("(TCSETSF) symbolic file, silently ignoring");
+        if (S_ISCHR(stat->st_mode)) {
+          return 0;
+        } else {
+          errno = ENOTTY;
+          return -1;
+        }
       }
-    }
-    case TIOCGWINSZ: {
-      struct winsize *ws = buf;
-      ws->ws_row = 24;
-      ws->ws_col = 80;
-      klee_warning_once("(TIOCGWINSZ) symbolic file, incomplete model");
-      if (S_ISCHR(stat->st_mode)) {
-        return 0;
-      } else {
-        errno = ENOTTY;
-        return -1;
+      case TIOCGWINSZ: {
+        struct winsize *ws = buf;
+        ws->ws_row = 24;
+        ws->ws_col = 80;
+        klee_warning_once("(TIOCGWINSZ) symbolic file, incomplete model");
+        if (S_ISCHR(stat->st_mode)) {
+          return 0;
+        } else {
+          errno = ENOTTY;
+          return -1;
+        }
       }
-    }
-    case TIOCSWINSZ: {
-      /* const struct winsize *ws = buf; */
-      klee_warning_once("(TIOCSWINSZ) symbolic file, ignoring (EINVAL)");
-      if (S_ISCHR(stat->st_mode)) {
+      case TIOCSWINSZ: {
+        /* const struct winsize *ws = buf; */
+        klee_warning_once("(TIOCSWINSZ) symbolic file, ignoring (EINVAL)");
+        if (S_ISCHR(stat->st_mode)) {
+          errno = EINVAL;
+          return -1;
+        } else {
+          errno = ENOTTY;
+          return -1;
+        }
+      }
+      case FIONREAD: {
+        int *res = buf;
+        klee_warning_once("(FIONREAD) symbolic file, incomplete model");
+        if (S_ISCHR(stat->st_mode)) {
+          if (f->off < (off64_t)regf->size) {
+            *res = regf->size - f->off;
+          } else {
+            *res = 0;
+          }
+          return 0;
+        } else {
+          errno = ENOTTY;
+          return -1;
+        }
+      }
+      case MTIOCGET: {
+        klee_warning("(MTIOCGET) symbolic file, ignoring (EINVAL)");
         errno = EINVAL;
         return -1;
-      } else {
-        errno = ENOTTY;
+      }
+      default:
+        klee_warning("symbolic file, ignoring (EINVAL)");
+        errno = EINVAL;
         return -1;
       }
-    }
-    case FIONREAD: {
-      int *res = buf;
-      klee_warning_once("(FIONREAD) symbolic file, incomplete model");
-      if (S_ISCHR(stat->st_mode)) {
-        if (f->off < (off64_t) f->dfile->size) {
-          *res = f->dfile->size - f->off;
-        } else {
-          *res = 0;
-        }
-        return 0;
-      } else {
-        errno = ENOTTY;
-        return -1;
-      }
-    }
-    case MTIOCGET: {
-      klee_warning("(MTIOCGET) symbolic file, ignoring (EINVAL)");
-      errno = EINVAL;
-      return -1;
-    }
-    default:
-      klee_warning("symbolic file, ignoring (EINVAL)");
-      errno = EINVAL;
-      return -1;
+    } else {
+      // TODO eIsPIPE?
     }
   }
   return syscall(__NR_ioctl, f->fd, request, buf);

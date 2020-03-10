@@ -11,6 +11,7 @@
 #define KLEE_FD_H
 
 #include "klee/Config/config.h"
+#include "config.h"
 
 #ifndef _LARGEFILE64_SOURCE
 #error "_LARGEFILE64_SOURCE should be defined"
@@ -93,8 +94,6 @@ typedef struct {
 
   enum sym_file_type type;
 } exe_file_system_t;
-
-#define MAX_FDS 32
 
 /* Note, if you change this structure be sure to update the
    initialization code if necessary. New fields should almost

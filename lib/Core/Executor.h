@@ -320,6 +320,8 @@ private:
                    ref<Expr> address,
                    KInstruction *target = 0);
 
+  /// NOTE: ki could be null if this function call is "pthread_exit" created by
+  /// the Instruction::Ret of a thread
   void executeCall(ExecutionState &state,
                    KInstruction *ki,
                    llvm::Function *f,
@@ -366,12 +368,16 @@ private:
   Cell& getArgumentCell(ExecutionState &state,
                         KFunction *kf,
                         unsigned index) {
-    return state.stack.back().locals[kf->getArgRegister(index)];
+    return state.stack().back().locals[kf->getArgRegister(index)];
+  }
+
+  Cell& getArgumentCell(StackFrame &sf, KFunction *kf, unsigned index) {
+    return sf.locals[kf->getArgRegister(index)];
   }
 
   Cell& getDestCell(ExecutionState &state,
                     KInstruction *target) {
-    return state.stack.back().locals[target->dest];
+    return state.stack().back().locals[target->dest];
   }
 
   void bindLocal(KInstruction *target,
@@ -485,6 +491,31 @@ private:
   /// Only for debug purposes; enable via debugger or klee-control
   void dumpStates();
   void dumpPTree();
+
+  /* Multi-threading related function */
+  // Pthread Create needs to specify a new StackFrame instead of just using the
+  // current thread's stack
+  void bindArgumentToPthreadCreate(KFunction *kf, unsigned index,
+                                   StackFrame &sf, ref<Expr> value);
+  // Schedule what threads to execute next in the given ExecutionState. There
+  // are 3 sceharios to consider:
+  // 1. One thread is terminated (enabled=false, yield=false)
+  // 2. One thread is not terminated but proactively yield (enabled=true,
+  // yield=true)
+  // 3. One thread is not terminated nor yielding, but preempted.
+  // @return if schedule successfully
+  // NOTE: For unknown reason, the cloud9 code base allow you just
+  // schedule one possible next thread in case 1 and 2. But you have to
+  // fork to iterate all possible schedules in case 3.
+  // NOTE: I have not implemented forking upon schedule, I assume you can
+  // only choose one possible next thread for case 1,2. And do nothing for case
+  // 3.
+  // NOTE: I have not implemented schedule recording, which may be required
+  // during replay later.
+  bool schedule(ExecutionState &state, bool yield);
+  void executeThreadCreate(ExecutionState &state, thread_id_t tid,
+                           ref<Expr> start_function, ref<Expr> arg);
+  void executeThreadExit(ExecutionState &state);
 
 public:
 

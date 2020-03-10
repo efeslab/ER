@@ -1045,7 +1045,16 @@ static const char *modelledExternals[] = {
   "__ubsan_handle_sub_overflow",
   "__ubsan_handle_mul_overflow",
   "__ubsan_handle_divrem_overflow",
+  // ported from cloud9
+  "klee_get_time",
+  "klee_get_wlist",
+  "klee_make_shared",
+  "klee_set_time",
+  "klee_thread_notify",
+  "klee_thread_preempt",
+  "klee_thread_sleep",
 };
+
 
 // Symbols we aren't going to warn about
 static const char *dontCareExternals[] = {

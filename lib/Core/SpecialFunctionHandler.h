@@ -143,6 +143,19 @@ namespace klee {
     HANDLER(handleMulOverflow);
     HANDLER(handleSubOverflow);
     HANDLER(handleDivRemOverflow);
+    /* Thread Scheduling Managemnt */
+    HANDLER(handleThreadCreate);
+    HANDLER(handleThreadTerminate);
+    HANDLER(handleGetContext);
+    HANDLER(handleGetWList);
+    HANDLER(handleThreadPreempt);
+    HANDLER(handleThreadSleep);
+    HANDLER(handleThreadNotify);
+    /* Process Management Placeholder */
+    HANDLER(handleProcessFork);
+    HANDLER(handleProcessTerminate);
+    /* Shared Memory Placeholder */
+    HANDLER(handleMakeShared);
 #undef HANDLER
   };
 } // End klee namespace

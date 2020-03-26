@@ -31,9 +31,12 @@
 #include <sys/wait.h>
 
 #include "klee/Config/config.h"
+#include "config.h"
 
 void klee_warning(const char*);
 void klee_warning_once(const char*);
+
+#ifndef HAVE_POSIX_SIGNALS
 
 /* Silent ignore */
 
@@ -56,12 +59,46 @@ int sigaction(int signum, const struct sigaction *act,
   return 0;
 }
 
+typedef void (*sighandler_t)(int);
+
+sighandler_t signal(int signum, sighandler_t handler) {
+  klee_warning_once("silently ignoring");
+  return 0;
+}
+
+sighandler_t sigset(int sig, sighandler_t disp) {
+  klee_warning_once("silently ignoring");
+  return 0;
+}
+
+int sighold(int sig) {
+  klee_warning_once("silently ignoring");
+  return 0;
+}
+
+int sigrelse(int sig) {
+  klee_warning_once("silently ignoring");
+  return 0;
+}
+
+int sigignore(int sig) {
+  klee_warning_once("silently ignoring");
+  return 0;
+}
+
+unsigned int alarm(unsigned int seconds) {
+  klee_warning_once("silently ignoring");
+  return 0;
+}
+
 int sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
      __attribute__((weak));
 int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
   klee_warning_once("silently ignoring");
   return 0;
 }
+
+#endif /* HAVE_POSIX_SIGNALS */
 
 /* Not even worth warning about these */
 int fdatasync(int fd) __attribute__((weak));
@@ -114,13 +151,6 @@ int mknod(const char *pathname, mode_t mode, dev_t dev) __attribute__((weak));
 int mknod(const char *pathname, mode_t mode, dev_t dev) {
   klee_warning("ignoring (EIO)");
   errno = EIO;
-  return -1;
-}
-
-int pipe(int filedes[2]) __attribute__((weak));
-int pipe(int filedes[2]) {
-  klee_warning("ignoring (ENFILE)");
-  errno = ENFILE;
   return -1;
 }
 
@@ -519,25 +549,38 @@ int setrlimit(__rlimit_resource_t resource, const struct rlimit *rlim) {
 int setrlimit(int resource, const struct rlimit *rlp) __attribute__((weak));
 int setrlimit(int resource, const struct rlimit *rlp) {
 #endif
+#ifdef HAVE_FAKE_RLIMIT
+  return 0;
+#else
   klee_warning("ignoring (EPERM)");
   errno = EPERM;
   return -1;
+#endif
 }
 
 #ifndef __FreeBSD__
 int setrlimit64(__rlimit_resource_t resource, const struct rlimit64 *rlim) __attribute__((weak));
 int setrlimit64(__rlimit_resource_t resource, const struct rlimit64 *rlim) {
+#ifdef HAVE_FAKE_RLIMIT
+  return 0;
+#else
   klee_warning("ignoring (EPERM)");
   errno = EPERM;
   return -1;
+#endif
 }
 #endif
 
 pid_t setsid(void) __attribute__((weak));
 pid_t setsid(void) {
-  klee_warning("ignoring (EPERM)");
+#ifdef HAVE_FAKE_SETSID
+  klee_warning("ignoring setsid (0)");
+  return 0;
+#else
+  klee_warning("ignoring setsid (EPERM)");
   errno = EPERM;
   return -1;
+#endif
 }
 
 int settimeofday(const struct timeval *tv, const struct timezone *tz) __attribute__((weak));
@@ -588,23 +631,18 @@ ssize_t readahead(int fd, off64_t *offset, size_t count) {
   return -1;
 }
 
-void *mmap(void *start, size_t length, int prot, int flags, int fd, off_t offset) __attribute__((weak));
-void *mmap(void *start, size_t length, int prot, int flags, int fd, off_t offset) {
-  klee_warning("ignoring (EPERM)");
-  errno = EPERM;
-  return (void*) -1;
+void openlog(const char *ident, int option, int facility) {
+  klee_warning("ignoring");
 }
 
-void *mmap64(void *start, size_t length, int prot, int flags, int fd, off64_t offset) __attribute__((weak));
-void *mmap64(void *start, size_t length, int prot, int flags, int fd, off64_t offset) {
-  klee_warning("ignoring (EPERM)");
-  errno = EPERM;
-  return (void*) -1;
+void syslog(int priority, const char *format, ...) {
+  klee_warning("ignoring");
 }
 
-int munmap(void*start, size_t length) __attribute__((weak));
-int munmap(void*start, size_t length) {
-  klee_warning("ignoring (EPERM)");
-  errno = EPERM;
-  return -1;
+void closelog(void) {
+  klee_warning("ignoring");
+}
+
+void vsyslog(int priority, const char *format, va_list ap) {
+  klee_warning("ignoring");
 }

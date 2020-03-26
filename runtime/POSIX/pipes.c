@@ -133,7 +133,7 @@ ssize_t _write_pipe(pipe_end_t *pipe, const void *buf, size_t count) {
   return res;
 }
 
-int _stat_pipe(pipe_end_t *pipe, struct stat *buf) {
+int _stat_pipe(pipe_end_t *pipe, struct stat64 *buf) {
   assert(0 && "not implemented");
 }
 
@@ -165,24 +165,26 @@ void _deregister_events_pipe(pipe_end_t *pipe, wlist_id_t wlist, int events) {
 int pipe(int pipefd[2]) {
   int fdr, fdw;
 
-  klee_debug("Attempting to create a pipe\n");
+  posix_debug_msg("Attempting to create a pipe\n");
 
   // Allocate the two file descriptors
-  STATIC_LIST_ALLOC(__fdt, fdr);
+  fdr = __fd_allocate();
 
   if (fdr == MAX_FDS) {
     errno = ENFILE;
     return -1;
   }
+  fd_entry_t *fder = &__exe_env.fds[fdr];
 
-  STATIC_LIST_ALLOC(__fdt, fdw);
+  fdw = __fd_allocate();
 
   if (fdw == MAX_FDS) {
-    STATIC_LIST_CLEAR(__fdt, fdr);
+    __fd_clear(fdr);
 
     errno = ENFILE;
     return -1;
   }
+  fd_entry_t *fdew = &__exe_env.fds[fdw];
 
   // Initialize the stream buffer
   stream_buffer_t *buff = _stream_create(PIPE_BUFFER_SIZE, 1);
@@ -197,8 +199,8 @@ int pipe(int pipefd[2]) {
   piper->__bdata.queued = 0;
   piper->buffer = buff;
 
-  __fdt[fdr].attr |= FD_IS_PIPE;
-  __fdt[fdr].io_object = (file_base_t*)piper;
+  fder->attr |= eIsPIPE;
+  fder->io_object = (file_base_t*)piper;
 
   // Create the pipe write point
   pipe_end_t *pipew = (pipe_end_t*)malloc(sizeof(pipe_end_t));
@@ -210,11 +212,11 @@ int pipe(int pipefd[2]) {
   pipew->__bdata.queued = 0;
   pipew->buffer = buff;
 
-  __fdt[fdw].attr |= FD_IS_PIPE;
-  __fdt[fdw].io_object = (file_base_t*)pipew;
+  fdew->attr |= eIsPIPE;
+  fdew->io_object = (file_base_t*)pipew;
 
   pipefd[0] = fdr; pipefd[1] = fdw;
 
-  klee_debug("Pipe created (%d, %d)\n", fdr, fdw);
+  posix_debug_msg("Pipe created (%d, %d)\n", fdr, fdw);
   return 0;
 }

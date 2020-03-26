@@ -36,8 +36,8 @@
 #include <unistd.h>
 #include <sys/uio.h>
 
-//#include "common.h"
-#include "multiprocess.h"
+#include "common.h"
+//#include "multiprocess.h"
 
 // TODO(sbucur): Get rid of non-vector read/write calls
 

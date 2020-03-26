@@ -41,9 +41,8 @@
 #include <klee/klee.h>
 
 #include "common.h"
-#include "signals.h"
+//#include "signals.h"
 
-typedef uint64_t wlist_id_t;
 
 #define DEFAULT_THREAD  0
 
@@ -66,7 +65,7 @@ typedef uint64_t wlist_id_t;
 ////////////////////////////////////////////////////////////////////////////////
 // System Wide Data Structures
 ////////////////////////////////////////////////////////////////////////////////
-
+/* I do not support process-wide features
 typedef struct {
   wlist_id_t wlist;
   wlist_id_t children_wlist;
@@ -104,7 +103,7 @@ typedef struct {
 } sem_set_t;
 
 extern sem_set_t __sems[MAX_SEMAPHORES];
-
+*/
 ////////////////////////////////////////////////////////////////////////////////
 // Process Specific Data Structures
 ////////////////////////////////////////////////////////////////////////////////

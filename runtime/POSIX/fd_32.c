@@ -20,6 +20,7 @@
 #include "klee/Config/Version.h"
 #define _LARGEFILE64_SOURCE
 #include "fd.h"
+#include "files.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -93,7 +94,7 @@ int openat(int fd, const char *pathname, int flags, ...) {
 }
 
 off_t lseek(int fd, off_t off, int whence) {
-  return (off_t) __fd_lseek(fd, off, whence);
+  return (off_t) __fd_lseek64(fd, off, whence);
 }
 
 int __xstat(int vers, const char *path, struct stat *buf) {
@@ -140,29 +141,6 @@ int fstat(int fd, struct stat *buf) {
 
 int ftruncate(int fd, off_t length) {
   return __fd_ftruncate(fd, length);
-}
-
-int statfs(const char *path, struct statfs *buf32) {
-#if 0
-    struct statfs64 buf;
-
-    if (__fd_statfs(path, &buf) < 0)
-	return -1;
-
-    buf32->f_type = buf.f_type;
-    buf32->f_bsize = buf.f_bsize;
-    buf32->f_blocks = buf.f_blocks;
-    buf32->f_bfree = buf.f_bfree;
-    buf32->f_bavail = buf.f_bavail;
-    buf32->f_files = buf.f_files;
-    buf32->f_ffree = buf.f_ffree;
-    buf32->f_fsid = buf.f_fsid;
-    buf32->f_namelen = buf.f_namelen;
-
-    return 0;
-#else
-    return __fd_statfs(path, buf32);
-#endif
 }
 
 /* Based on uclibc version. We use getdents64 and then rewrite the

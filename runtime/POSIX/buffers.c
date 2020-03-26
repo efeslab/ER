@@ -32,8 +32,9 @@
 
 #include "buffers.h"
 
-//#include "common.h"
+#include "common.h"
 //#include "signals.h"
+#include "multiprocess.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -173,11 +174,13 @@ ssize_t _stream_readv(stream_buffer_t *buff, const struct iovec *iov, int iovcnt
     count = buff->size;
   if (buff->max_rsize < count)
     count = buff->max_rsize;
-
+  /* I can currently assume the count is concrete
+   * I should only handle reading symbolic content
   if (buff->status & BUFFER_STATUS_SYM_READS) {
     count = __fork_values(1, count, __KLEE_FORK_DEFAULT);
     klee_event(__KLEE_EVENT_PKT_FRAGMENT, __concretize_size(count));
   }
+  */
 
   int i;
   size_t offset = buff->start;

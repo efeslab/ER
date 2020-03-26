@@ -30,64 +30,18 @@
  *
  */
 
-#include "multiprocess.h"
-//#include "signals.h"
+#ifndef NETLINK_H_
+#define NETLINK_H_
 
-//#include "models.h"
-#include "common.h"
+#include "sockets.h"
 
-#include <string.h>
-#include <klee/klee.h>
+#include <sys/uio.h>
+#include <sys/types.h>
 
-////////////////////////////////////////////////////////////////////////////////
-// Processes
-////////////////////////////////////////////////////////////////////////////////
-/* I do not support processes for now
-proc_data_t __pdata[MAX_PROCESSES];
-sem_set_t __sems[MAX_SEMAPHORES];
+void _netlink_handler(socket_t *sock, const struct iovec *iov, int iovcnt,
+    size_t count);
 
-static void klee_init_semaphores(void) {
-  STATIC_LIST_INIT(__sems);
-  klee_make_shared(__sems, sizeof(__sems));
-}
+void klee_init_netlink(void);
 
-void klee_init_processes(void) {
-  STATIC_LIST_INIT(__pdata);
-  klee_make_shared(__pdata, sizeof(__pdata));
 
-  proc_data_t *pdata = &__pdata[PID_TO_INDEX(DEFAULT_PROCESS)];
-  pdata->allocated = 1;
-  pdata->terminated = 0;
-  pdata->parent = DEFAULT_PARENT;
-  pdata->umask = DEFAULT_UMASK;
-  pdata->wlist = klee_get_wlist();
-  pdata->children_wlist = klee_get_wlist();
-
-  klee_init_semaphores();
-
-  klee_init_threads();
-
-#ifdef HAVE_POSIX_SIGNALS
-  klee_init_signals();
-#endif
-
-}
-*/
-
-////////////////////////////////////////////////////////////////////////////////
-// Threads
-////////////////////////////////////////////////////////////////////////////////
-
-tsync_data_t __tsync;
-
-void klee_init_threads(void) {
-  STATIC_LIST_INIT(__tsync.threads);
-
-  // Thread initialization
-  thread_data_t *def_data = &__tsync.threads[DEFAULT_THREAD];
-  def_data->allocated = 1;
-  def_data->terminated = 0;
-  def_data->ret_value = 0;
-  def_data->joinable = 1; // Why not?
-  def_data->wlist = klee_get_wlist();
-}
+#endif /* NETLINK_H_ */

@@ -12,6 +12,10 @@
 #define _LARGEFILE64_SOURCE
 #endif
 #include "fd.h"
+#include "misc.h"
+#include "sockets.h"
+#include "symfs.h"
+#include "netlink.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -82,6 +86,18 @@ static void __add_arg(int *argc, char **argv, char *arg, int argcMax) {
   }
 }
 
+static void __add_symfs_file(fs_init_descriptor_t *fid,
+                             enum sym_file_type file_type,
+                             const char *file_path) {
+  if (fid->n_sym_files >= MAX_FILES) {
+    __emit_error("Maximum number of allowed symbolic files exceeded when "
+                 "adding SYMBOLIC/CONCRETE files");
+  }
+  sym_file_descriptor_t *sfd = &fid->sym_files[fid->n_sym_files++];
+  sfd->file_type = file_type;
+  sfd->file_path = file_path;
+}
+
 void klee_init_env(int *argcPtr, char ***argvPtr) {
   int argc = *argcPtr;
   char **argv = *argvPtr;
@@ -89,20 +105,21 @@ void klee_init_env(int *argcPtr, char ***argvPtr) {
   int new_argc = 0;
   char *new_argv[1024];
   unsigned max_len, min_argvs, max_argvs;
-  unsigned sym_files = 0, sym_file_len = 0;
-  unsigned sym_stdin_len = 0;
-  int sym_file_stdin_flag = 0;
-  int sym_stdout_flag = 0;
   int save_all_writes_flag = 0;
-  int fd_fail = 0;
   char **final_argv;
   char sym_arg_name[6] = "arg";
   unsigned sym_arg_num = 0;
   int k = 0, i;
-  char *concretize_cfg = 0;
-
-  char *sym_file_names[1024];
-  unsigned sym_file_lens[1024];
+  fs_init_descriptor_t fid;
+  fid.n_sym_files = 0;
+  fid.sym_stdin_len = 0;
+  fid.allow_unsafe = 0;
+  fid.overlapped_writes = 1;
+  fid.sym_file_stdin_flag = 0;
+  fid.sym_stdout_flag = 0;
+  fid.max_failures = 0;
+  // This is defined in common.c
+  enableDebug = 0;
 
   sym_arg_name[5] = '\0';
 
@@ -114,9 +131,11 @@ usage: (klee_init_env) [options] [program arguments]\n\
   -sym-args <MIN> <MAX> <N> - Replace by at least MIN arguments and at most\n\
                               MAX arguments, each with maximum length N\n\
   -sym-files <NUM> <N>      - Make NUM symbolic files ('A', 'B', 'C', etc.),\n\
-                              each with size N\n\
-  -sym-file <FILE> <N>      - Make a symbolic FILE with size N. This is conflict\n\
-                            - with -sym-files\n\
+                              each with size N. (type: PURE_SYMBOLIC)\n\
+  -sym-file <FILE>          - Make a symbolic file based on the name, stats, \n\
+                              size of the given <FILE>. (type: SYMBOLIC).\n\
+  -con-file <FILE>          - Import a concrete file to the symbolic file \n\
+                              system. (type: CONCRETE)\n\
   -sym-stdin <N>            - Make stdin symbolic with size N.\n\
   -sym-file-stdin           - Make symbolic stdin behave like piped in from a file if set.\n\
   -sym-stdout               - Make stdout symbolic.\n\
@@ -125,8 +144,11 @@ usage: (klee_init_env) [options] [program arguments]\n\
                               writes exceeding the initial file size are discarded.\n\
                               Note: file offset is always incremented.\n\
   -max-fail <N>             - Allow up to N injected failures\n\
-  -concretize_cfg <FILE>    - Replace specific inputs with concretized value\n\
-  -fd-fail                  - Shortcut for '-max-fail 1'\n\n");
+  -unsafe                   - Allow non-RD_ONLY (unsafe) access to concrete \n\
+                              files.\n\
+  -no-overlapped            - Do not keep per-state concrete file offsets\n\
+  -fd-fail                  - Shortcut for '-max-fail 1'\n\
+  -posix-debug              - Enable debug message in POSIX runtime\n");
   }
 
   while (k < argc) {
@@ -185,12 +207,12 @@ usage: (klee_init_env) [options] [program arguments]\n\
       if (k + 2 >= argc)
         __emit_error(msg);
 
-      if (sym_files != 0)
+      if (fid.n_sym_files != 0)
         __emit_error("Multiple --sym-files are not allowed.\n");
 
       k++;
-      sym_files = __str_to_int(argv[k++], msg);
-      sym_file_len = __str_to_int(argv[k++], msg);
+      long int sym_files = __str_to_int(argv[k++], msg);
+      long int sym_file_len = __str_to_int(argv[k++], msg);
 
       if (sym_files == 0)
         __emit_error("The first argument to --sym-files (number of files) "
@@ -199,21 +221,36 @@ usage: (klee_init_env) [options] [program arguments]\n\
       if (sym_file_len == 0)
         __emit_error("The second argument to --sym-files (file size) "
                      "cannot be 0\n");
+      int i;
+      for (i=0; i < sym_files; ++i) {
+        if (fid.n_sym_files >= MAX_FILES) {
+          __emit_error("Maximum number of allowed symbolic files exceeded when "
+                       "adding pure symbolic files");
+        }
+        sym_file_descriptor_t *sfd = &fid.sym_files[fid.n_sym_files++];
+        sfd->file_type = PURE_SYMBOLIC;
+        sfd->file_size = sym_file_len;
+      }
     } else if (__streq(argv[k], "--sym-file") ||
                __streq(argv[k], "-sym-file")) {
-      const char *msg = "--sym-file expect two arguments "
-                        "<sym-file-name> <sym-file-len>";
+      const char *msg = "--sym-file expect one argument "
+                        "<backend-file-path>";
 
-      if (k + 2 >= argc)
+      if (++k >= argc)
         __emit_error(msg);
 
-      if (sym_file_len != 0)
-        __emit_error("--sym-files not allowed together with --sym-file");
+      const char *file_path = argv[k++];
+      __add_symfs_file(&fid, SYMBOLIC, file_path);
+    } else if (__streq(argv[k], "--con-file") ||
+               __streq(argv[k], "-con-file")) {
+      const char *msg = "--con-file expect one argument "
+                        "<backend-file-path>";
 
-      k++;
-      sym_file_names[sym_files] = argv[k++];
-      sym_file_lens[sym_files] = __str_to_int(argv[k++], msg);
-      sym_files++;
+      if (++k >= argc)
+        __emit_error(msg);
+
+      const char *file_path = argv[k++];
+      __add_symfs_file(&fid, CONCRETE, file_path);
     } else if (__streq(argv[k], "--sym-stdin") ||
                __streq(argv[k], "-sym-stdin")) {
       const char *msg =
@@ -222,21 +259,29 @@ usage: (klee_init_env) [options] [program arguments]\n\
       if (++k == argc)
         __emit_error(msg);
 
-      sym_stdin_len = __str_to_int(argv[k++], msg);
+      fid.sym_stdin_len = __str_to_int(argv[k++], msg);
     } else if (__streq(argv[k], "--sym-file-stdin") ||
                __streq(argv[k], "-sym-file-stdin")) {
-      sym_file_stdin_flag = 1;
+      fid.sym_file_stdin_flag = 1;
       k++;
     } else if (__streq(argv[k], "--sym-stdout") ||
                __streq(argv[k], "-sym-stdout")) {
-      sym_stdout_flag = 1;
+      fid.sym_stdout_flag = 1;
       k++;
     } else if (__streq(argv[k], "--save-all-writes") ||
                __streq(argv[k], "-save-all-writes")) {
       save_all_writes_flag = 1;
       k++;
+    } else if (__streq(argv[k], "--unsafe") ||
+               __streq(argv[k], "-unsafe")) {
+      fid.allow_unsafe = 1;
+      k++;
+    } else if (__streq(argv[k], "--no-overlapped") ||
+               __streq(argv[k], "-no-overlapped")) {
+      fid.overlapped_writes = 0;
+      k++;
     } else if (__streq(argv[k], "--fd-fail") || __streq(argv[k], "-fd-fail")) {
-      fd_fail = 1;
+      fid.max_failures = 1;
       k++;
     } else if (__streq(argv[k], "--bout-file") || __streq(argv[k], "-bout-file")) {
       k += 2;
@@ -246,21 +291,18 @@ usage: (klee_init_env) [options] [program arguments]\n\
       if (++k == argc)
         __emit_error(msg);
 
-      fd_fail = __str_to_int(argv[k++], msg);
-    } else if (__streq(argv[k], "--concretize-cfg") ||
-               __streq(argv[k], "-concretize-cfg")) {
-      const char *msg = "--concretization-config expects an string argument <filename>";
-      if (++k == argc)
-        __emit_error(msg);
-
-      concretize_cfg = argv[k++];
+      fid.max_failures = __str_to_int(argv[k++], msg);
+    } else if (__streq(argv[k], "--posix-debug") ||
+               __streq(argv[k], "-posix-debug")) {
+      k++;
+      enableDebug = 1;
     } else {
       /* simply copy arguments */
       __add_arg(&new_argc, new_argv, argv[k++], 1024);
     }
   }
 
-  if (!sym_stdin_len && sym_file_stdin_flag) {
+  if (!fid.sym_stdin_len && fid.sym_file_stdin_flag) {
     __emit_error("--sym-file-stdin shouldn't be set along without --sym-stdin");
   }
   final_argv = (char **)malloc((new_argc + 1) * sizeof(*final_argv));
@@ -271,8 +313,12 @@ usage: (klee_init_env) [options] [program arguments]\n\
   *argcPtr = new_argc;
   *argvPtr = final_argv;
 
-  klee_init_fds(sym_files, sym_file_len, sym_stdin_len, sym_file_stdin_flag, sym_stdout_flag,
-                save_all_writes_flag, fd_fail, concretize_cfg, sym_file_names, sym_file_lens);
+  klee_init_sym_env(save_all_writes_flag);
+  klee_init_symfs(&fid);
+  klee_init_mmap();
+  klee_init_network();
+  klee_init_netlink();
+  klee_init_threads();
 }
 
 /* The following function represents the main function of the user application

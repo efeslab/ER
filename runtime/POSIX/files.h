@@ -45,16 +45,16 @@ struct stat;
 typedef struct {
   file_base_t __bdata;
 
-  off_t offset;
+  off64_t offset;
 
-  int concrete_fd;
-  struct disk_file *storage;
+  int concrete_fd; /* actual fd if not symbolic, -1 if symbolic */
+  struct disk_file *storage; /* NULL if concrete */
 } file_t;       // The open file structure
 
 int _close_file(file_t *file);
 ssize_t _read_file(file_t *file, void *buf, size_t count, off_t offset);
 ssize_t _write_file(file_t *file, const void *buf, size_t count, off_t offset);
-int _stat_file(file_t *file, struct stat *buf);
+int _stat_file(file_t *file, struct stat64 *buf);
 int _ioctl_file(file_t *file, unsigned long request, char *argp);
 
 int _is_blocking_file(file_t *file, int event);
@@ -63,6 +63,20 @@ static inline int _file_is_concrete(file_t *file) {
   return file->concrete_fd >= 0;
 }
 
+int __fd_open(const char *pathname, int flags, mode_t mode);
+int __fd_openat(int basefd, const char *pathname, int flags, mode_t mode);
+off64_t __fd_lseek64(int fd, off64_t offset, int whence);
+int __fd_stat(const char *path, struct stat64 *buf);
+int __fd_lstat(const char *path, struct stat64 *buf);
+int __fd_ftruncate(int fd, off64_t length);
+int __fd_getdents(unsigned int fd, struct dirent64 *dirp, unsigned int count);
+/*
+ * Allocate a new fd entry and set it to an already opened concrete fd
+ * @param[in] concrete_fd: the fd already opened by underlying call
+ * @param[in] flags: the flags used in open/openat call
+ * @return a valid fd if a new fd entry can be allocated, return -1 if fd_entry
+ * table is full
+ */
 int _open_concrete(int concrete_fd, int flags);
 int _open_symbolic(struct disk_file *dfile, int flags, mode_t mode);
 

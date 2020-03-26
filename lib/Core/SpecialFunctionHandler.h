@@ -156,6 +156,9 @@ namespace klee {
     HANDLER(handleProcessTerminate);
     /* Shared Memory Placeholder */
     HANDLER(handleMakeShared);
+    /* Misc */
+    HANDLER(handleGetTime);
+    HANDLER(handleSetTime);
 #undef HANDLER
   };
 } // End klee namespace

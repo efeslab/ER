@@ -190,6 +190,12 @@ extern "C" {
   // notify one or all threads in the given waiting list
   void klee_thread_notify(uint64_t wlist, int all);
 
+  //////////////////////////////////////////////////////////////////////////////
+  // Misc
+  //////////////////////////////////////////////////////////////////////////////
+  uint64_t klee_get_time(void);
+  void klee_set_time(uint64_t time);
+
 #ifdef __cplusplus
 }
 #endif

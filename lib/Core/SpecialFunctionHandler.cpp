@@ -156,6 +156,10 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   /* Shared Memory Placeholder */
   add("klee_make_shared", handleMakeShared, false),
 
+  /* Misc */
+  add("klee_get_time", handleGetTime, true),
+  add("klee_set_time", handleSetTime, false),
+
 #undef addDNR
 #undef add
 };
@@ -1049,4 +1053,29 @@ void SpecialFunctionHandler::handleMakeShared (
     ExecutionState &state, KInstruction *target,
     std::vector<ref<Expr>> &arguments) {
   klee_warning_once(0, "Executing klee_make_shared, do nothing");
+}
+
+// uint64_t klee_get_time(void);
+void SpecialFunctionHandler::handleGetTime (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  assert(arguments.empty() && "invalid number of arguments to klee_get_time");
+  executor.bindLocal(
+      target, state,
+      ConstantExpr::create(state.stateTime, executor.getWidthForLLVMType(
+                                                target->inst->getType())));
+}
+
+// void klee_set_time(uint64_t time);
+void SpecialFunctionHandler::handleSetTime (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  assert(arguments.size() == 1 &&
+         "invalid number of arguments to klee_set_time");
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(arguments[0])) {
+    state.stateTime = CE->getZExtValue();
+  } else {
+    executor.terminateStateOnError(
+        state, "klee_set_time requries a constant argument", Executor::User);
+  }
 }

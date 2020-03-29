@@ -91,7 +91,18 @@ disk_file_t *__get_sym_file(const char *pathname) {
 
   unsigned i;
   for (i = 0; i < __sym_fs.n_sym_files; ++i) {
-    if (strcmp(pathname, __sym_fs.sym_files[i].name) == 0) {
+    // if the basename of a request path is matched with a known symbolic file,
+    // then we return that symbolic file.
+    // NOTE: no symbolic hierarchical directory structure modeled here.
+    char matched = 0;
+    const char *basename = strrchr(pathname, '/');
+    const char *sym_name = __sym_fs.sym_files[i].name;
+    if (basename) {
+      matched = (strcmp(basename+1, sym_name) == 0);
+    } else {
+      matched = (strcmp(pathname, sym_name) == 0);
+    }
+    if (matched) {
       printf("get symbolic file %s\n", __sym_fs.sym_files[i].name);
       disk_file_t *df = &__sym_fs.sym_files[i];
       if (df->stat->st_ino == 0)
@@ -171,8 +182,8 @@ static void _init_file_name(disk_file_t *dfile, const char *symname) {
   strncpy(dfile->name, symname, MAX_PATH_LEN);
 }
 
-static size_t _read_file_contents(const char *file_name, size_t size, char *orig_contents) {
-  int orig_fd = CALL_UNDERLYING(open, file_name, O_RDONLY);
+static size_t _read_file_contents(const char *file_path, size_t size, char *orig_contents) {
+  int orig_fd = CALL_UNDERLYING(open, file_path, O_RDONLY);
   assert(orig_fd >= 0 && "Could not open original file.");
 
   size_t current_size = 0;
@@ -208,7 +219,7 @@ static void _init_pure_symbolic_buffer(disk_file_t *dfile, size_t maxsize,
   klee_make_shared(buff->contents, maxsize);
 }
 
-static void _init_dual_buffer(disk_file_t *dfile, const char *origname,
+static void _init_dual_buffer(disk_file_t *dfile, const char *origpath,
     size_t size, const char *symname, int make_symbolic) {
 
   block_buffer_t *buff = &dfile->bbuf;
@@ -222,19 +233,26 @@ static void _init_dual_buffer(disk_file_t *dfile, const char *origname,
     klee_make_symbolic(buff->contents, size, namebuf);
     klee_make_shared(buff->contents, size);
   } else {
-    _read_file_contents(origname, size, buff->contents);
+    _read_file_contents(origpath, size, buff->contents);
   }
 }
 
 // NOTE: the SYMBOLIC file has the same file name as the given file (origname)
-static disk_file_t *_create_dual_file(disk_file_t *dfile, const char *origname,
+static disk_file_t *_create_dual_file(disk_file_t *dfile, const char *origpath,
     int make_symbolic) {
   struct stat64 s;
-  int res = CALL_UNDERLYING(stat, origname, &s);
+  int res = CALL_UNDERLYING(stat, origpath, &s);
   assert(res == 0 && "Could not get the stat of the original file.");
+  const char *basename = strrchr(origpath, '/');
+  const char *symname;
+  if (basename) {
+    symname = basename;
+  } else {
+    symname = origpath;
+  }
 
-  _init_file_name(dfile, origname);
-  _init_dual_buffer(dfile, origname, s.st_size, origname, make_symbolic);
+  _init_file_name(dfile, symname);
+  _init_dual_buffer(dfile, origpath, s.st_size, symname, make_symbolic);
 
   dfile->stat = (struct stat64*)malloc(sizeof(struct stat64));
   memcpy(dfile->stat, &s, sizeof(struct stat64));

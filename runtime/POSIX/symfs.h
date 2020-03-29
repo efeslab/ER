@@ -47,10 +47,14 @@ typedef struct {
 } disk_file_ops_t;
 
 // model a symbolic regular file
+// NOTE: we do not model the hierarchical structure of in the symbolic
+// filesystem. Thus the name of each regular file is just a single name, not a
+// path. And any file open requests ending with this name will be considered as
+// symbolic.
 typedef struct disk_file {
   unsigned int size; /* in bytes */
   struct stat64 *stat;
-  char *name;
+  char *name; /* not including directory structure */
   disk_file_ops_t ops;
   // file contents is managed by a block_buffer
   block_buffer_t bbuf;
@@ -95,6 +99,8 @@ typedef struct {
     // file_size denotes the size of a pure symbolic file
     int file_size;
     // file_path denotes the backend of a symbolic/concrete file
+    // When creating a SYMBOLIC file, only the basename of this path will be
+    // used as the file name.
     const char *file_path;
   };
   enum sym_file_type file_type;

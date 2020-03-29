@@ -559,6 +559,7 @@ int __fd_open(const char *pathname, int flags, mode_t mode) {
       return -1;
     }
 
+    posix_debug_msg("%s opened as %d\n", cpathname, fd);
     return fd;
   }
 }
@@ -680,6 +681,7 @@ int _open_symbolic(disk_file_t *dfile, int flags, mode_t mode) {
 
   fde->io_object = (file_base_t*)file;
 
+  posix_debug_msg("symbolic file opened as %d\n", fd);
   return fd;
 }
 

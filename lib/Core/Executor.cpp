@@ -1292,8 +1292,13 @@ void Executor::bindLocal(KInstruction *target, ExecutionState &state,
   // attributes. Then we only bind a kinst to a symbolic expression in either of
   // the following scenarios:
   //   1) the symbolic expression has not been bound to any kinst
-  //   2) the kinst is from the target program (not from POSIX nor LIBC)
-  if (!value->kinst || state.isInTargetProgram()) {
+  //   2) the kinst is from the target program (not from POSIX nor LIBC) and it
+  //   has lower frequency (less recording overhead)
+  // NOTE: Since kinst tracked in this way is no longer guaranteed to be the
+  // latest instruction bind this symbolic value to a llvm register, I should
+  // never use Expr.kinst to locate a llvm register.
+  if (!value->kinst || (value->kinst->frequency > target->frequency &&
+                        state.isInTargetProgram())) {
     value->kinst = target;
     value->flags |= Expr::Expr::FLAG_INSTRUCTION_ROOT;
   }
@@ -4835,21 +4840,27 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
         ref<Expr> base = eval(KI, 0, state).value;
         executeMemoryOperation(state, true, base, loadedValue, KI);
       }
-      if (CastExpr *castE = dyn_cast<CastExpr>(replayedValue)) {
+      if (CastInst *ci = dyn_cast<CastInst>(KI->inst)) {
         // Further concretization opportunity:
         // e.g. if we can concretize (ZExt w64 (Read w8 xxx))
         // Then we can also concretize the inner ReadExpr
         // Note that we do not add constraints for the CastExpr but add
         // constraints to the expression inside instead.
-        KInstruction *innerKInst = castE->src->kinst;
-        if (innerKInst) {
+        if (CastExpr *castE = dyn_cast<CastExpr>(replayedValue)) {
           klee_message("Further CastExpr concretization base on %s",
-              KI->inst->getName().str().c_str());
+                       ci->getName().str().c_str());
+          Instruction *innerI = dyn_cast<llvm::Instruction>(ci->getOperand(0));
+          KInstruction *innerKInst = kmodule->getKInstruction(innerI);
+          ref<Expr> innerExpr = castE->src;
+          assert(innerI != nullptr && innerKInst != nullptr);
+          assert(innerI->getType() == ci->getSrcTy());
+          assert(getWidthForLLVMType(ci->getDestTy()) == castE->getWidth());
+          assert(getWidthForLLVMType(innerI->getType()) ==
+                 innerExpr->getWidth());
           concretizeKInst(state, innerKInst,
-              loadedValue->Extract(0, castE->src->getWidth()));
+                          loadedValue->Extract(0, innerExpr->getWidth()));
         }
-      }
-      else {
+      } else {
         // we avoid adding multiple constraints in case of CastExpr
         // we only constrain the inner expression
         // here we add a new constraint: replayedValue == loadedValue

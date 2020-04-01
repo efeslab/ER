@@ -38,6 +38,7 @@
 
 //#include "signals.h"
 #include "netlink.h"
+#include "sockets_simulator.h"
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -903,6 +904,27 @@ static int _validate_netlink_socket(int domain, int type, int protocol) {
   }
 }
 
+socket_t *_create_socket(int domain, int type, int protocol) {
+  socket_t *sock = (socket_t*) malloc(sizeof(socket_t));
+  klee_make_shared(sock, sizeof(socket_t));
+  memset(sock, 0, sizeof(socket_t));
+  int base_type = type & ~(SOCK_NONBLOCK | SOCK_CLOEXEC);
+
+  sock->__bdata.flags |= O_RDWR;
+  if (type & SOCK_NONBLOCK) {
+    sock->__bdata.flags |= O_NONBLOCK;
+  }
+
+  sock->__bdata.refcount = 1;
+  sock->__bdata.queued = 0;
+
+  sock->status = SOCK_STATUS_CREATED;
+  sock->type = base_type;
+  sock->domain = domain;
+  sock->protocol = protocol;
+  return sock;
+}
+
 int socket(int domain, int type, int protocol) {
   posix_debug_msg(
       "Attempting to create a socket: domain = %s, type = %s, protocol = %d\n",
@@ -947,22 +969,7 @@ int socket(int domain, int type, int protocol) {
   }
 
   // Create the socket object
-  socket_t *sock = (socket_t*) malloc(sizeof(socket_t));
-  klee_make_shared(sock, sizeof(socket_t));
-  memset(sock, 0, sizeof(socket_t));
-
-  sock->__bdata.flags |= O_RDWR;
-  if (type & SOCK_NONBLOCK) {
-    sock->__bdata.flags |= O_NONBLOCK;
-  }
-
-  sock->__bdata.refcount = 1;
-  sock->__bdata.queued = 0;
-
-  sock->status = SOCK_STATUS_CREATED;
-  sock->type = base_type;
-  sock->domain = domain;
-  sock->protocol = protocol;
+  socket_t *sock = _create_socket(domain, type, protocol);
 
   fde->io_object = (file_base_t*) sock;
 
@@ -1019,6 +1026,7 @@ static int _bind(socket_t *sock, const struct sockaddr *addr, socklen_t addrlen)
   if(sock->type == SOCK_DGRAM || sock->type == SOCK_RAW)
     sock->in = _stream_create(sizeof(datagram_t) * MAX_NUMBER_DGRAMS, 1); //todo: refactor when implement shutdown for write part
 
+  TRIGGER_SOCKET_HANDLER(post_bind, sock, addr, addrlen);
   return 0;
 }
 
@@ -1134,6 +1142,7 @@ int listen(int sockfd, int backlog) {
     sock->listen = _stream_create(backlog * sizeof(socket_t*), 1);
   }
 
+  TRIGGER_SOCKET_HANDLER(post_listen, sock, backlog);
   return 0;
 }
 
@@ -1226,7 +1235,7 @@ static int _datagram_connect(int sockfd, socket_t *sock, const struct sockaddr *
   return 0;
 }
 
-static int _stream_connect(socket_t *sock, const struct sockaddr *addr, socklen_t addrlen) {
+int _stream_connect(socket_t *sock, const struct sockaddr *addr, socklen_t addrlen) {
   if (sock->status != SOCK_STATUS_CREATED) {
     if (sock->status == SOCK_STATUS_CONNECTED) {
       errno = EISCONN;

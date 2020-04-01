@@ -14,6 +14,7 @@
 #include "fd.h"
 #include "misc.h"
 #include "sockets.h"
+#include "sockets_simulator.h"
 #include "symfs.h"
 #include "netlink.h"
 
@@ -120,6 +121,9 @@ void klee_init_env(int *argcPtr, char ***argvPtr) {
   fid.max_failures = 0;
   // This is defined in common.c
   enableDebug = 0;
+  // This is defined in sockets_simulator.c
+  useSymbolicHandler = 0;
+  const char *sock_handler_name = NULL;
 
   sym_arg_name[5] = '\0';
 
@@ -148,7 +152,10 @@ usage: (klee_init_env) [options] [program arguments]\n\
                               files.\n\
   -no-overlapped            - Do not keep per-state concrete file offsets\n\
   -fd-fail                  - Shortcut for '-max-fail 1'\n\
-  -posix-debug              - Enable debug message in POSIX runtime\n");
+  -posix-debug              - Enable debug message in POSIX runtime\n\
+  -sock-handler <NAME>      - Use predefined socket handler\n\
+  -symbolic-sock-handler    - Inform socket handler that it is used during a\n\
+                              symbolic replay. (default=false)\n");
   }
 
   while (k < argc) {
@@ -296,6 +303,14 @@ usage: (klee_init_env) [options] [program arguments]\n\
                __streq(argv[k], "-posix-debug")) {
       k++;
       enableDebug = 1;
+    } else if (__streq(argv[k], "--sock-handler") ||
+               __streq(argv[k], "-sock-handler")) {
+      k++;
+      sock_handler_name = argv[k++];
+    } else if (__streq(argv[k], "--symbolic-sock-handler") ||
+               __streq(argv[k], "-symbolic-sock-handler")) {
+      k++;
+      useSymbolicHandler = 1;
     } else {
       /* simply copy arguments */
       __add_arg(&new_argc, new_argv, argv[k++], 1024);
@@ -318,7 +333,12 @@ usage: (klee_init_env) [options] [program arguments]\n\
   klee_init_mmap();
   klee_init_network();
   klee_init_netlink();
+  klee_init_sockets_simulator();
   klee_init_threads();
+
+  if (sock_handler_name) {
+    register_predefined_socket_handler(sock_handler_name);
+  }
 }
 
 /* The following function represents the main function of the user application

@@ -128,6 +128,10 @@ void _deregister_events_socket(socket_t *sock, wlist_id_t wlist, int events);
 
 void _get_sockaddr_str(char *buf, size_t size, int af,
                         const struct sockaddr *addr);
+socket_t *_create_socket(int domain, int type, int protocol);
+int _stream_connect(socket_t *sock, const struct sockaddr *addr,
+                    socklen_t addrlen);
+
 void klee_init_network(void);
 
 

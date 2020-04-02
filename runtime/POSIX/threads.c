@@ -34,6 +34,7 @@
 
 //#include "signals.h"
 
+#include <assert.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,6 +43,13 @@
 
 #include <klee/klee.h>
 
+
+////////////////////////////////////////////////////////////////////////////////
+// PThread Internal Data Structure
+////////////////////////////////////////////////////////////////////////////////
+struct pthread_attr {
+  char joinable;
+};
 ////////////////////////////////////////////////////////////////////////////////
 // The PThreads API
 ////////////////////////////////////////////////////////////////////////////////
@@ -71,8 +79,14 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
 
   thread_data_t *tdata = &__tsync.threads[newIdx];
   tdata->terminated = 0;
-  tdata->joinable = 1; // TODO: Read this from an attribute
   tdata->wlist = klee_get_wlist();
+  // read from attr
+  if (attr) {
+    struct pthread_attr *iattr = (struct pthread_attr*)attr;
+    tdata->joinable = iattr->joinable;
+  } else {
+    tdata->joinable = 0;
+  }
 
   klee_thread_create(newIdx, start_routine, arg);
 
@@ -160,12 +174,23 @@ int pthread_detach(pthread_t thread) {
 }
 
 int pthread_attr_init(pthread_attr_t *attr) {
-  klee_warning("pthread_attr_init does nothing");
+  assert(sizeof(*attr) >= sizeof(struct pthread_attr));
+  memset(attr, 0, sizeof(*attr));
   return 0;
 }
 
 int pthread_attr_destroy(pthread_attr_t *attr) {
   klee_warning("pthread_attr_destroy does nothing");
+  return 0;
+}
+
+int pthread_attr_setdetachstate(pthread_attr_t *attr, int detachstate) {
+  struct pthread_attr *iattr = (struct pthread_attr *)attr;
+  if (detachstate == PTHREAD_CREATE_JOINABLE) {
+    iattr->joinable = 1;
+  } else {
+    iattr->joinable = 0;
+  }
   return 0;
 }
 

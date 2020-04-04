@@ -64,13 +64,13 @@ void _yield_sleep(unsigned sec, unsigned usec) {
 }
 
 int usleep(useconds_t usec) {
-  klee_warning("yielding instead of usleep()-ing");
+  //klee_warning("yielding instead of usleep()-ing");
   _yield_sleep(0, usec);
   return 0;
 }
 
 unsigned int sleep(unsigned int seconds) {
-  klee_warning("yielding instead of sleep()-ing");
+  //klee_warning("yielding instead of sleep()-ing");
   _yield_sleep(seconds, 0);
   return 0;
 }

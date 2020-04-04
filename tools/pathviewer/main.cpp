@@ -42,7 +42,7 @@ static void HideOptions(cl::OptionCategory &Category) {
 }
 
 static const char *PathEntry_t_str[] = {
-  "FORK", "SWITCH_EXPIDX", "SWITCH_BBIDX", "INDIRECTBR", "DATAREC"
+  "FORK", "SWITCH_EXPIDX", "SWITCH_BBIDX", "INDIRECTBR", "DATAREC", "SCHEDULE"
 };
 
 static std::ostream &operator<<(std::ostream &os, PathEntry pe) {
@@ -61,6 +61,9 @@ static std::ostream &operator<<(std::ostream &os, PathEntry pe) {
       break;
     case PathEntry::DATAREC:
       // do not print anything about DATAREC without DumpDataRec
+      break;
+    case PathEntry::SCHEDULE:
+      os << "SCHEDULE TGTID " << pe.body.tgtid;
       break;
     default:
       os << "Unknown PathEntry";

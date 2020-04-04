@@ -4923,6 +4923,20 @@ bool Executor::schedule(ExecutionState &state, bool yield) {
   } while (!it->second.enabled);
   state.scheduleNext(it);
   thread_uid_t afterSchedule = state.crtThread().tuid;
+  if (pathWriter) {
+    PathEntry pe;
+    pe.t = PathEntry::SCHEDULE;
+    pe.body.tgtid = afterSchedule.first;
+    state.pathOS << pe;
+  }
+  if (replayPath) {
+    PathEntry pe;
+    getNextPathEntry(state, pe);
+    assert(pe.t == PathEntry::SCHEDULE && "Wrong PathEntry_t during schedule");
+    if (pe.body.tgtid != afterSchedule.first) {
+      klee_message("Ambiguous scheduling, why?");
+    }
+  }
   if (DebugScheduling) {
     klee_message("Context Swtich: from %lu to %lu", beforeSchedule.first,
         afterSchedule.first);

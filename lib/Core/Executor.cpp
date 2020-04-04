@@ -1245,13 +1245,13 @@ bool Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
     ref<Expr> res = oracle_eval->visit(condition);
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(res)) {
       if (!CE->isTrue()) {
-        terminateStateOnError(state, "Adding False Constaint", Abort);
+        klee_warning("Oracle KTest: Adding False Constaint");
         return false;
       }
     }
     else {
-      terminateStateOnError(state,
-          "NonConstant Expr returned by OracleEvaluator", Abort);
+      klee_warning(
+          "Oracle KTest: NonConstant Expr returned by OracleEvaluator");
       return false;
     }
   }

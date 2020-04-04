@@ -1025,10 +1025,6 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   if (!isSeeding) {
     // replaying, read recorded branch condition
     if (replayPath && !isInternal) {
-      if (current.replayPosition >= replayPath->size()) {
-        terminateStateOnError(current, "Run out of recorded path", ReplayPath);
-        return StatePair(0, 0);
-      }
       if (res==Solver::True) { // Concrete branch
         if (current.shouldRecord()) {
           AssertNextBranchTaken(current, true);

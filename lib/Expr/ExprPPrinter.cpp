@@ -491,7 +491,7 @@ void ExprPPrinter::printSingleExpr(llvm::raw_ostream &os, const ref<Expr> &e) {
 }
 
 void ExprPPrinter::printConstraints(llvm::raw_ostream &os,
-                                    const ConstraintManager &constraints) {
+                                    const Constraints_ty &constraints) {
   printQuery(os, constraints, ConstantExpr::alloc(false, Expr::Bool));
 }
 
@@ -505,7 +505,7 @@ struct ArrayPtrsByName {
 }
 
 void ExprPPrinter::printQuery(llvm::raw_ostream &os,
-                              const ConstraintManager &constraints,
+                              const Constraints_ty &constraints,
                               const ref<Expr> &q,
                               const ref<Expr> *evalExprsBegin,
                               const ref<Expr> *evalExprsEnd,

@@ -205,12 +205,8 @@ std::vector<ref<Expr>> ExprConcretizer::doEvaluate(
   return newCm;
 }
 
-ConstraintManager ExprConcretizer::evaluate(ConstraintManager &cm) {
-  return ConstraintManager(doEvaluate(cm.begin(), cm.end()));
-}
-
-std::vector<ref<Expr>> ExprConcretizer::evaluate(const std::vector<ref<Expr>> &cm) {
-  return doEvaluate(cm.begin(), cm.end());
+Constraints_ty ExprConcretizer::evaluate(const Constraints_ty &constraints) {
+  return doEvaluate(constraints.begin(), constraints.end());
 }
 
 /*
@@ -284,10 +280,23 @@ int IndirectReadDepthCalculator::assignDepth(const ref<Expr> &e, int readLevel) 
   return m;
 }
 
-IndirectReadDepthCalculator::IndirectReadDepthCalculator(const ConstraintManager &cm) {
+IndirectReadDepthCalculator::IndirectReadDepthCalculator(
+    const Constraints_ty &constraints) {
   maxLevel = 0;
-  for (auto it = cm.begin(), ie = cm.end(); it != ie; it++) {
-    const ref<Expr> &e = *it;
+  for (const ref<Expr> &e: constraints) {
+    int m = assignDepth(e, 0);
+    if (m > maxLevel) maxLevel = m;
+  }
+}
+
+IndirectReadDepthCalculator::IndirectReadDepthCalculator(
+    const expr::QueryCommand &QC) {
+  maxLevel = 0;
+  for (const ref<Expr> &e: QC.Constraints) {
+    int m = assignDepth(e, 0);
+    if (m > maxLevel) maxLevel = m;
+  }
+  for (const ref<Expr> &e: QC.Values) {
     int m = assignDepth(e, 0);
     if (m > maxLevel) maxLevel = m;
   }

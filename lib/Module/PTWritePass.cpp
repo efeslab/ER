@@ -45,7 +45,7 @@ PTWritePass::PTWritePass(std::string &cfg) : ModulePass(ID) {
       std::string linestr;
       std::getline(f, linestr);
 
-      if (linestr == "") {
+      if (linestr.empty() || linestr[0] == '#') {
         continue;
       }
 
@@ -94,7 +94,8 @@ bool PTWritePass::runOnModule(Module &M) {
       }
 
       for (BasicBlock::iterator i = b->begin(), ie = b->end(); i != ie; ++i) {
-        if (i->getType()->isVoidTy()) {
+        llvm::Type *itype = i->getType();
+        if (itype->isVoidTy()) {
           continue;
         }
 
@@ -102,25 +103,51 @@ bool PTWritePass::runOnModule(Module &M) {
         if (dataRecInstSet.find(iname) == dataRecInstSet.end()) {
           continue;
         }
-
-        if (!i->getType()->isIntegerTy()) {
+        if (!itype->isIntOrPtrTy()) {
           llvm::errs() << "recorded instruction not integer\n";
           continue;
         }
 
+        llvm::errs() << "Instruction " << iname << " matched\n";
+        // to assign each additional CastInst a unique ID
+        static unsigned int ptwrite_cnt = 0;
+
         Instruction &I = *i;
 
         std::vector<llvm::Type *> argTypes;
-        argTypes.push_back(Type::getInt64Ty(f->getContext()));
-        llvm::Type *voidTy = Type::getVoidTy(f->getContext());
+        llvm::LLVMContext &C = f->getContext();
+        llvm::Type *TyInt64 = Type::getInt64Ty(C);
+        argTypes.push_back(TyInt64);
+        llvm::Type *voidTy = Type::getVoidTy(C);
         llvm::FunctionType *FTy = FunctionType::get(voidTy, argTypes, false);
         llvm::InlineAsm *IA =
           llvm::InlineAsm::get(FTy, "ptwrite $0", "r,~{dirflag},~{fpsr},~{flags}", true, false);
 
         std::vector<llvm::Value *> args;
-        args.push_back(&I);
+        Instruction *insertAfterI = &I;
+        if (itype->isPointerTy()) {
+          // need special pointer to int cast
+          llvm::errs() << "Warning: pointer recording at " << iname <<
+            " may not work due to undeterministic malloc\n";
+          Twine castname = Twine("ptwriteptrcast") + Twine(ptwrite_cnt++);
+          CastInst *castI = CastInst::CreatePointerCast(&I, TyInt64, castname);
+          castI->insertAfter(&I);
+          args.push_back(castI);
+          insertAfterI = castI;
+        }
+        else if (itype != TyInt64) {
+          // need type cast
+          Twine castname = Twine("ptwritecast") + Twine(ptwrite_cnt++);
+          CastInst *castI = CastInst::CreateZExtOrBitCast(&I, TyInt64, castname);
+          castI->insertAfter(&I);
+          args.push_back(castI);
+          insertAfterI = castI;
+        }
+        else {
+          args.push_back(&I);
+        }
         Instruction *CI = llvm::CallInst::Create(IA, args, "");
-        b->getInstList().insertAfter(i, CI);
+        CI->insertAfter(insertAfterI);
       }
     }
   }

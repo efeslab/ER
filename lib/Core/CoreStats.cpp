@@ -57,5 +57,5 @@ Statistic stats::symbolicIndirectBr("SymbolicIndirectBr", "SIBr");
 Statistic stats::symbolicSwitch("SymbolicSwitch", "SSwitch");
 Statistic stats::symbolicSelect("SymbolicSelect", "SSelect");
 Statistic stats::symbolicCall("SymbolicCall", "SCall");
+Statistic stats::dataRecLoadedEffective("DataLoadedEffective", "DataLoadedEffective");
 Statistic stats::dummy3("******************************** hase end *************************", "dummy3");
-

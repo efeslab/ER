@@ -42,7 +42,8 @@ cl::list<Searcher::CoreSearchType> CoreSearch(
                    "use Non Uniform Random Search (NURS) with Coverage-New"),
         clEnumValN(Searcher::NURS_MD2U, "nurs:md2u",
                    "use NURS with Min-Dist-to-Uncovered"),
-        clEnumValN(Searcher::NURS_Depth, "nurs:depth", "use NURS with 2^depth"),
+        clEnumValN(Searcher::NURS_Depth, "nurs:depth", "use NURS with depth"),
+        clEnumValN(Searcher::NURS_RP, "nurs:rp", "use NURS with 1/2^depth"),
         clEnumValN(Searcher::NURS_ICnt, "nurs:icnt",
                    "use NURS with Instr-Count"),
         clEnumValN(Searcher::NURS_CPICnt, "nurs:cpicnt",
@@ -114,6 +115,7 @@ Searcher *getNewSearcher(Searcher::CoreSearchType type, Executor &executor) {
   case Searcher::NURS_CovNew: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::CoveringNew); break;
   case Searcher::NURS_MD2U: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::MinDistToUncovered); break;
   case Searcher::NURS_Depth: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::Depth); break;
+  case Searcher::NURS_RP: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::RP); break;
   case Searcher::NURS_ICnt: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::InstCount); break;
   case Searcher::NURS_CPICnt: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::CPInstCount); break;
   case Searcher::NURS_QC: searcher = new WeightedRandomSearcher(WeightedRandomSearcher::QueryCost); break;
@@ -125,33 +127,37 @@ Searcher *getNewSearcher(Searcher::CoreSearchType type, Executor &executor) {
 Searcher *klee::constructUserSearcher(Executor &executor) {
 
   Searcher *searcher = getNewSearcher(CoreSearch[0], executor);
-  
+
   if (CoreSearch.size() > 1) {
     std::vector<Searcher *> s;
     s.push_back(searcher);
 
-    for (unsigned i=1; i<CoreSearch.size(); i++)
+    for (unsigned i = 1; i < CoreSearch.size(); i++)
       s.push_back(getNewSearcher(CoreSearch[i], executor));
-    
+
     searcher = new InterleavedSearcher(s);
   }
 
-  if (UseMerge) {
-    if (std::find(CoreSearch.begin(), CoreSearch.end(), Searcher::RandomPath) != CoreSearch.end()){
-      klee_error("use-merge currently does not support random-path, please use another search strategy");
-    }
-  }
-
   if (UseBatchingSearch) {
-    searcher = new BatchingSearcher(searcher, time::Span(BatchTime), BatchInstructions);
-  }
-
-  if (UseMerge && UseIncompleteMerge) {
-    searcher = new MergingSearcher(executor, searcher);
+    searcher = new BatchingSearcher(searcher, time::Span(BatchTime),
+                                    BatchInstructions);
   }
 
   if (UseIterativeDeepeningTimeSearch) {
     searcher = new IterativeDeepeningTimeSearcher(searcher);
+  }
+
+  if (UseMerge) {
+    if (std::find(CoreSearch.begin(), CoreSearch.end(), Searcher::RandomPath) !=
+        CoreSearch.end()) {
+      klee_error("use-merge currently does not support random-path, please use "
+                 "another search strategy");
+    }
+
+    auto *ms = new MergingSearcher(searcher);
+    executor.setMergingSearcher(ms);
+
+    searcher = ms;
   }
 
   llvm::raw_ostream &os = executor.getHandler().getInfoStream();

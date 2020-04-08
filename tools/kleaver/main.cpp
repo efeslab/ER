@@ -89,7 +89,7 @@ llvm::cl::opt<bool> SimplifyDrawing(
     llvm::cl::init(false),
     llvm::cl::cat(klee::HASECat));
 
-enum ToolActions { PrintTokens, PrintAST, PrintSMTLIBv2, Evaluate, Analyze, Draw};
+enum ToolActions { PrintTokens, PrintAST, PrintSMTLIBv2, Evaluate, Analyze, Draw, KTestEval};
 
 static llvm::cl::opt<ToolActions> ToolAction(
     llvm::cl::desc("Tool actions:"), llvm::cl::init(Evaluate),
@@ -100,11 +100,13 @@ static llvm::cl::opt<ToolActions> ToolAction(
                      clEnumValN(PrintAST, "print-ast",
                                 "Print parsed AST nodes from the input file."),
                      clEnumValN(Evaluate, "evaluate",
-                                "Evaluate parsed AST nodes from the input file."),
+                                "Evaluate parsed AST nodes from the input file. (default)"),
                      clEnumValN(Analyze, "analyze",
                                 "Analyze parsed AST nodes from the input file"),
                      clEnumValN(Draw, "draw",
-                                "Draw AST nodes in Graphviz DOT file")
+                                "Draw AST nodes in Graphviz DOT file"),
+                     clEnumValN(KTestEval, "KTestEval",
+                                "use KTest to evaluate constraints, unstatisfiable constraints will be reported.")
                          KLEE_LLVM_CL_VAL_END),
     llvm::cl::cat(klee::SolvingCat));
 
@@ -328,8 +330,7 @@ static bool EvaluateInputAST(const char *Filename,
           ec.addConcretizedInputValue(ciit->first, ciit->second);
         }
         constraints = ec.evaluate(QC->Constraints);
-        ConstraintManager cm(constraints);
-        IndirectReadDepthCalculator ic(cm);
+        IndirectReadDepthCalculator ic(constraints);
         llvm::outs() << "Concretized Depth: " << ic.getMax() << "\n";
 
         if (DumpConcretizedConstraints != "") {
@@ -337,7 +338,7 @@ static bool EvaluateInputAST(const char *Filename,
           llvm::raw_string_ostream os(str);
           std::ofstream ofs(DumpConcretizedConstraints);
           if (ofs.good()) {
-            ExprPPrinter::printQuery(os, cm, ConstantExpr::alloc(false, Expr::Bool),
+            ExprPPrinter::printQuery(os, constraints, ConstantExpr::alloc(false, Expr::Bool),
                     0, 0, 0, 0, true);
             ofs << os.str();
             ofs.close();
@@ -450,8 +451,7 @@ static bool AnalyzeInputAST(const char *Filename,
   llvm::raw_ostream &os = llvm::errs();
   for (Decl *D: Decls) {
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
-      ConstraintManager cm(QC->Constraints);
-      IndirectReadDepthCalculator IDCalc(cm);
+      IndirectReadDepthCalculator IDCalc(QC->Constraints);
       std::set<ref<ReadExpr>> &lastLevelReads = IDCalc.getLastLevelReads();
       std::vector<ref<ReadExpr>> tosort(lastLevelReads.begin(), lastLevelReads.end());
       std::sort(tosort.begin(), tosort.end(),
@@ -488,19 +488,54 @@ static bool DrawInputAST(const char *Filename,
   std::ofstream of(std::string(Filename) + ".dot");
   for (Decl *D: Decls) {
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
-      ConstraintManager cm(QC->Constraints);
       if (SimplifyDrawing) {
-        std::vector<ref<Expr>> constraints;
-        ExprInPlaceTransformer EIPT(cm, constraints);
-        ConstraintManager new_cm(constraints);
-        GraphvizDOTDrawer drawer(of, new_cm);
+        Constraints_ty simplified_constraints;
+        ExprInPlaceTransformer EIPT(*QC);
+        GraphvizDOTDrawer drawer(of, *(EIPT.getNewQCptr()));
         drawer.draw();
       }
       else {
-        GraphvizDOTDrawer drawer(of, cm);
+        GraphvizDOTDrawer drawer(of, *QC);
         drawer.draw();
       }
       // Assuming there will only be one QueryComamnd
+      break;
+    }
+  }
+
+  return true;
+}
+
+static bool KTestEvalInputAST(const char *Filename,
+                         const MemoryBuffer *MB,
+                         ExprBuilder *Builder) {
+  InputAST ast(Filename, MB, Builder);
+  if (!ast.isValid())
+    return false;
+
+  OracleEvaluator oracle_eval(OracleKTest);
+  std::vector<Decl*> &Decls = ast.getDecls();
+  std::ofstream of(std::string(Filename) + ".dot");
+  for (Decl *D: Decls) {
+    if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
+      for (unsigned int i=0; i < QC->Constraints.size(); ++i) {
+        const ref<Expr> &constraint = QC->Constraints[i];
+        ref<Expr> result = oracle_eval.visit(constraint);
+        if (ConstantExpr *CE=dyn_cast<ConstantExpr>(result)) {
+          if (CE->isFalse()) {
+            std::string constraint_str;
+            std::string evaluated_str;
+            llvm::raw_string_ostream constraint_strOS(constraint_str);
+            llvm::raw_string_ostream evaluated_strOS(evaluated_str);
+            constraint->print(constraint_strOS);
+            result->print(evaluated_strOS);
+            klee_warning("assignment evaluation did not result in constant:\n"
+                "\tkinst:%s\nconstraint:%s\n\tevaluated:%s",
+                constraint->getKInstUniqueID().c_str(),
+                constraint_strOS.str().c_str(), evaluated_strOS.str().c_str());
+          }
+        }
+      }
       break;
     }
   }
@@ -622,6 +657,10 @@ int main(int argc, char **argv) {
     break;
   case Draw:
     success = DrawInputAST(InputFile=="-"? "<stdin>" : InputFile.c_str(),
+        MB.get(), Builder);
+    break;
+  case KTestEval:
+    success = KTestEvalInputAST(InputFile=="-"? "<stdin>" : InputFile.c_str(),
         MB.get(), Builder);
     break;
   default:

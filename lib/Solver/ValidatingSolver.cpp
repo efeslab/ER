@@ -105,14 +105,13 @@ bool ValidatingSolver::computeInitialValues(
             ConstantExpr::alloc(value, array->getRange())));
       }
     }
-    ConstraintManager tmp(bindings);
     ref<Expr> constraints = Expr::createIsZero(query.expr);
     for (ConstraintManager::const_iterator it = query.constraints.begin(),
                                            ie = query.constraints.end();
          it != ie; ++it)
       constraints = AndExpr::create(constraints, *it);
 
-    if (!oracle->impl->computeTruth(Query(tmp, constraints), answer))
+    if (!oracle->impl->computeTruth(Query(query.constraintMgr, bindings, constraints), answer))
       return false;
     if (!answer)
       assert(0 && "invalid solver result (computeInitialValues)");

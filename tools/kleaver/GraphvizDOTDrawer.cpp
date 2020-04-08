@@ -1,5 +1,6 @@
 #include "GraphvizDOTDrawer.h"
 #include <cassert>
+using namespace klee::expr;
 
 void GraphvizDOTDrawer::declareExpr(const Expr *e, const char *category) {
   std::string label;
@@ -16,11 +17,13 @@ void GraphvizDOTDrawer::declareExpr(const Expr *e, const char *category) {
      << "IDep=" << IDCalc.query(e) << ","
      << "Category=" << category << ","
      << "KInst=\"" << e->getKInstUniqueID() << "\"" << ","
-     << "DbgInfo=\"" << e->getKInstDbgInfo() << "\""
+     << "DbgInfo=\"" << e->getKInstDbgInfo() << "\"" << ","
+     << "Freq=" << e->getKInstLoadedFreq()
      << "];\n";
 }
 
-void GraphvizDOTDrawer::declareLastLevelRead(const ReadExpr *RE, const char *category) {
+void GraphvizDOTDrawer::declareLastLevelRead(const ReadExpr *RE,
+                                             const char *category) {
   std::string label;
   const ConstantExpr *CE = dyn_cast<ConstantExpr>(RE->index);
   label = RE->updates.root->name + "[" + std::to_string(CE->getZExtValue()) + "]";
@@ -31,18 +34,24 @@ void GraphvizDOTDrawer::declareLastLevelRead(const ReadExpr *RE, const char *cat
      << "IDep=" << IDCalc.query(RE) << ","
      << "Category=" << category << ","
      << "KInst=\"" << RE->getKInstUniqueID() << "\"" << ","
-     << "DbgInfo=\"" << RE->getKInstDbgInfo() << "\""
+     << "DbgInfo=\"" << RE->getKInstDbgInfo() << "\"" << ","
+     << "Freq=" << RE->getKInstLoadedFreq()
      << "];\n";
 }
 
-void GraphvizDOTDrawer::declareUpdateNode(const UpdateNode *un, const Array *root) {
+void GraphvizDOTDrawer::declareUpdateNode(const UpdateNode *un,
+                                          const Array *root,
+                                          const char *category) {
   os << (size_t)un
-     << "[ label=\"UN\", Kind=UN , Category=UN,"
+     << "[ label=\"UN\", Kind=UN , "
+     << "Category=" << category << ","
+     << "Width=8,"
      << "Root=" << root->name << ","
      << "IDep=" << IDCalc.query(un) << ","
      << "KInst=\"" << un->getKInstUniqueID() << "\"" << ","
      << "DbgInfo=\"" << un->getKInstDbgInfo() << "\"" <<","
      << "Flags=\"" << std::to_string(un->flags) << "\"" << ","
+     << "Freq=" << un->getKInstLoadedFreq()
      <<  "];\n";
 }
 
@@ -71,11 +80,18 @@ void GraphvizDOTDrawer::printFooter() {
      << "dummyA -> dummyB [weight=5.0];\n"
      << "}\n";
 }
-GraphvizDOTDrawer::GraphvizDOTDrawer(std::ostream &_os,
-    const ConstraintManager &_cm): os(_os), cm(_cm), IDCalc(_cm) {
+GraphvizDOTDrawer::GraphvizDOTDrawer(std::ostream &_os, const QueryCommand &_QC)
+    : os(_os), QC(_QC), IDCalc(QC) {
   printHeader();
+  // add each top-level query expression to drawing todo-list first
+  // we need to do this first because the query expression may overlap with
+  // constraints and we need to make sure query expressions are guaranteed to be
+  // categorized to "Q"
+  for (const ref<Expr> &e: QC.Values) {
+    ensureExprDeclared(e.get(), "Q");
+  }
   // add each top-level constraint to drawing todo-list
-  for (const ref<Expr> &e: cm) {
+  for (const ref<Expr> &e: QC.Constraints) {
     ensureExprDeclared(e.get(), "C");
   }
 }

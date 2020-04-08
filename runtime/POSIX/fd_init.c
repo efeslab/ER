@@ -10,18 +10,19 @@
 #define _LARGEFILE64_SOURCE
 #define _FILE_OFFSET_BITS 64
 #include "fd.h"
+#include "files.h"
+#include "symfs.h"
 
 #include "klee/klee.h"
 
 #include <assert.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <unistd.h>
-
-exe_file_system_t __exe_fs;
 
 /* NOTE: It is important that these are statically initialized
    correctly, since things that run before main may hit them given the
@@ -33,70 +34,30 @@ exe_file_system_t __exe_fs;
    prior to main will get the wrong data. Not such a big deal since we
    mostly care about sym case anyway. */
 
-
+file_t stdin_fd_init = {
+  /*__bdata*/ {1, 0, O_RDONLY},
+  /* offset */ 0, /* concrete_fd */ 0, /* storage */ NULL
+};
+file_t stdout_fd_init = {
+  /* __bdata */ {1, 0, O_WRONLY},
+  /* offset */ 0, /* concrete_fd */ 1, /* storage */ NULL
+};
+file_t stderr_fd_init = {
+  /* __bdata */ {1, 0, O_WRONLY},
+  /* offset */ 0, /* concrete_fd */ 2, /* storage */ NULL
+};
 exe_sym_env_t __exe_env = { 
-  {{ 0, eOpen | eReadable, 0, 0}, 
-   { 1, eOpen | eWriteable, 0, 0}, 
-   { 2, eOpen | eWriteable, 0, 0}},
+  /* fd_entry_t fds[] */
+  {{ eOpen | eIsFile, (file_base_t*)&stdin_fd_init }, 
+   { eOpen | eIsFile, (file_base_t*)&stdout_fd_init }, 
+   { eOpen | eIsFile, (file_base_t*)&stderr_fd_init }},
+  /* umask */
   022,
+  /* version */
   0,
+  /* save_all_writes */
   0
 };
-
-static void __create_new_dfile(exe_disk_file_t *dfile, unsigned size, 
-                               const char *name, struct stat64 *defaults) {
-  struct stat64 *s = malloc(sizeof(*s));
-  const char *sp;
-  char sname[64];
-  for (sp=name; *sp; ++sp)
-    sname[sp-name] = *sp;
-  memcpy(&sname[sp-name], "-stat", 6);
-
-  assert(size);
-
-  dfile->size = size;
-  dfile->contents = malloc(dfile->size);
-
-  dfile->filename = malloc(64);
-  memset(dfile->filename, 0, 64);
-  strcpy(dfile->filename, name);
-
-  klee_make_symbolic(dfile->contents, dfile->size, name);
-  klee_make_symbolic(s, sizeof(*s), sname);
-
-  /* For broken tests */
-  if (!klee_is_symbolic(s->st_ino) && 
-      (s->st_ino & 0x7FFFFFFF) == 0)
-    s->st_ino = defaults->st_ino;
-  
-  /* Important since we copy this out through getdents, and readdir
-     will otherwise skip this entry. For same reason need to make sure
-     it fits in low bits. */
-  klee_assume((s->st_ino & 0x7FFFFFFF) != 0);
-
-  /* uclibc opendir uses this as its buffer size, try to keep
-     reasonable. */
-  klee_assume((s->st_blksize & ~0xFFFF) == 0);
-
-  klee_prefer_cex(s, !(s->st_mode & ~(S_IFMT | 0777)));
-  klee_prefer_cex(s, s->st_dev == defaults->st_dev);
-  klee_prefer_cex(s, s->st_rdev == defaults->st_rdev);
-  klee_prefer_cex(s, (s->st_mode&0700) == 0600);
-  klee_prefer_cex(s, (s->st_mode&0070) == 0040);
-  klee_prefer_cex(s, (s->st_mode&0007) == 0004);
-  klee_prefer_cex(s, (s->st_mode&S_IFMT) == S_IFREG);
-  klee_prefer_cex(s, s->st_nlink == 1);
-  klee_prefer_cex(s, s->st_uid == defaults->st_uid);
-  klee_prefer_cex(s, s->st_gid == defaults->st_gid);
-  klee_prefer_cex(s, s->st_blksize == 4096);
-  klee_prefer_cex(s, s->st_atime == defaults->st_atime);
-  klee_prefer_cex(s, s->st_mtime == defaults->st_mtime);
-  klee_prefer_cex(s, s->st_ctime == defaults->st_ctime);
-
-  s->st_size = dfile->size;
-  s->st_blocks = 8;
-  dfile->stat = s;
-}
 
 static unsigned __sym_uint32(const char *name) {
   unsigned x;
@@ -104,154 +65,8 @@ static unsigned __sym_uint32(const char *name) {
   return x;
 }
 
-/* Add concrete value to a symbolic input. User should
- * specify a configuration file to use this function.
- * Each line in the configuration file should be of one
- * of the following types.
- *  <array name> <offset> <integer value>
- *  e.g. `B 10 54`
- *  <array name> c<offset> <char value>
- *  e.g. `A c13 (`
- */
-static void klee_concretize(char *concretize_cfg) {
-  if (concretize_cfg != NULL) {
-    printf("concretizing...\n");
-    printf("cfg=%s\n", concretize_cfg);
-    FILE *cctz_cfg_file = fopen(concretize_cfg, "r");
-    if (!cctz_cfg_file) {
-      const char *msg = "cannot find concretize_cfg file";
-      klee_report_error(__FILE__, __LINE__, msg, "user.err");
-    }
-
-    char name[64], offset[64], value[64];
-    unsigned k;
-    while (fscanf(cctz_cfg_file, "%s %s %s", name, offset, value) == 3) {
-      if (strcmp(name, "stdin") == 0) {
-        int off, val;
-        if (offset[0] == 'c') {
-          off = atoi(offset+1);
-          __exe_fs.sym_stdin->contents[off] = value[0];
-          printf("sym_files[%u][%d] = %c\n", k, off, value[0]);
-        }
-        else {
-          off = atoi(offset);
-          val = atoi(value);
-          __exe_fs.sym_stdin->contents[off] = val & 0xff;
-          printf("sym_files[%u][%d] = %#x\n", k, off, val & 0xff);
-        }
-        continue;
-      }
-
-      for (k = 0; k < __exe_fs.n_sym_files; k++) {
-        if (strcmp(__exe_fs.sym_files[k].filename, name) == 0) {
-          int off, val;
-          if (offset[0] == 'c') {
-            off = atoi(offset+1);
-            __exe_fs.sym_files[k].contents[off] = value[0];
-            printf("%s[%d] = %c\n", __exe_fs.sym_files[k].filename, off, value[0]);
-          }
-          else {
-            off = atoi(offset);
-            val = atoi(value);
-            __exe_fs.sym_files[k].contents[off] = val & 0xff;
-            printf("%s[%d] = %#x\n", __exe_fs.sym_files[k].filename, off, val & 0xff);
-          }
-        }
-      }
-    }
-
-    fclose(cctz_cfg_file);
-  }
-}
-
-
-/* n_files: number of symbolic input files, excluding stdin
-   file_length: size in bytes of each symbolic file, including stdin
-   sym_stdout_flag: 1 if stdout should be symbolic, 0 otherwise
-   save_all_writes_flag: 1 if all writes are executed as expected, 0 if 
-                         writes past the initial file size are discarded 
-			 (file offset is always incremented)
-   max_failures: maximum number of system call failures */
-void klee_init_fds(unsigned n_files, unsigned file_length,
-                   unsigned stdin_length, int sym_file_stdin_flag,
-                   int sym_stdout_flag,
-                   int save_all_writes_flag, unsigned max_failures,
-                   char *concretize_cfg,
-                   char **sym_file_names, unsigned *sym_file_lens) {
-  unsigned k;
-  char name[7] = "?-data";
-  struct stat64 s;
-
-  stat64(".", &s);
-
-  __exe_fs.n_sym_files = n_files;
-  __exe_fs.sym_files = malloc(sizeof(*__exe_fs.sym_files) * n_files);
-
-  if (file_length != 0) {
-    __exe_fs.type = UNITED;
-    for (k=0; k < n_files; k++) {
-      name[0] = 'A' + k;
-      __create_new_dfile(&__exe_fs.sym_files[k], file_length, name, &s);
-      /* FIXME: This is a workaround since currently we don't record the path
-       * of libc. */
-      klee_assume(!S_ISCHR(__exe_fs.sym_files[k].stat->st_mode));
-    }
-  }
-  else if (n_files > 0) {
-    __exe_fs.type = STANDALONE;
-    printf("using customized names for sym-files\n");
-    for (k=0; k < n_files; k++) {
-      char *filename = malloc(64);
-      memset(filename, 0, 64);
-      strcpy(filename, sym_file_names[k]);
-      printf("[%d] name: %s, size: %u\n", k, filename, sym_file_lens[k]);
-      __create_new_dfile(&__exe_fs.sym_files[k], sym_file_lens[k], filename, &s);
-      klee_assume(!S_ISCHR(__exe_fs.sym_files[k].stat->st_mode));
-    }
-  }
-
-  /* setting symbolic stdin */
-  if (stdin_length) {
-    __exe_fs.sym_stdin = malloc(sizeof(*__exe_fs.sym_stdin));
-    __create_new_dfile(__exe_fs.sym_stdin, stdin_length, "stdin", &s);
-    __exe_env.fds[0].dfile = __exe_fs.sym_stdin;
-    if (sym_file_stdin_flag) {
-      klee_assume(!S_ISCHR(__exe_fs.sym_stdin->stat->st_mode));
-    }
-    else {
-      klee_assume(S_ISCHR(__exe_fs.sym_stdin->stat->st_mode));
-    }
-  }
-  else __exe_fs.sym_stdin = NULL;
-
-  klee_concretize(concretize_cfg);
-
-  __exe_fs.max_failures = max_failures;
-  if (__exe_fs.max_failures) {
-    __exe_fs.read_fail = malloc(sizeof(*__exe_fs.read_fail));
-    __exe_fs.write_fail = malloc(sizeof(*__exe_fs.write_fail));
-    __exe_fs.close_fail = malloc(sizeof(*__exe_fs.close_fail));
-    __exe_fs.ftruncate_fail = malloc(sizeof(*__exe_fs.ftruncate_fail));
-    __exe_fs.getcwd_fail = malloc(sizeof(*__exe_fs.getcwd_fail));
-
-    klee_make_symbolic(__exe_fs.read_fail, sizeof(*__exe_fs.read_fail), "read_fail");
-    klee_make_symbolic(__exe_fs.write_fail, sizeof(*__exe_fs.write_fail), "write_fail");
-    klee_make_symbolic(__exe_fs.close_fail, sizeof(*__exe_fs.close_fail), "close_fail");
-    klee_make_symbolic(__exe_fs.ftruncate_fail, sizeof(*__exe_fs.ftruncate_fail), "ftruncate_fail");
-    klee_make_symbolic(__exe_fs.getcwd_fail, sizeof(*__exe_fs.getcwd_fail), "getcwd_fail");
-  }
-
-  /* setting symbolic stdout */
-  if (sym_stdout_flag) {
-    __exe_fs.sym_stdout = malloc(sizeof(*__exe_fs.sym_stdout));
-    __create_new_dfile(__exe_fs.sym_stdout, 1024, "stdout", &s);
-    __exe_env.fds[1].dfile = __exe_fs.sym_stdout;
-    klee_assume(S_ISCHR(__exe_fs.sym_stdout->stat->st_mode));
-    __exe_fs.stdout_writes = 0;
-  }
-  else __exe_fs.sym_stdout = NULL;
-  
-  __exe_env.save_all_writes = save_all_writes_flag;
+void klee_init_sym_env(int save_all_writes) {
+  __exe_env.save_all_writes = save_all_writes;
   __exe_env.version = __sym_uint32("model_version");
   klee_assume(__exe_env.version == 1);
 }

@@ -8,6 +8,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "klee/Internal/Module/KInstruction.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Metadata.h"
 
 using namespace llvm;
 using namespace klee;
@@ -23,4 +26,16 @@ std::string KInstruction::getSourceLocation() const {
     return info->file + ":" + std::to_string(info->line) + " " +
            std::to_string(info->column);
   else return "[no debug info]";
+}
+
+unsigned int KInstruction::getLoadedFreq() const {
+  MDNode *MD = inst->getMetadata("klee.freq");
+  if (MD) {
+    if (ConstantAsMetadata *CMD = dyn_cast<ConstantAsMetadata>(MD->getOperand(0).get())) {
+      if (ConstantInt *CI = dyn_cast<ConstantInt>(CMD->getValue())) {
+        return CI->getZExtValue();
+      }
+    }
+  }
+  return 0;
 }

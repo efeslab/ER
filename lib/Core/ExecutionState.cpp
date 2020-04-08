@@ -17,15 +17,16 @@
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/OptionCategories.h"
 #include "CoreStats.h"
+#include "ExecutorCmdLine.h"
 
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cassert>
-#include <iomanip>
 #include <map>
 #include <set>
 #include <sstream>
@@ -41,51 +42,46 @@ cl::opt<bool> DebugLogStateMerge(
     cl::cat(MergeCat));
 
 /*** HASE options ***/
+cl::opt<bool>
+    IgnorePOSIXPath("ignore-posix-path", cl::init(false),
+                    cl::desc("Ignore (not recording or using) path traces "
+                             "inside POSIX runtime (default=false"),
+                    cl::cat(HASECat));
+}
+namespace klee {
 cl::opt<std::string> PathRecordingEntryPoint(
     "pathrec-entry-point", cl::init(""),
-    cl::desc("Path will be recorded after this entry point is called (record all path by default)"),
+    cl::desc("Path will be recorded after this entry point is called (record "
+             "all path by default)"),
     cl::cat(HASECat));
-cl::opt<bool> IgnorePOSIXPath(
-    "ignore-posix-path", cl::init(false),
-    cl::desc("Ignore (not recording or using) path traces inside POSIX runtime (default=false"),
-    cl::cat(HASECat));
+}
+
+/** Internal Routine **/
+static inline bool isKFunctionInPOSIX(KFunction *kf) {
+  return kf->function->hasFnAttribute("InPOSIX");
+}
+static inline bool isKFunctionInLIBC(KFunction *kf) {
+  return kf->function->hasFnAttribute("IsINLIBC");
 }
 
 /***/
 
-StackFrame::StackFrame(KInstIterator _caller, KFunction *_kf)
-  : caller(_caller), kf(_kf), callPathNode(0), 
-    minDistToUncoveredOnReturn(0), varargs(0) {
-  locals = new Cell[kf->numRegisters];
+void ExecutionState::setupMain(KFunction *kf) {
+  // single process, make its id always be 0
+  // the first thread, set its id to be 0
+  Thread mainThread = Thread(0, 0, kf);
+  threads.insert(std::make_pair(mainThread.tuid, mainThread));
+  crtThreadIt = threads.begin();
 }
 
-StackFrame::StackFrame(const StackFrame &s) 
-  : caller(s.caller),
-    kf(s.kf),
-    callPathNode(s.callPathNode),
-    allocas(s.allocas),
-    minDistToUncoveredOnReturn(s.minDistToUncoveredOnReturn),
-    varargs(s.varargs) {
-  locals = new Cell[s.kf->numRegisters];
-  for (unsigned i=0; i<s.kf->numRegisters; i++)
-    locals[i] = s.locals[i];
+void ExecutionState::setupTime() {
+  stateTime = 1284138206L * 1000000L; // Yeah, ugly, but what else? :)
 }
-
-StackFrame::~StackFrame() { 
-  delete[] locals; 
-}
-
-/***/
 
 ExecutionState::ExecutionState(KFunction *kf) :
-    pc(kf->instructions),
-    prevPC(pc),
+    wlistCounter(1),
     isInUserMain(false),
-    isInPOSIX(false),
-    POSIXDepth(0),
-    weight(1),
     depth(0),
-
     instsSinceCovNew(0),
     coveredNew(false),
     forkDisabled(false),
@@ -94,16 +90,22 @@ ExecutionState::ExecutionState(KFunction *kf) :
     nbranches_rec(0),
     ptreeNode(0),
     steppedInstructions(0){
-  pushFrame(0, kf);
   if (PathRecordingEntryPoint.empty()) {
     isInUserMain = true;
   }
+  setupMain(kf);
+  setupTime();
 }
 
 ExecutionState::ExecutionState(const std::vector<ref<Expr> > &assumptions)
-    : constraints(assumptions), replayPosition(0), replayDataRecEntriesPosition(0), nbranches_rec(0), ptreeNode(0) {}
+    : wlistCounter(1), constraints(assumptions), replayPosition(0), replayDataRecEntriesPosition(0), nbranches_rec(0), ptreeNode(0) {}
 
 ExecutionState::~ExecutionState() {
+  for (threads_ty::value_type &tit: threads) {
+    Thread &t = tit.second;
+    while (!t.stack.empty()) popFrame(t);
+  }
+
   for (unsigned int i=0; i<symbolics.size(); i++)
   {
     const MemoryObject *mo = symbolics[i].first;
@@ -116,17 +118,13 @@ ExecutionState::~ExecutionState() {
   for (auto cur_mergehandler: openMergeStack){
     cur_mergehandler->removeOpenState(this);
   }
-
-
-  while (!stack.empty()) popFrame();
 }
 
 ExecutionState::ExecutionState(const ExecutionState& state):
-    pc(state.pc),
-    prevPC(state.prevPC),
-    stack(state.stack),
-    incomingBBIndex(state.incomingBBIndex),
-
+    threads(state.threads),
+    waitingLists(state.waitingLists),
+    wlistCounter(state.wlistCounter),
+    stateTime(state.stateTime),
     addressSpace(state.addressSpace),
     constraints(state.constraints),
 
@@ -135,9 +133,6 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     prev_fork_queryCost(state.prev_fork_queryCost),
     prev_fork_queryCost_single(state.prev_fork_queryCost_single),
     isInUserMain(state.isInUserMain),
-    isInPOSIX(state.isInPOSIX),
-    POSIXDepth(state.POSIXDepth),
-    weight(state.weight),
     depth(state.depth),
 
     pathOS(state.pathOS),
@@ -163,6 +158,7 @@ ExecutionState::ExecutionState(const ExecutionState& state):
 
   for (auto cur_mergehandler: openMergeStack)
     cur_mergehandler->addOpenState(this);
+  crtThreadIt = threads.find(state.crtThreadIt->first);
 }
 
 ExecutionState *ExecutionState::branch() {
@@ -172,14 +168,12 @@ ExecutionState *ExecutionState::branch() {
   falseState->coveredNew = false;
   falseState->coveredLines.clear();
 
-  weight *= .5;
-  falseState->weight -= weight;
-
   // initialize PathOS based on existence of existing PathOS field
   if (pathOS.isValid()) {
     // Need to update the pathOS.id field of falseState, otherwise the same id
     // is used for both falseState and trueState.
     falseState->pathOS = pathOS.branch();
+    falseState->pathDataRecOS = pathDataRecOS.branch();
   }
   if (stackPathOS.isValid()) {
     falseState->stackPathOS = stackPathOS.branch();
@@ -192,39 +186,6 @@ ExecutionState *ExecutionState::branch() {
   }
 
   return falseState;
-}
-
-void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
-  stack.push_back(StackFrame(caller,kf));
-  if (!isInUserMain && (kf->function->getName() == PathRecordingEntryPoint)) {
-    isInUserMain = true;
-  }
-  // NOTE: when enabling POSIX runtime, the entire application will be wrapped
-  // into a POSIX function call (i.e. the entry point func belongs to POSIX)
-  // So we should only reason about prop "InPOSIX" inside UserMain
-  if (isInUserMain && IgnorePOSIXPath && kf->function->hasFnAttribute("InPOSIX")) {
-    if(POSIXDepth == 0) {
-      isInPOSIX=true;
-    }
-    ++POSIXDepth;
-  }
-}
-
-void ExecutionState::popFrame() {
-  StackFrame &sf = stack.back();
-  for (std::vector<const MemoryObject*>::iterator it = sf.allocas.begin(), 
-         ie = sf.allocas.end(); it != ie; ++it)
-    addressSpace.unbindObject(*it);
-  if (isInUserMain && (sf.kf->function->getName() == PathRecordingEntryPoint)) {
-    isInUserMain = false;
-  }
-  if (isInUserMain && IgnorePOSIXPath && sf.kf->function->hasFnAttribute("InPOSIX")) {
-    --POSIXDepth;
-    if (POSIXDepth == 0) {
-      isInPOSIX = false;
-    }
-  }
-  stack.pop_back();
 }
 
 void ExecutionState::addSymbolic(const MemoryObject *mo, const Array *array) { 
@@ -247,11 +208,12 @@ llvm::raw_ostream &klee::operator<<(llvm::raw_ostream &os, const MemoryMap &mm) 
   return os;
 }
 
+// FIXME: incomplete multithreading support
 bool ExecutionState::merge(const ExecutionState &b) {
   if (DebugLogStateMerge)
     llvm::errs() << "-- attempting merge of A:" << this << " with B:" << &b
                  << "--\n";
-  if (pc != b.pc)
+  if (pc() != b.pc())
     return false;
 
   // XXX is it even possible for these to differ? does it matter? probably
@@ -260,16 +222,16 @@ bool ExecutionState::merge(const ExecutionState &b) {
     return false;
 
   {
-    std::vector<StackFrame>::const_iterator itA = stack.begin();
-    std::vector<StackFrame>::const_iterator itB = b.stack.begin();
-    while (itA!=stack.end() && itB!=b.stack.end()) {
+    std::vector<StackFrame>::const_iterator itA = stack().begin();
+    std::vector<StackFrame>::const_iterator itB = b.stack().begin();
+    while (itA!=stack().end() && itB!=b.stack().end()) {
       // XXX vaargs?
       if (itA->caller!=itB->caller || itA->kf!=itB->kf)
         return false;
       ++itA;
       ++itB;
     }
-    if (itA!=stack.end() || itB!=b.stack.end())
+    if (itA!=stack().end() || itB!=b.stack().end())
       return false;
   }
 
@@ -365,9 +327,9 @@ bool ExecutionState::merge(const ExecutionState &b) {
   // it seems like it can make a difference, even though logically
   // they must contradict each other and so inA => !inB
 
-  std::vector<StackFrame>::iterator itA = stack.begin();
-  std::vector<StackFrame>::const_iterator itB = b.stack.begin();
-  for (; itA!=stack.end(); ++itA, ++itB) {
+  std::vector<StackFrame>::iterator itA = stack().begin();
+  std::vector<StackFrame>::const_iterator itB = b.stack().begin();
+  for (; itA!=stack().end(); ++itA, ++itB) {
     StackFrame &af = *itA;
     const StackFrame &bf = *itB;
     for (unsigned i=0; i<af.kf->numRegisters; i++) {
@@ -410,6 +372,134 @@ bool ExecutionState::merge(const ExecutionState &b) {
 
   return true;
 }
+void ExecutionState::pushFrame(Thread &t, KInstIterator caller, KFunction *kf) {
+  t.stack.push_back(StackFrame(caller,kf));
+  ++kf->frequency;
+  if (!isInUserMain && (kf->function->getName() == PathRecordingEntryPoint)) {
+    isInUserMain = true;
+  }
+  // NOTE: when enabling POSIX runtime, the entire application will be wrapped
+  // into a POSIX function call (i.e. the entry point func belongs to POSIX)
+  // So we should only reason about prop "InPOSIX" inside UserMain
+  if (isInUserMain && IgnorePOSIXPath && isKFunctionInPOSIX(kf)) {
+    if (t.POSIXDepth == 0) {
+      t.isInPOSIX = true;
+    }
+    ++t.POSIXDepth;
+  }
+  if (isInUserMain && isKFunctionInLIBC(kf)) {
+    if (t.LIBCDepth == 0) {
+      t.isInLIBC = true;
+    }
+    ++t.LIBCDepth;
+  }
+}
+
+void ExecutionState::popFrame(Thread &t) {
+  StackFrame &sf = t.stack.back();
+  for (std::vector<const MemoryObject*>::iterator it = sf.allocas.begin(), 
+         ie = sf.allocas.end(); it != ie; ++it)
+    addressSpace.unbindObject(*it);
+  if (isInUserMain &&
+      (sf.kf->function->getName() == PathRecordingEntryPoint)) {
+    isInUserMain = false;
+  }
+  if (isInUserMain && IgnorePOSIXPath && isKFunctionInPOSIX(sf.kf)) {
+    --t.POSIXDepth;
+    if (t.POSIXDepth == 0) {
+      t.isInPOSIX = false;
+    }
+  }
+  if (isInUserMain && isKFunctionInLIBC(sf.kf)) {
+    --t.LIBCDepth;
+    if (t.LIBCDepth == 0) {
+      t.isInLIBC = false;
+    }
+  }
+  t.stack.pop_back();
+}
+
+/* Multithreading related function  */
+Thread &ExecutionState::createThread(thread_id_t tid, KFunction *kf) {
+  // we currently assume there is only one process and its id is 0
+  Thread newThread = Thread(tid, 0, kf);
+  // I need to determine the "InPOSIX" and "InLIBC" status of the new thread by
+  // looking at the start function during thread creation.
+  // Following two cases should be taken into consideration
+  // 1. Thread could be created inside the POSIX runtime. e.g. handlers in
+  // sockets simulator may call "pthread_create".
+  // 2. all thread creation happens from POSIX function call "pthread_create"
+  if (isKFunctionInPOSIX(kf)) {
+    newThread.isInPOSIX = true;
+    newThread.POSIXDepth = 1;
+  }
+  if (isKFunctionInLIBC(kf)) {
+    newThread.isInLIBC = true;
+    newThread.LIBCDepth = 1;
+  }
+  std::pair<threads_ty::iterator, bool> res =
+      threads.insert(std::make_pair(newThread.tuid, newThread));
+  assert(res.second);
+  return res.first->second;
+}
+
+void ExecutionState::terminateThread(threads_ty::iterator thrIt) {
+  klee_message("Terminating thread %lu", thrIt->first.first);
+  // we assume the scheduler found a new thread first
+  assert(thrIt != crtThreadIt);
+  assert(!thrIt->second.enabled);
+  assert(thrIt->second.waitingList == 0);
+  threads.erase(thrIt);
+}
+
+void ExecutionState::sleepThread(wlist_id_t wlist) {
+  assert(crtThread().enabled);
+  assert(wlist > 0);
+  crtThread().enabled = false;
+  crtThread().waitingList = wlist;
+  std::set<thread_uid_t> &wl = waitingLists[wlist];
+  wl.insert(crtThread().tuid);
+}
+
+void ExecutionState::notifyOne(wlist_id_t wlist, thread_uid_t tuid) {
+  assert(wlist > 0);
+  std::set<thread_uid_t> &wl = waitingLists[wlist];
+  if (wl.erase(tuid) != 1) {
+    assert(0 && "thread was not waiting");
+  }
+  threads_ty::iterator find_it = threads.find(tuid);
+  assert(find_it != threads.end());
+  Thread &thread = find_it->second;
+  assert(!thread.enabled);
+  thread.enabled = true;
+  thread.waitingList = 0;
+  if (wl.size() == 0)
+    waitingLists.erase(wlist);
+}
+
+void ExecutionState::notifyAll(wlist_id_t wlist) {
+  assert(wlist > 0);
+  std::set<thread_uid_t> &wl = waitingLists[wlist];
+  if (wl.size() > 0) {
+    for (const thread_uid_t &tuid: wl) {
+      threads_ty::iterator find_it = threads.find(tuid);
+      assert(find_it != threads.end());
+      Thread &thread = find_it->second;
+      thread.enabled = true;
+      thread.waitingList = 0;
+    }
+    wl.clear();
+  }
+  waitingLists.erase(wlist);
+}
+
+/* Debugging helper */
+void ExecutionState::dumpStack(llvm::raw_ostream &out) const {
+  out << "Current Thread: " << crtThread().tuid.first << '\n';
+  for (const threads_ty::value_type &tit : threads) {
+    tit.second.dumpStack(out);
+  }
+}
 
 void ExecutionState::dumpStackPathOS() {
   struct StringInstStats stack;
@@ -425,12 +515,12 @@ void ExecutionState::dumpStatsPathOS() {
   time::Span current_cost = fork_queryCost - prev_fork_queryCost;
   time::Span current_cost_increment = current_cost - prev_fork_queryCost_single;
   prev_fork_queryCost = fork_queryCost;
-  const InstructionInfo *iinfo = this->prevPC->info;
+  const InstructionInfo *iinfo = crtThread().prevPC->info;
   if (current_cost.toMicroseconds() > 0) {
     prev_fork_queryCost_single = current_cost;
     exstats.instructions_cnt = stats::instructions;
     llvm::raw_string_ostream sos(exstats.llvm_inst_str);
-    this->prevPC->inst->print(sos);
+    crtThread().prevPC->inst->print(sos);
     exstats.file_loc = iinfo->file + ":" + std::to_string(iinfo->line);
     exstats.queryCost_us = current_cost.toMicroseconds();
     exstats.queryCost_increment_us = current_cost_increment.toMicroseconds();
@@ -456,41 +546,4 @@ void ExecutionState::dumpConstraints(llvm::raw_ostream &out) const {
 }
 void ExecutionState::dumpConstraints() const {
   dumpConstraints(llvm::errs());
-}
-
-void ExecutionState::dumpStack(llvm::raw_ostream &out) const {
-  unsigned idx = 0;
-  const KInstruction *target = prevPC;
-  for (ExecutionState::stack_ty::const_reverse_iterator
-         it = stack.rbegin(), ie = stack.rend();
-       it != ie; ++it) {
-    const StackFrame &sf = *it;
-    Function *f = sf.kf->function;
-    const InstructionInfo &ii = *target->info;
-    out << "\t#" << idx++;
-    std::stringstream AssStream;
-    AssStream << std::setw(8) << std::setfill('0') << ii.assemblyLine;
-    out << AssStream.str();
-    out << " in " << f->getName().str() << " (";
-    // Yawn, we could go up and print varargs if we wanted to.
-    unsigned index = 0;
-    for (Function::arg_iterator ai = f->arg_begin(), ae = f->arg_end();
-         ai != ae; ++ai) {
-      if (ai!=f->arg_begin()) out << ", ";
-
-      out << ai->getName().str();
-      // XXX should go through function
-      ref<Expr> value = sf.locals[sf.kf->getArgRegister(index++)].value;
-      if (value.get() && isa<ConstantExpr>(value))
-        out << "=" << value;
-    }
-    out << ")";
-    if (ii.file != "")
-      out << " at " << ii.file << ":" << ii.line;
-    out << "\n";
-    target = sf.caller;
-  }
-}
-void ExecutionState::dumpStack() const {
-  dumpStack(llvm::errs());
 }

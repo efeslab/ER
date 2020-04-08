@@ -65,12 +65,14 @@ static cl::opt<std::string> OutputFile(
 
 llvm::cl::opt<bool> AssignID(
     "assign-id",
-    llvm::cl::desc("Assign a human-readable ID to each LLVM IR instructions"),
+    llvm::cl::desc("Assign a human-readable ID to each LLVM IR instructions."
+                   " (default=true)"),
     llvm::cl::init(true),
     llvm::cl::cat(klee::HASEPrePassCat));
 llvm::cl::opt<bool> InsertPTWrite(
     "insert-ptwrite",
-    llvm::cl::desc("Insert PTWrite instructions to specific places"),
+    llvm::cl::desc("Insert PTWrite instructions to specific places."
+                   " (default=false)"),
     llvm::cl::init(false),
     llvm::cl::cat(klee::HASEPrePassCat));
 llvm::cl::opt<std::string> PTWriteCFG(
@@ -122,7 +124,11 @@ int main(int argc, char **argv) {
         KModule::addPTWrite(M, PTWriteCFG);
     }
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(7, 0)
+    WriteBitcodeToFile(*M, fs);
+#else
     WriteBitcodeToFile(M, fs);
+#endif
     fs.close();
     llvm::outs() << "Module saved to " << OutputFile << "\n";
 

@@ -2,6 +2,7 @@
 #define KLEE_EXPRINPLACETRANSFORMATION_H
 #include "klee/Expr/Expr.h"
 #include "klee/Expr/Constraints.h"
+#include "klee/Expr/Parser/Parser.h"
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
@@ -11,8 +12,11 @@ using namespace klee;
 // Expr in-place transformed is no longer "hashable" and previous hash becomes
 // unreliable
 class ExprInPlaceTransformer {
-  // top-level constraints
-  ConstraintManager &cm;
+  // the QueryCommand to simplify
+  const klee::expr::QueryCommand &QC;
+  // points to the simplified QC, which is dynamically allocated
+  const klee::expr::QueryCommand *new_QCp;
+
   struct WorkListEntry {
     enum EntryType { EExpr, EUNode};
     EntryType t;
@@ -76,14 +80,16 @@ class ExprInPlaceTransformer {
 
   void rebuild_pop_expr();
   public:
-    // \param _cm input constraints
-    // \output constraints will be cleared and put into transformed constraints
-    ExprInPlaceTransformer(ConstraintManager &_cm, std::vector<ref<Expr>> &constraints);
+    // \param _constraints input constraints
+    // \output out_constraints will be cleared and put into transformed constraints
+    ExprInPlaceTransformer(const klee::expr::QueryCommand &_QC);
+    ~ExprInPlaceTransformer() { delete new_QCp; }
     // return bool: changed or not.
     void visitExpr(Expr *e);
     // this is actually a post-order traversal
     void visitDFS(Expr *e);
     // Historically, UpdateList.head is const. So we need to allocate new UpdateNode
     void visitUNode(const UpdateNode *un);
+    const klee::expr::QueryCommand *getNewQCptr() const { return new_QCp; }
 };
 #endif // KLEE_EXPRTRANSFORMATION_H

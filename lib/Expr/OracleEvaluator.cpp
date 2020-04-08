@@ -15,7 +15,8 @@ ref<Expr> OracleEvaluator::getInitialValue(const Array &array, unsigned index) {
     arrayname2idx_ty::const_iterator it = arrayname2idx.find(array.name);
     if (it == arrayname2idx.end()) {
         klee_message("Cannot find symbolic array %s in KTest", array.name.c_str());
-        abort();
+        return ReadExpr::create(UpdateList(&array, 0),
+            ConstantExpr::alloc(index, array.getDomain()));
     }
     KTestObject &kobj = ktest->objects[it->second];
     if (index >= kobj.numBytes) {

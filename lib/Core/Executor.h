@@ -78,6 +78,7 @@ namespace klee {
   class TimingSolver;
   class TreeStreamWriter;
   class MergeHandler;
+  class MergingSearcher;
   template<class T> class ref;
 
 
@@ -93,7 +94,6 @@ class Executor : public Interpreter {
   friend class SpecialFunctionHandler;
   friend class StatsTracker;
   friend class MergeHandler;
-  friend class MergingSearcher;
 
 public:
   typedef std::pair<ExecutionState*,ExecutionState*> StatePair;
@@ -135,16 +135,6 @@ private:
   TimerGroup timers;
   std::unique_ptr<PTree> processTree;
 
-  /// Keeps track of all currently ongoing merges.
-  /// An ongoing merge is a set of states which branched from a single state
-  /// which ran into a klee_open_merge(), and not all states in the set have
-  /// reached the corresponding klee_close_merge() yet.
-  std::vector<MergeHandler *> mergeGroups;
-
-  /// ExecutionStates currently paused from scheduling because they are
-  /// waiting to be merged in a klee_close_merge instruction
-  std::set<ExecutionState *> inCloseMerge;
-
   /// Used to track states that have been added during the current
   /// instructions step.
   /// \invariant \ref addedStates is a subset of \ref states.
@@ -155,13 +145,6 @@ private:
   /// \invariant \ref removedStates is a subset of \ref states.
   /// \invariant \ref addedStates and \ref removedStates are disjoint.
   std::vector<ExecutionState *> removedStates;
-
-  /// Used to track states that are not terminated, but should not
-  /// be scheduled by the searcher.
-  std::vector<ExecutionState *> pausedStates;
-  /// States that were 'paused' from scheduling, that now may be
-  /// scheduled again
-  std::vector<ExecutionState *> continuedStates;
 
   /// When non-empty the Executor is running in "seed" mode. The
   /// states in this map will be executed in an arbitrary order
@@ -244,6 +227,10 @@ private:
 
   /// Optimizes expressions
   ExprOptimizer optimizer;
+
+  /// Points to the merging searcher of the searcher chain,
+  /// `nullptr` if merging is disabled
+  MergingSearcher *mergingSearcher = nullptr;
 
   llvm::Function* getTargetFunction(llvm::Value *calledVal,
                                     ExecutionState &state);
@@ -333,6 +320,8 @@ private:
                    ref<Expr> address,
                    KInstruction *target = 0);
 
+  /// NOTE: ki could be null if this function call is "pthread_exit" created by
+  /// the Instruction::Ret of a thread
   void executeCall(ExecutionState &state,
                    KInstruction *ki,
                    llvm::Function *f,
@@ -366,7 +355,8 @@ private:
   /// function is a wrapper around the state's addConstraint function
   /// which also manages propagation of implied values,
   /// validity checks, and seed patching.
-  void addConstraint(ExecutionState &state, ref<Expr> condition);
+  /// return: true if condition could be True, otherwise false
+  bool addConstraint(ExecutionState &state, ref<Expr> condition);
 
   // Called on [for now] concrete reads, replaces constant with a symbolic
   // Used for testing.
@@ -378,12 +368,16 @@ private:
   Cell& getArgumentCell(ExecutionState &state,
                         KFunction *kf,
                         unsigned index) {
-    return state.stack.back().locals[kf->getArgRegister(index)];
+    return state.stack().back().locals[kf->getArgRegister(index)];
+  }
+
+  Cell& getArgumentCell(StackFrame &sf, KFunction *kf, unsigned index) {
+    return sf.locals[kf->getArgRegister(index)];
   }
 
   Cell& getDestCell(ExecutionState &state,
                     KInstruction *target) {
-    return state.stack.back().locals[target->dest];
+    return state.stack().back().locals[target->dest];
   }
 
   void bindLocal(KInstruction *target,
@@ -434,10 +428,6 @@ private:
 
   bool shouldExitOn(enum TerminateReason termReason);
 
-  // remove state from searcher only
-  void pauseState(ExecutionState& state);
-  // add state to searcher only
-  void continueState(ExecutionState& state);
   // remove state from queue and delete
   void terminateState(ExecutionState &state);
   // call exit handler and terminate state
@@ -502,6 +492,31 @@ private:
   void dumpStates();
   void dumpPTree();
 
+  /* Multi-threading related function */
+  // Pthread Create needs to specify a new StackFrame instead of just using the
+  // current thread's stack
+  void bindArgumentToPthreadCreate(KFunction *kf, unsigned index,
+                                   StackFrame &sf, ref<Expr> value);
+  // Schedule what threads to execute next in the given ExecutionState. There
+  // are 3 sceharios to consider:
+  // 1. One thread is terminated (enabled=false, yield=false)
+  // 2. One thread is not terminated but proactively yield (enabled=true,
+  // yield=true)
+  // 3. One thread is not terminated nor yielding, but preempted.
+  // @return if schedule successfully
+  // NOTE: For unknown reason, the cloud9 code base allow you just
+  // schedule one possible next thread in case 1 and 2. But you have to
+  // fork to iterate all possible schedules in case 3.
+  // NOTE: I have not implemented forking upon schedule, I assume you can
+  // only choose one possible next thread for case 1,2. And do nothing for case
+  // 3.
+  // NOTE: I have not implemented schedule recording, which may be required
+  // during replay later.
+  bool schedule(ExecutionState &state, bool yield);
+  void executeThreadCreate(ExecutionState &state, thread_id_t tid,
+                           ref<Expr> start_function, ref<Expr> arg);
+  void executeThreadExit(ExecutionState &state);
+
 public:
 
   Executor(llvm::LLVMContext &ctx, const InterpreterOptions &opts,
@@ -547,6 +562,10 @@ public:
   /// Try load the value of a given KInstuction from recorded path file
   /// \param[out] true if given KInst is loaded successfully
   bool tryLoadDataRecording(ExecutionState &state, KInstruction *KI);
+  /// use a given constant value to concretize the result of a given
+  /// KInstruction.
+  void concretizeKInst(ExecutionState &state, KInstruction *KI,
+      ref<ConstantExpr> loadedValue);
   /// Record given KInstruction if it is selected to do so.
   /// \param[out] true if given KInst is recorded successfully
   bool tryStoreDataRecording(ExecutionState &state, KInstruction *KI);
@@ -643,6 +662,9 @@ public:
   /// \param[out] res Represent if next branch is taken (Solver::True) or not
   void getNextBranchConstraint(ExecutionState &state, ref<Expr> condition,
       ref<Expr> &new_constraint, Solver::Validity &res);
+
+  MergingSearcher *getMergingSearcher() const { return mergingSearcher; };
+  void setMergingSearcher(MergingSearcher *ms) { mergingSearcher = ms; };
 };
 
 } // End klee namespace

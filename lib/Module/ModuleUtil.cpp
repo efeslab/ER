@@ -322,7 +322,7 @@ bool klee::functionEscapes(const Function *f) {
 
 bool klee::loadFile(const std::string &fileName, LLVMContext &context,
                     std::vector<std::unique_ptr<llvm::Module>> &modules,
-                    std::string &errorMsg) {
+                    std::string &errorMsg, void(*moduleCB)(llvm::Module*)) {
   KLEE_DEBUG_WITH_TYPE("klee_loader", dbgs()
                                           << "Load file " << fileName << "\n");
 
@@ -353,6 +353,7 @@ bool klee::loadFile(const std::string &fileName, LLVMContext &context,
       klee_error("Loading file %s failed: %s", fileName.c_str(),
                  Err.getMessage().str().c_str());
     }
+    if (moduleCB) moduleCB(module.get());
     modules.push_back(std::move(module));
     return true;
   }
@@ -450,6 +451,7 @@ bool klee::loadFile(const std::string &fileName, LLVMContext &context,
                          Err.getMessage().str().c_str());
             }
 
+            if (moduleCB) moduleCB(module.get());
             modules.push_back(std::move(module));
           } else {
             errorMsg = "Buffer was NULL!";
@@ -487,6 +489,7 @@ bool klee::loadFile(const std::string &fileName, LLVMContext &context,
     klee_error("Loading file %s failed: Unrecognized file type.",
                fileName.c_str());
   }
+  if (moduleCB) moduleCB(module.get());
   modules.push_back(std::move(module));
   return true;
 }

@@ -14,14 +14,15 @@
 #include "klee/Internal/Support/IndependentElementSet.h"
 #include <unordered_set>
 
-// FIXME: Currently we use ConstraintManager for two things: to pass
-// sets of constraints around, and to optimize constraints. We should
-// move the first usage into a separate data structure
-// (ConstraintSet?) which ConstraintManager could embed if it likes.
 namespace klee {
 
 class ExprVisitor;
-
+// Constraints_ty is an abstract type representing a collection of constraints.
+// (ref<Expr> or Expr or etc.)
+// Currently it is a vector and other data structures are used to guarantee
+// uniqueness.
+// TODO: In the future I hope it can be changed to std::unordered_set
+typedef std::vector<ref<Expr>> Constraints_ty;
 class ConstraintManager {
 public:
   using constraints_ty = std::vector<ref<Expr>>;
@@ -35,77 +36,13 @@ public:
 
   // create from constraints with no optimization
   explicit
-  ConstraintManager(const std::vector< ref<Expr> > &_constraints) :
-    constraints(_constraints) {
-      // Need to establish factors and representative
-      std::vector<IndependentElementSet*> temp;
-      for (auto it = _constraints.begin(); it != _constraints.end(); it ++ ) {
-        temp.push_back(new IndependentElementSet(*it));
-      }
-
-      std::vector<IndependentElementSet*> result;
-      if (!temp.empty()) {
-        result.push_back(temp.back());
-        temp.pop_back();
-      }
-      // work like this:
-      // assume IndependentSet was setup for each constraint independently,
-      // represented by I0, I1, ... In
-      // temp initially has: I1...In
-      // result initially has: I0
-      // then for each IndependentSet Ii in temp, scan the entire result vector,
-      // combine any IndependentSet in result intersecting with Ii and put Ii
-      // in the result vector.
-      //
-      // result vector should only contain exclusive IndependentSet all the time.
-
-      while (!temp.empty()) {
-        IndependentElementSet* current = temp.back();
-        temp.pop_back();
-        unsigned int i = 0;
-        while (i < result.size()) {
-          if (current->intersects(*result[i])) {
-            current->add(*result[i]);
-            IndependentElementSet* victim = result[i];
-            result[i] = result.back();
-            result.pop_back();
-            delete victim;
-          } else {
-            i++;
-          }
-        }
-        result.push_back(current);
-      }
-
-      for (auto r = result.begin(); r != result.end(); r++) {
-        factors.insert(*r);
-        for (auto e = (*r)->exprs.begin(); e != (*r)->exprs.end(); e++) {
-            representative[*e] = *r;
-        }
-      }
-    }
-
-  ConstraintManager(const ConstraintManager &cs) : constraints(cs.constraints) {
-    // Copy constructor needs to make deep copy of factors and representative
-    // Here we assume every IndependentElementSet point in representative also exist in factors.
-    for (auto it = cs.factors.begin(); it != cs.factors.end(); it++) {
-      IndependentElementSet* candidate = new IndependentElementSet(*(*it));
-      factors.insert(candidate);
-      for (auto e = candidate->exprs.begin(); e != candidate->exprs.end(); e++) {
-          representative[*e] = candidate;
-      }
-    }
-  }
+  ConstraintManager(const std::vector< ref<Expr> > &_constraints);
+  ConstraintManager(const ConstraintManager &cs);
 
   // Destructor
-  ~ConstraintManager() {
-    // Here we assume every IndependentElementSet point in representative also exist in factors.
-    for (auto it = factors.begin(); it != factors.end(); it++) {
-      delete(*it);
-    }
-  }
+  ~ConstraintManager();
 
-  typedef std::vector< ref<Expr> >::const_iterator constraint_iterator;
+  typedef Constraints_ty::const_iterator constraint_iterator;
   typedef std::unordered_set<klee::IndependentElementSet*>::const_iterator factor_iterator;
 
   // given a constraint which is known to be valid, attempt to
@@ -114,7 +51,8 @@ public:
 
   ref<Expr> simplifyExpr(ref<Expr> e) const;
 
-  void addConstraint(ref<Expr> e);
+  // \param[out] if constraint added successfully (if it is valid)
+  bool addConstraint(ref<Expr> e);
 
   bool empty() const noexcept { return constraints.empty(); }
   ref<Expr> back() const { return constraints.back(); }
@@ -132,8 +70,10 @@ public:
     return constraints != other.constraints;
   }
 
+  const Constraints_ty& getAllConstraints() const { return constraints; }
+
 private:
-  std::vector<ref<Expr>> constraints;
+  Constraints_ty constraints;
   std::vector<ref<Expr>> old;
   ExprHashMap<klee::IndependentElementSet*> representative;
   std::vector<ref<Expr>> deleteConstraints;

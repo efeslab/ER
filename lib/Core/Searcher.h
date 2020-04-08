@@ -12,6 +12,7 @@
 
 #include "klee/Internal/System/Time.h"
 
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <map>
@@ -77,6 +78,7 @@ namespace klee {
       NURS_CovNew,
       NURS_MD2U,
       NURS_Depth,
+      NURS_RP,
       NURS_ICnt,
       NURS_CPICnt,
       NURS_QC
@@ -129,6 +131,7 @@ namespace klee {
   public:
     enum WeightType {
       Depth,
+      RP,
       QueryCost,
       InstCount,
       CPInstCount,
@@ -156,6 +159,7 @@ namespace klee {
       os << "WeightedRandomSearcher::";
       switch(type) {
       case Depth              : os << "Depth\n"; return;
+      case RP                 : os << "RandomPath\n"; return;
       case QueryCost          : os << "QueryCost\n"; return;
       case InstCount          : os << "InstCount\n"; return;
       case CPInstCount        : os << "CPInstCount\n"; return;
@@ -183,26 +187,64 @@ namespace klee {
     }
   };
 
+
+  extern llvm::cl::opt<bool> UseIncompleteMerge;
   class MergeHandler;
   class MergingSearcher : public Searcher {
     friend class MergeHandler;
 
     private:
 
-    Executor &executor;
     Searcher *baseSearcher;
 
+    /// States that have been paused by the 'pauseState' function
+    std::vector<ExecutionState*> pausedStates;
+
     public:
-    MergingSearcher(Executor &executor, Searcher *baseSearcher);
+    MergingSearcher(Searcher *baseSearcher);
     ~MergingSearcher();
+
+    /// ExecutionStates currently paused from scheduling because they are
+    /// waiting to be merged in a klee_close_merge instruction
+    std::set<ExecutionState *> inCloseMerge;
+
+    /// Keeps track of all currently ongoing merges.
+    /// An ongoing merge is a set of states (stored in a MergeHandler object)
+    /// which branched from a single state which ran into a klee_open_merge(),
+    /// and not all states in the set have reached the corresponding
+    /// klee_close_merge() yet.
+    std::vector<MergeHandler *> mergeGroups;
+
+    /// Remove state from the searcher chain, while keeping it in the executor.
+    /// This is used here to 'freeze' a state while it is waiting for other
+    /// states in its merge group to reach the same instruction.
+    void pauseState(ExecutionState &state){
+      assert(std::find(pausedStates.begin(), pausedStates.end(), &state) == pausedStates.end());
+      pausedStates.push_back(&state);
+      baseSearcher->removeState(&state);
+    }
+
+    /// Continue a paused state
+    void continueState(ExecutionState &state){
+      auto it = std::find(pausedStates.begin(), pausedStates.end(), &state);
+      assert( it != pausedStates.end());
+      pausedStates.erase(it);
+      baseSearcher->addState(&state);
+    }
 
     ExecutionState &selectState();
 
     void update(ExecutionState *current,
                 const std::vector<ExecutionState *> &addedStates,
                 const std::vector<ExecutionState *> &removedStates) {
-      baseSearcher->update(current, addedStates, removedStates);
+      // We have to check if the current execution state was just deleted, as to
+      // not confuse the nurs searchers
+      if (std::find(pausedStates.begin(), pausedStates.end(), current) ==
+          pausedStates.end()) {
+        baseSearcher->update(current, addedStates, removedStates);
+      }
     }
+
     bool empty() { return baseSearcher->empty(); }
     void printName(llvm::raw_ostream &os) {
       os << "MergingSearcher\n";

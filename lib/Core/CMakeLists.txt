@@ -28,6 +28,7 @@ klee_add_component(kleeCore
   UserSearcher.cpp
   dlmalloc.cpp
   ExecutorDebugHelper.cpp
+  Threading.cpp
 )
 
 # TODO: Work out what the correct LLVM components are for

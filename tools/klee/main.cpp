@@ -200,10 +200,10 @@ namespace {
        cl::cat(LinkCat));
 
   cl::list<std::string>
-  LinkLibraries("link-llvm-lib",
-		cl::desc("Link the given library before execution. Can be used multiple times."),
-		cl::value_desc("library file"),
-                cl::cat(LinkCat));
+      LinkLibraries("link-llvm-lib",
+                    cl::desc("Link the given bitcode library before execution, "
+                             "e.g. .bca, .bc, .a. Can be used multiple times."),
+                    cl::value_desc("bitcode library file"), cl::cat(LinkCat));
 
   cl::opt<bool>
   WithPOSIXRuntime("posix-runtime",
@@ -840,7 +840,9 @@ void KleeHandler::loadPathFile(std::string name,
   if (!f.good())
     assert(0 && "unable to open path file");
 
-  while (f.good()) {
+  while (1) {
+    f.peek();
+    if (!f.good()) break;
     PathEntry pe;
     deserialize(f, pe);
     buffer.push_back(pe);
@@ -848,14 +850,16 @@ void KleeHandler::loadPathFile(std::string name,
   f.close();
 
   std::ifstream data_f((name + "_datarec").c_str(), std::ios::in | std::ios::binary);
-  data_f.peek();
   // .path_datarec is optional. if the correponding .path has "DATAREC" record 
   // but no .path_datarec provided here, Executor will complain later
-  while (data_f.good()) {
+  while (1) {
+    data_f.peek();
+    if (!data_f.good()) break;
     DataRecEntry dre;
     deserialize(data_f, dre);
     dataRecEntries.push_back(dre);
   }
+  data_f.close();
 }
 
 void KleeHandler::getKTestFilesInDir(std::string directoryPath,
@@ -1041,7 +1045,16 @@ static const char *modelledExternals[] = {
   "__ubsan_handle_sub_overflow",
   "__ubsan_handle_mul_overflow",
   "__ubsan_handle_divrem_overflow",
+  // ported from cloud9
+  "klee_get_time",
+  "klee_get_wlist",
+  "klee_make_shared",
+  "klee_set_time",
+  "klee_thread_notify",
+  "klee_thread_preempt",
+  "klee_thread_sleep",
 };
+
 
 // Symbols we aren't going to warn about
 static const char *dontCareExternals[] = {
@@ -1231,6 +1244,9 @@ static void interrupt_handle() {
     halt_execution();
   } else {
     llvm::errs() << "KLEE: interrupt detected, exiting.\n";
+    std::time_t walltime = std::time(nullptr);
+    klee_message("%s: KLEE: interrupt detected twice, exiting.",
+        std::asctime(std::localtime(&walltime)));
     exit(1);
   }
   interrupted = true;
@@ -1388,6 +1404,16 @@ createLibCWrapper(std::vector<std::unique_ptr<llvm::Module>> &modules,
   Builder.CreateCall(libcMainFn, args);
   Builder.CreateUnreachable();
 }
+static void markPOSIXModuleFnAttr(llvm::Module *pM) {
+  for (auto &f: *pM) {
+    f.addFnAttr("InPOSIX", "AddFnAttr!");
+  }
+}
+static void markLibCModuleFnAttr(llvm::Module *pM) {
+  for (auto &f: *pM) {
+    f.addFnAttr("InLIBC", "AddFnAttr!");
+  }
+}
 
 static void
 linkWithUclibc(llvm::StringRef libDir,
@@ -1400,7 +1426,8 @@ linkWithUclibc(llvm::StringRef libDir,
   SmallString<128> uclibcBCA(libDir);
   std::string errorMsg;
   llvm::sys::path::append(uclibcBCA, KLEE_UCLIBC_BCA_NAME);
-  if (!klee::loadFile(uclibcBCA.c_str(), ctx, modules, errorMsg))
+  if (!klee::loadFile(uclibcBCA.c_str(), ctx, modules, errorMsg,
+                      markLibCModuleFnAttr))
     klee_error("Cannot find klee-uclibc '%s': %s", uclibcBCA.c_str(),
                errorMsg.c_str());
 
@@ -1415,7 +1442,7 @@ linkWithUclibc(llvm::StringRef libDir,
 #endif
 
 static void
-saveFinalModuleToFile(llvm::Module *M) {
+saveFinalModuleToFile(llvm::Module *M, const std::string &suffix_msg) {
   if (SaveFinalModulePath == "")
     return;
 
@@ -1429,7 +1456,7 @@ saveFinalModuleToFile(llvm::Module *M) {
 #endif
   fs.close();
 
-  llvm::errs() << "Final module saved to " << SaveFinalModulePath << "\n";
+  llvm::errs() << "Final module saved to " << SaveFinalModulePath << suffix_msg << "\n";
 }
 
 int main(int argc, char **argv, char **envp) {
@@ -1549,7 +1576,7 @@ int main(int argc, char **argv, char **envp) {
     llvm::sys::path::append(Path, "libkleeRuntimePOSIX.bca");
     klee_message("NOTE: Using POSIX model: %s", Path.c_str());
     if (!klee::loadFile(Path.c_str(), mainModule->getContext(), loadedModules,
-                        errorMsg))
+                        errorMsg, markPOSIXModuleFnAttr))
       klee_error("error loading POSIX support '%s': %s", Path.c_str(),
                  errorMsg.c_str());
     for (auto &pM:loadedModules) {
@@ -1583,7 +1610,7 @@ int main(int argc, char **argv, char **envp) {
     SmallString<128> Path(Opts.LibraryDir);
     llvm::sys::path::append(Path, "libklee-libc.bca");
     if (!klee::loadFile(Path.c_str(), mainModule->getContext(), loadedModules,
-                        errorMsg))
+                        errorMsg, markLibCModuleFnAttr))
       klee_error("error loading klee libc '%s': %s", Path.c_str(),
                  errorMsg.c_str());
   }
@@ -1592,7 +1619,7 @@ int main(int argc, char **argv, char **envp) {
     SmallString<128> Path(Opts.LibraryDir);
     llvm::sys::path::append(Path, "libkleeRuntimeFreeStanding.bca");
     if (!klee::loadFile(Path.c_str(), mainModule->getContext(), loadedModules,
-                        errorMsg))
+                        errorMsg, markLibCModuleFnAttr))
       klee_error("error loading free standing support '%s': %s", Path.c_str(),
                  errorMsg.c_str());
     break;
@@ -1604,9 +1631,9 @@ int main(int argc, char **argv, char **envp) {
 
   for (const auto &library : LinkLibraries) {
     if (!klee::loadFile(library, mainModule->getContext(), loadedModules,
-                        errorMsg))
-      klee_error("error loading free standing support '%s': %s",
-                 library.c_str(), errorMsg.c_str());
+                        errorMsg, markLibCModuleFnAttr))
+      klee_error("error loading bitcode library '%s': %s", library.c_str(),
+                 errorMsg.c_str());
   }
 
   // FIXME: Change me to std types.
@@ -1665,7 +1692,7 @@ int main(int argc, char **argv, char **envp) {
   // locale and other data and then calls main.
 
   auto finalModule = interpreter->setModule(loadedModules, Opts);
-  saveFinalModuleToFile(finalModule);
+  saveFinalModuleToFile(finalModule, "(without Freq)");
 
   Function *mainFn = finalModule->getFunction(EntryPoint);
   if (!mainFn) {
@@ -1797,7 +1824,7 @@ int main(int argc, char **argv, char **envp) {
     std::tie(h,m,s) = time::seconds(endTime - startTime).toHMS();
     std::stringstream endInfo;
     endInfo << "Finished: "
-            << std::put_time(std::localtime(&endTime), "%Y-%m-%d %H:%M:%S") << '\n'
+            << std::put_time(std::localtime(&endTime), klee::time::fmt_str) << '\n'
             << "Elapsed: "
             << std::setfill('0') << std::setw(2) << h
             << ':'
@@ -1808,6 +1835,7 @@ int main(int argc, char **argv, char **envp) {
             handler->getInfoStream() << endInfo.str();
     handler->getInfoStream().flush();
   }
+  saveFinalModuleToFile(finalModule, "(with Freq)");
 
   // Free all the args.
   for (unsigned i=0; i<InputArgv.size()+1; i++)

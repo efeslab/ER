@@ -12,6 +12,7 @@
 #include "Executor.h"
 #include "Memory.h"
 #include "MemoryManager.h"
+#include "Searcher.h"
 #include "TimingSolver.h"
 
 #include "klee/ExecutionState.h"
@@ -64,6 +65,8 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
 #define add(name, handler, ret) { name, \
                                   &SpecialFunctionHandler::handler, \
                                   false, ret, false }
+// addDNR is to add function handler with attribute: noreturn, which will lead
+// to "unreachable" LLVM IR
 #define addDNR(name, handler) { name, \
                                 &SpecialFunctionHandler::handler, \
                                 true, false, false }
@@ -136,6 +139,26 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("__ubsan_handle_sub_overflow", handleSubOverflow, false),
   add("__ubsan_handle_mul_overflow", handleMulOverflow, false),
   add("__ubsan_handle_divrem_overflow", handleDivRemOverflow, false),
+
+  /* Thread Scheduling Management */
+  add("klee_thread_create", handleThreadCreate, false),
+  addDNR("klee_thread_terminate", handleThreadTerminate),
+  add("klee_get_context", handleGetContext, false),
+  add("klee_get_wlist", handleGetWList, true),
+  add("klee_thread_preempt", handleThreadPreempt, false),
+  add("klee_thread_sleep", handleThreadSleep, false),
+  add("klee_thread_notify", handleThreadNotify, false),
+
+  /* Process Management Placeholder */
+  add("klee_process_fork", handleProcessFork, true),
+  addDNR("klee_process_terminate", handleProcessTerminate),
+
+  /* Shared Memory Placeholder */
+  add("klee_make_shared", handleMakeShared, false),
+
+  /* Misc */
+  add("klee_get_time", handleGetTime, true),
+  add("klee_set_time", handleSetTime, false),
 
 #undef addDNR
 #undef add
@@ -354,16 +377,17 @@ void SpecialFunctionHandler::handleCloseMerge(ExecutionState &state,
   Instruction *i = target->inst;
 
   if (DebugLogMerge)
-    llvm::errs() << "close merge: " << &state << " at " << i << '\n';
+    llvm::errs() << "close merge: " << &state << " at [" << *i << "]\n";
 
   if (state.openMergeStack.empty()) {
     std::ostringstream warning;
     warning << &state << " ran into a close at " << i << " without a preceding open";
     klee_warning("%s", warning.str().c_str());
   } else {
-    assert(executor.inCloseMerge.find(&state) == executor.inCloseMerge.end() &&
+    assert(executor.mergingSearcher->inCloseMerge.find(&state) ==
+               executor.mergingSearcher->inCloseMerge.end() &&
            "State cannot run into close_merge while being closed");
-    executor.inCloseMerge.insert(&state);
+    executor.mergingSearcher->inCloseMerge.insert(&state);
     state.openMergeStack.back()->addClosedState(&state, i);
     state.openMergeStack.pop_back();
   }
@@ -556,7 +580,7 @@ void SpecialFunctionHandler::handleWarning(ExecutionState &state,
   assert(arguments.size()==1 && "invalid number of arguments to klee_warning");
 
   std::string msg_str = readStringAtAddress(state, arguments[0]);
-  klee_warning("%s: %s", state.stack.back().kf->function->getName().data(), 
+  klee_warning("%s: %s", state.stack().back().kf->function->getName().data(), 
                msg_str.c_str());
 }
 
@@ -567,7 +591,7 @@ void SpecialFunctionHandler::handleWarningOnce(ExecutionState &state,
          "invalid number of arguments to klee_warning_once");
 
   std::string msg_str = readStringAtAddress(state, arguments[0]);
-  klee_warning_once(0, "%s: %s", state.stack.back().kf->function->getName().data(),
+  klee_warning_once(0, "%s: %s", state.stack().back().kf->function->getName().data(),
                     msg_str.c_str());
 }
 
@@ -774,7 +798,7 @@ void SpecialFunctionHandler::handleDefineFixedObject(ExecutionState &state,
   
   uint64_t address = cast<ConstantExpr>(arguments[0])->getZExtValue();
   uint64_t size = cast<ConstantExpr>(arguments[1])->getZExtValue();
-  MemoryObject *mo = executor.memory->allocateFixed(address, size, state.prevPC->inst);
+  MemoryObject *mo = executor.memory->allocateFixed(address, size, state.prevPC()->inst);
   executor.bindObjectInState(state, mo, false);
   mo->isUserSpecified = true; // XXX hack;
 }
@@ -879,4 +903,179 @@ void SpecialFunctionHandler::handleDivRemOverflow(ExecutionState &state,
                                                std::vector<ref<Expr> > &arguments) {
   executor.terminateStateOnError(state, "overflow on division or remainder",
                                  Executor::Overflow);
+}
+
+/* Thread Scheduling Management */
+// void klee_thread_create(uint64_t tid, void *(*start_routine)(void *),
+//                         void *arg);
+void SpecialFunctionHandler::handleThreadCreate (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  assert(arguments.size() == 3 &&
+         "invalid number of arguments to klee_thread_create");
+  ref<Expr> tid = executor.toUnique(state, arguments[0]);
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(tid)) {
+    executor.executeThreadCreate(state, CE->getZExtValue(), arguments[1],
+                                 arguments[2]);
+  } else {
+    executor.terminateStateOnError(state, "klee_thread_create symbolic tid",
+                                   Executor::User);
+  }
+}
+// void klee_thread_terminate() __attribute__ ((__noreturn__));
+void SpecialFunctionHandler::handleThreadTerminate (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  assert(arguments.empty() &&
+         "invalid number of arguments to klee_thread_terminate");
+  executor.executeThreadExit(state);
+}
+// uint64_t klee_get_wlist(void);
+void SpecialFunctionHandler::handleGetWList (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  assert(arguments.empty() && "invalid number of arguments to klee_get_wlist");
+    wlist_id_t wid = state.getWaitingList();
+    executor.bindLocal(target, state,
+                       ConstantExpr::create(wid, executor.getWidthForLLVMType(
+                                                     target->inst->getType())));
+}
+// void klee_thread_preempt(int yield);
+void SpecialFunctionHandler::handleThreadPreempt (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  assert(arguments.size() == 1 &&
+         "invalid number of arugments to klee_thread_preempt");
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(arguments[0])) {
+    executor.schedule(state, CE->isTrue());
+  } else {
+    executor.terminateStateOnError(state, "symbolic klee_thread_preempt",
+                                   Executor::User);
+  }
+}
+// void klee_thread_sleep(uint64_t wlist);
+void SpecialFunctionHandler::handleThreadSleep (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  assert(arguments.size() == 1 &&
+         "invalid number of arguments to klee_thread_sleep");
+  ref<Expr> wlistExpr = executor.toUnique(state, arguments[0]);
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(wlistExpr)) {
+    state.sleepThread(CE->getZExtValue());
+    executor.schedule(state, false);
+  } else {
+    executor.terminateStateOnError(state, "symbolic klee_thread_sleep",
+                                   Executor::User);
+  }
+}
+// void klee_thread_notify(uint64_t wlist, int all);
+void SpecialFunctionHandler::handleThreadNotify (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  assert(arguments.size() == 2 &&
+         "invalid number of arguments to klee_thread_notify");
+  ref<Expr> wlist = executor.toUnique(state, arguments[0]);
+  ref<Expr> all = executor.toUnique(state, arguments[1]);
+  if (ConstantExpr *wlistCE = dyn_cast<ConstantExpr>(wlist)) {
+    wlist_id_t wlid = wlistCE->getZExtValue();
+    if (ConstantExpr *allCE = dyn_cast<ConstantExpr>(all)) {
+      if (allCE->isZero()) {
+        // When you only notify one thread in the given waiting list, which
+        // thread to wake up is undeterministic. The original Cloud9 optionally
+        // forks to enumerate all scheduling choice. I have not implemented
+        // forking, so executor is not involved here. I will just notify the
+        // head of the given waiting list.
+        // Cloud9 handler:
+        // executor.executeThreadNotifyOne(state, wlistCE->getZExtValue());
+        std::set<thread_uid_t> &wl = state.waitingLists[wlid];
+        if (wl.size() == 0) {
+          state.waitingLists.erase(wlid);
+        }
+        else {
+          state.notifyOne(wlid, *(wl.begin()));
+        }
+      } else {
+        // It is simple enough to be handled by the state class itself
+        state.notifyAll(wlid);
+      }
+    } else {
+      executor.terminateStateOnError(
+          state, "symbolic `all` in klee_thread_notify", Executor::User);
+    }
+  } else {
+    executor.terminateStateOnError(
+        state, "symbolic `wlist` in klee_thread_notify", Executor::User);
+  }
+}
+
+// void klee_get_context(uint64_t *tid, int32_t *pid);
+void SpecialFunctionHandler::handleGetContext (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  assert(arguments.size() == 2 &&
+         "invalid number of arguments in klee_get_context");
+  ref<Expr> tidAddr = executor.toUnique(state, arguments[0]);
+  ref<Expr> pidAddr = executor.toUnique(state, arguments[1]);
+  if (!isa<ConstantExpr>(tidAddr) || !isa<ConstantExpr>(pidAddr)) {
+    // error path
+    executor.terminateStateOnError(state, "symbolic args to klee_get_context",
+                                   Executor::User);
+    return;
+  }
+
+  if (!tidAddr->isZero()) {
+    executor.executeMemoryOperation(
+        state, true, tidAddr,
+        ConstantExpr::create(state.crtThread().getTid(), Expr::Int64),
+        nullptr /*target*/);
+  }
+  if (!pidAddr->isZero()) {
+    executor.executeMemoryOperation(
+        state, true, pidAddr,
+        ConstantExpr::create(state.crtThread().getPid(), Expr::Int32),
+        nullptr /*target*/);
+  }
+}
+// int klee_process_fork(int32_t pid);
+void SpecialFunctionHandler::handleProcessFork (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  klee_warning("Executing klee_process_fork, do nothing");
+}
+// void klee_process_terminate() __attribute__ ((__noreturn__));
+void SpecialFunctionHandler::handleProcessTerminate (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  klee_warning("Executing klee_process_terminate, do nothing");
+}
+// void klee_make_shared(void *addr, size_t nbytes);
+void SpecialFunctionHandler::handleMakeShared (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  klee_warning_once(0, "Executing klee_make_shared, do nothing");
+}
+
+// uint64_t klee_get_time(void);
+void SpecialFunctionHandler::handleGetTime (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  assert(arguments.empty() && "invalid number of arguments to klee_get_time");
+  executor.bindLocal(
+      target, state,
+      ConstantExpr::create(state.stateTime, executor.getWidthForLLVMType(
+                                                target->inst->getType())));
+}
+
+// void klee_set_time(uint64_t time);
+void SpecialFunctionHandler::handleSetTime (
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  assert(arguments.size() == 1 &&
+         "invalid number of arguments to klee_set_time");
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(arguments[0])) {
+    state.stateTime = CE->getZExtValue();
+  } else {
+    executor.terminateStateOnError(
+        state, "klee_set_time requries a constant argument", Executor::User);
+  }
 }

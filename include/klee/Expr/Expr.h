@@ -317,6 +317,12 @@ public:
   static const char *getKindStr(enum Kind k);
   std::string getKInstUniqueID() const { return klee::getKInstUniqueID(kinst); }
   std::string getKInstDbgInfo() const { return klee::getKInstDbgInfo(kinst); }
+  unsigned int getKInstLoadedFreq() const {
+    if (kinst)
+      return kinst->getLoadedFreq();
+    else
+      return 0;
+  }
 
 private:
   typedef llvm::DenseSet<std::pair<const Expr *, const Expr *> > ExprEquivSet;
@@ -489,10 +495,13 @@ public:
 };
 
 
+#undef EXPRINPLACE_MEMLEAK_DEBUG
 /// Class representing a byte update of an array.
 class UpdateNode {
   friend class UpdateList;  
-
+#ifdef EXPRINPLACE_MEMLEAK_DEBUG
+public:
+#endif
   mutable unsigned refCount;
   // cache instead of recalc
   unsigned hashValue;
@@ -519,10 +528,8 @@ public:
 
   int compare(const UpdateNode &b) const;  
   unsigned hash() const { return hashValue; }
-  void resetRefCount(const UpdateNode &un) {
-    refCount = un.refCount;
-  }
   // this refCount helper is added to ease mem mangement in ExprInPlaceTransformer
+  void inc() const { ++refCount; }
   void dec() const {
     if (--refCount == 0) {
       delete this;
@@ -530,6 +537,12 @@ public:
   }
   std::string getKInstUniqueID() const { return klee::getKInstUniqueID(kinst); }
   std::string getKInstDbgInfo() const { return klee::getKInstDbgInfo(kinst); }
+  unsigned int getKInstLoadedFreq() const {
+    if (kinst)
+      return kinst->getLoadedFreq();
+    else
+      return 0;
+  }
 
 private:
   UpdateNode() : refCount(0) {}

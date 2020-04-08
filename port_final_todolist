@@ -1,0 +1,9 @@
+TODO:
+1. check off64_t and stat64
+
+Note:
+1. exe_file_t -> fd_entry_t
+2. has_permission -> _can_open
+3. CHECK_IS_FILE(fd) -> CHECK_IS_FILE(fd, fde)
+4. signals.h and multiprocess.h are not supported yet.
+5. Remember to change "--sym-file xxx file_size(xxx)" to just "--sym-file xxx"

@@ -2,6 +2,7 @@
 #define KLEE_GRAPHVIZDOTDRAWER_H
 #include "klee/Expr/Expr.h"
 #include "klee/Expr/Constraints.h"
+#include "klee/Expr/Parser/Parser.h"
 #include "klee/util/ExprConcretizer.h"
 
 #include <iostream>
@@ -27,27 +28,31 @@ class GraphvizDOTDrawer {
   // Arrays are considered visited if declared.
   std::unordered_set<const Array *> visited_array;
 
-  const ConstraintManager &cm;
+  const klee::expr::QueryCommand &QC;
   IndirectReadDepthCalculator IDCalc;
 
   void printHeader();
   void printFooter();
-  // node category: C for top-level constraint, Q for top-level query
-  // E for Expr nodes, UN for UpdateNodes, Array for root Array
+  // Node Category: C for nodes from top-level constraints, Q for nodes from
+  // top-level query expressions, Array for Array definiton expression,
+  // N for all other nodes
+  // Node Kind: defined by KQuery if a node has a definition.
+  // Otherwise, UN for UpdateNodes, Array for root Array
   void declareExpr(const Expr *e, const char *category);
   void declareLastLevelRead(const ReadExpr *RE, const char *category);
-  void declareUpdateNode(const UpdateNode *un, const Array *root);
+  void declareUpdateNode(const UpdateNode *un, const Array *root,
+                         const char *category = "N");
   void declareArray(const Array *arr);
 
   void drawEdge(const void *from, const void *to, double weight);
 
   // ensure Expr *e is declared. If e has been visited, do nothing;
   // else declare it and add it to expr_worklist
-  void ensureExprDeclared(const Expr *e, const char *category="E");
+  void ensureExprDeclared(const Expr *e, const char *category="N");
   void ensureArrayDeclared(const Array *root);
 
   public:
-  GraphvizDOTDrawer(std::ostream &_os, const ConstraintManager &_cm);
+  GraphvizDOTDrawer(std::ostream &_os, const klee::expr::QueryCommand &_constraints);
   ~GraphvizDOTDrawer() { printFooter(); }
   // actually start drawing, which is a pre-order traversal
   void draw();

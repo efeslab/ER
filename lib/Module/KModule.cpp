@@ -406,6 +406,23 @@ KInstruction* KModule::getKInstruction(llvm::Instruction *I) {
   return target;
 }
 
+void KModule::saveCntToMDNode() {
+  llvm::LLVMContext &C = module->getContext();
+  for (auto &kf_ptr: functions) {
+    if (kf_ptr->frequency > 0) {
+      MDNode *FN = MDNode::get(C, ConstantAsMetadata::get(
+            ConstantInt::get(C, llvm::APInt(32,kf_ptr->frequency))));
+      kf_ptr->function->setMetadata("klee.freq", FN);
+      for (unsigned i=0; i < kf_ptr->numInstructions; ++i) {
+        KInstruction *ki = kf_ptr->instructions[i];
+        MDNode *IN = MDNode::get(C, ConstantAsMetadata::get(
+              ConstantInt::get(C, llvm::APInt(32,ki->frequency))));
+        ki->inst->setMetadata("klee.freq", IN);
+      }
+    }
+  }
+}
+
 KConstant* KModule::getKConstant(const Constant *c) {
   auto it = constantMap.find(c);
   if (it != constantMap.end())

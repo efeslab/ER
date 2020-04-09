@@ -379,6 +379,12 @@ void KModule::checkModule() {
   }
 }
 
+void KModule::removeFabs(llvm::Module *M) {
+  legacy::PassManager pm;
+  pm.add(new RmFabsPass());
+  pm.run(*M);
+}
+
 void KModule::assignID(llvm::Module *M, std::string &prefix) {
   legacy::PassManager pm;
   pm.add(new AssignIDPass(prefix));
@@ -388,6 +394,12 @@ void KModule::assignID(llvm::Module *M, std::string &prefix) {
 void KModule::addPTWrite(llvm::Module *M, std::string &cfg) {
   legacy::PassManager pm;
   pm.add(new PTWritePass(cfg));
+  pm.run(*M);
+}
+
+void KModule::addTag(llvm::Module *M, std::string &cfg) {
+  legacy::PassManager pm;
+  pm.add(new TagPass(cfg));
   pm.run(*M);
 }
 

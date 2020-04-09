@@ -2283,6 +2283,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         tryStoreDataRecording(state, recKI);
         break;
       }
+      else if (AI->getAsmString() == "tag") {
+        uint64_t icnt = *theStatisticManager->getStatisticByName("Instructions");
+        llvm::errs() << "tag! " << "Instructions: " << icnt << "\n";
+        break;
+      }
 
       terminateStateOnExecError(state, "inline assembly is unsupported");
       break;

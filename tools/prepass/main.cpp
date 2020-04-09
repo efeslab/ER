@@ -63,12 +63,19 @@ static cl::opt<std::string> OutputFile(
     cl::Positional,
     cl::Required);
 
+llvm::cl::opt<bool> RemoveFP(
+    "remove-fp",
+    llvm::cl::desc("Remove floating point OPs."),
+    llvm::cl::init(true),
+    llvm::cl::cat(klee::HASEPrePassCat));
+
 llvm::cl::opt<bool> AssignID(
     "assign-id",
     llvm::cl::desc("Assign a human-readable ID to each LLVM IR instructions."
                    " (default=true)"),
     llvm::cl::init(true),
     llvm::cl::cat(klee::HASEPrePassCat));
+
 llvm::cl::opt<bool> InsertPTWrite(
     "insert-ptwrite",
     llvm::cl::desc("Insert PTWrite instructions to specific places."
@@ -77,6 +84,19 @@ llvm::cl::opt<bool> InsertPTWrite(
     llvm::cl::cat(klee::HASEPrePassCat));
 llvm::cl::opt<std::string> PTWriteCFG(
     "ptwrite-cfg",
+    llvm::cl::desc("Which LLVM IR instruction should be recorded. "
+                "One instruction unique ID per line."),
+    llvm::cl::init(""),
+    llvm::cl::cat(klee::HASEPrePassCat));
+
+llvm::cl::opt<bool> InsertTag(
+    "insert-tag",
+    llvm::cl::desc("Insert tags to specific places."
+                   " (default=false)"),
+    llvm::cl::init(false),
+    llvm::cl::cat(klee::HASEPrePassCat));
+llvm::cl::opt<std::string> TagCFG(
+    "tag-cfg",
     llvm::cl::desc("Which LLVM IR instruction should be recorded. "
                 "One instruction unique ID per line."),
     llvm::cl::init(""),
@@ -114,6 +134,10 @@ int main(int argc, char **argv) {
       klee_error("error opening output file");
     }
 
+    if (RemoveFP) {
+      KModule::removeFabs(M);
+    }
+
     if (AssignID) {
       std::string prefix = "";
       KModule::assignID(M, prefix);
@@ -122,6 +146,11 @@ int main(int argc, char **argv) {
     if (InsertPTWrite) {
       if (PTWriteCFG!="")
         KModule::addPTWrite(M, PTWriteCFG);
+    }
+
+    if (InsertTag) {
+      if (TagCFG!="")
+        KModule::addTag(M, TagCFG);
     }
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(7, 0)

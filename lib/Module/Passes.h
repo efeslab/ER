@@ -219,6 +219,13 @@ public:
   bool runOnModule(llvm::Module &M) override;
 };
 
+class RmFabsPass : public llvm::ModulePass {
+public:
+  static char ID;
+  RmFabsPass();
+  bool runOnModule(llvm::Module &M) override;
+};
+
 class AssignIDPass : public llvm::ModulePass {
 private:
   std::string prefix;
@@ -238,6 +245,18 @@ public:
   PTWritePass(std::string &cfg);
   bool runOnModule(llvm::Module &M) override;
 };
+
+class TagPass : public llvm::ModulePass {
+private:
+  std::unordered_set<std::string> tagFuncSet;
+  std::unordered_set<std::string> tagBBSet;
+  std::unordered_set<std::string> tagInstSet;
+public:
+  static char ID;
+  TagPass(std::string &cfg);
+  bool runOnModule(llvm::Module &M) override;
+};
+
 } // namespace klee
 
 #endif /* KLEE_PASSES_H */

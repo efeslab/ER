@@ -23,6 +23,8 @@ set(KLEE_MODULE_COMPONENT_SRCS
   RaiseAsm.cpp
   AssignIDPass.cpp
   PTWritePass.cpp
+  TagPass.cpp
+  RmFabsPass.cpp
 )
 
 if (USE_WORKAROUND_LLVM_PR39177)

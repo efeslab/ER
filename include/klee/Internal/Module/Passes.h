@@ -221,6 +221,13 @@ public:
   bool runOnModule(llvm::Module &M) override;
 };
 
+class RmFabsPass : public llvm::ModulePass {
+public:
+  static char ID;
+  RmFabsPass();
+  bool runOnModule(llvm::Module &M) override;
+};
+
 class AssignIDPass : public llvm::ModulePass {
 private:
   std::string prefix;
@@ -241,6 +248,7 @@ public:
   PTWritePass(std::string &cfg);
   bool runOnModule(llvm::Module &M) override;
 };
+
 class SelectRandomPass : public llvm::ModulePass {
 private:
   std::map<std::string, unsigned int> inst2freq;
@@ -250,6 +258,17 @@ private:
 public:
   static char ID;
   SelectRandomPass(unsigned target);
+  bool runOnModule(llvm::Module &M) override;
+};
+
+class TagPass : public llvm::ModulePass {
+private:
+  std::unordered_set<std::string> tagFuncSet;
+  std::unordered_set<std::string> tagBBSet;
+  std::unordered_set<std::string> tagInstSet;
+public:
+  static char ID;
+  TagPass(std::string &cfg);
   bool runOnModule(llvm::Module &M) override;
 };
 

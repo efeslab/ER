@@ -157,6 +157,9 @@ namespace klee {
     /// Get the corresponding KInstruction of a llvm::Instruction.
     KInstruction *getKInstruction(llvm::Instruction *inst);
 
+    /// Remove floating point instructions bacause Klee does not support it
+    static void removeFabs(llvm::Module *M);
+
     /// Assign a unique ID for each instruction and basic block. The unique ID will
     /// be used in recording.
     static void assignID(llvm::Module *M, std::string &prefix);
@@ -167,6 +170,9 @@ namespace klee {
 
     /// Add PTWrite instruction after specified instructions
     static void addPTWrite(llvm::Module *M, std::string &cfg);
+
+    /// Add Tag fake instruction after sepecified instructions
+    static void addTag(llvm::Module *M, std::string &cfg);
 
     /// Save Instruction and Function frequency to LLVM IR Module as metadata (MDNode).
     /// Those frequencies were maintained inside KInstruction/KFunction until

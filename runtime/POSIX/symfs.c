@@ -364,4 +364,7 @@ void klee_init_symfs(fs_init_descriptor_t *fid) {
     __sym_fs.stdout_writes = 0;
   }
   else __sym_fs.sym_stdout = NULL;
+  /* setting misc options */
+  __sym_fs.allow_unsafe = fid->allow_unsafe;
+  __sym_fs.overlapped_writes = fid->overlapped_writes;
 }

@@ -95,6 +95,12 @@ llvm::cl::opt<bool> InsertTag(
                    " (default=false)"),
     llvm::cl::init(false),
     llvm::cl::cat(klee::HASEPrePassCat));
+llvm::cl::opt<bool> InsertTagLoc(
+    "insert-tag-loc",
+    llvm::cl::desc("Insert tags to specific places based on debug info."
+                   " (default=false)"),
+    llvm::cl::init(false),
+    llvm::cl::cat(klee::HASEPrePassCat));
 llvm::cl::opt<std::string> TagCFG(
     "tag-cfg",
     llvm::cl::desc("Which LLVM IR instruction should be recorded. "
@@ -148,9 +154,13 @@ int main(int argc, char **argv) {
         KModule::addPTWrite(M, PTWriteCFG);
     }
 
-    if (InsertTag) {
+    if (InsertTagLoc) {
       if (TagCFG!="")
-        KModule::addTag(M, TagCFG);
+        KModule::addTag(M, TagCFG, true);
+    }
+    else if (InsertTag) {
+      if (TagCFG!="")
+        KModule::addTag(M, TagCFG, false);
     }
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(7, 0)

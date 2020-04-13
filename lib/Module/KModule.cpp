@@ -397,9 +397,9 @@ void KModule::addPTWrite(llvm::Module *M, std::string &cfg) {
   pm.run(*M);
 }
 
-void KModule::addTag(llvm::Module *M, std::string &cfg) {
+void KModule::addTag(llvm::Module *M, std::string &cfg, bool useDbgInfo) {
   legacy::PassManager pm;
-  pm.add(new TagPass(cfg));
+  pm.add(new TagPass(cfg, useDbgInfo));
   pm.run(*M);
 }
 

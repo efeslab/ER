@@ -66,6 +66,7 @@
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
@@ -2285,7 +2286,17 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       }
       else if (AI->getAsmString() == "tag") {
         uint64_t icnt = *theStatisticManager->getStatisticByName("Instructions");
-        llvm::errs() << "tag! " << "Instructions: " << icnt << "\n";
+        const DebugLoc &loc = i->getDebugLoc();
+        if (loc) {
+          auto *Scope = cast<llvm::DIScope>(loc.getScope());
+          std::string filename = Scope->getFilename();
+          int line = loc.getLine();
+          llvm::errs() << "Tag @ " << filename << ":" << line
+                      << ", " << "Instructions: " << icnt << "\n";
+        }
+        else {
+          llvm::errs() << "Tag @ " << "Instructions: " << icnt << "\n";
+        }
         break;
       }
 

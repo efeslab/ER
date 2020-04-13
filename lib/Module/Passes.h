@@ -20,6 +20,7 @@
 #include "llvm/Pass.h"
 
 #include <unordered_set>
+#include <set>
 
 namespace llvm {
 class Function;
@@ -251,9 +252,15 @@ private:
   std::unordered_set<std::string> tagFuncSet;
   std::unordered_set<std::string> tagBBSet;
   std::unordered_set<std::string> tagInstSet;
+
+  bool useDbgInfo;
+  std::unordered_set<std::string> fileSet;
+  std::set<std::pair<std::string, int> > locSet;
+  bool runOnModuleByInst(llvm::Module &M);
+  bool runOnModuleByLoc(llvm::Module &M);
 public:
   static char ID;
-  TagPass(std::string &cfg);
+  TagPass(std::string &cfg, bool _useDbgInfo);
   bool runOnModule(llvm::Module &M) override;
 };
 

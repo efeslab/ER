@@ -172,7 +172,7 @@ namespace klee {
     static void addPTWrite(llvm::Module *M, std::string &cfg);
 
     /// Add Tag fake instruction after sepecified instructions
-    static void addTag(llvm::Module *M, std::string &cfg);
+    static void addTag(llvm::Module *M, std::string &cfg, bool useDbgInfo);
 
     /// Save Instruction and Function frequency to LLVM IR Module as metadata (MDNode).
     /// Those frequencies were maintained inside KInstruction/KFunction until

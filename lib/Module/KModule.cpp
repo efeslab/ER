@@ -403,9 +403,9 @@ void KModule::selectRandInst(llvm::Module *M, unsigned int target) {
   pm.run(*M);
 }
 
-void KModule::addTag(llvm::Module *M, std::string &cfg) {
+void KModule::addTag(llvm::Module *M, std::string &cfg, bool useDbgInfo) {
   legacy::PassManager pm;
-  pm.add(new TagPass(cfg));
+  pm.add(new TagPass(cfg, useDbgInfo));
   pm.run(*M);
 }
 

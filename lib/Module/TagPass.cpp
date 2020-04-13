@@ -38,50 +38,79 @@ using namespace klee;
 
 char TagPass::ID;
 
-TagPass::TagPass(std::string &cfg) : ModulePass(ID) {
+TagPass::TagPass(std::string &cfg, bool _useDbgInfo)
+                  : ModulePass(ID), useDbgInfo(_useDbgInfo) {
   if (cfg != "") {
-    std::ifstream f(cfg);
-    while (f.good()) {
-      std::string linestr;
-      std::getline(f, linestr);
+    if (!useDbgInfo) {
+      std::ifstream f(cfg);
+      while (f.good()) {
+        std::string linestr;
+        std::getline(f, linestr);
 
-      if (linestr.empty() || linestr[0] == '#') {
-        continue;
-      }
-
-      tagInstSet.insert(linestr);
-
-      std::string prefix = "";
-      unsigned i = 0;
-
-      // get the mod
-      for (; i < linestr.length(); i++) {
-        if (linestr[i] != ':') {
-          prefix += linestr[i];
-        } else {
-          break;
+        if (linestr.empty() || linestr[0] == '#') {
+          continue;
         }
-      }
 
-      tagFuncSet.insert(prefix);
+        tagInstSet.insert(linestr);
 
-      prefix += ':';
-      i++;
-      for (; i < linestr.length(); i++) {
-        if (linestr[i] != ':') {
-          prefix += linestr[i];
-        } else {
-          break;
+        std::string prefix = "";
+        unsigned i = 0;
+
+        // get the mod
+        for (; i < linestr.length(); i++) {
+          if (linestr[i] != ':') {
+            prefix += linestr[i];
+          } else {
+            break;
+          }
         }
-      }
 
-      tagBBSet.insert(prefix);
+        tagFuncSet.insert(prefix);
+
+        prefix += ':';
+        i++;
+        for (; i < linestr.length(); i++) {
+          if (linestr[i] != ':') {
+            prefix += linestr[i];
+          } else {
+            break;
+          }
+        }
+
+        tagBBSet.insert(prefix);
+      }
+      f.close();
     }
-    f.close();
+    else {
+      std::ifstream f(cfg);
+      while (f.good()) {
+        std::string linestr;
+        std::getline(f, linestr);
+        if (linestr.empty() || linestr[0] == '#') {
+          continue;
+        }
+
+        for (unsigned i = 0; i < linestr.length(); i++) {
+          if (linestr[i] == ':') {
+            linestr[i] = ' ';
+          }
+        }
+
+        std::string filename;
+        int line;
+        std::stringstream ss;
+        ss.str(linestr);
+
+        ss >> filename;
+        ss >> line;
+        fileSet.insert(filename);
+        locSet.insert(std::make_pair(filename, line));
+      }
+    }
   }
 }
 
-bool TagPass::runOnModule(Module &M) {
+bool TagPass::runOnModuleByInst(Module &M) {
   for (Module::iterator f = M.begin(), fe = M.end(); f != fe; ++f) {
     if (tagFuncSet.find(f->getName().str()) == tagFuncSet.end()) {
       continue;
@@ -113,19 +142,74 @@ bool TagPass::runOnModule(Module &M) {
 
         std::vector<llvm::Type *> argTypes;
         llvm::LLVMContext &C = f->getContext();
-        llvm::Type *TyInt64 = Type::getInt64Ty(C);
         llvm::Type *voidTy = Type::getVoidTy(C);
         llvm::FunctionType *FTy = FunctionType::get(voidTy, argTypes, false);
         llvm::InlineAsm *IA =
           llvm::InlineAsm::get(FTy, "tag", "r,~{dirflag},~{fpsr},~{flags}", true, false);
 
         std::vector<llvm::Value *> args;
-        Instruction *insertAfterI = &I;
+        Instruction *insertBeforeI = &I;
         Instruction *CI = llvm::CallInst::Create(IA, args, "");
-        CI->insertAfter(insertAfterI);
+        CI->insertBefore(insertBeforeI);
+        CI->setDebugLoc(i->getDebugLoc());
       }
     }
   }
 
   return true;
 }
+
+bool TagPass::runOnModuleByLoc(Module &M) {
+  for (Module::iterator f = M.begin(), fe = M.end(); f != fe; ++f) {
+    bool funcNotMatched = false;
+    for (Function::iterator b = f->begin(), be = f->end(); b != be; ++b) {
+      bool prevMatched = false;
+      for (BasicBlock::iterator i = b->begin(), ie = b->end(); i != ie; ++i) {
+        const DebugLoc &loc = i->getDebugLoc();
+        if (!loc)
+          continue;
+
+        auto *Scope = cast<DIScope>(loc.getScope());
+        std::string filename = Scope->getFilename();
+
+        if (fileSet.find(filename) == fileSet.end()) {
+          funcNotMatched = true;
+          break;
+        }
+
+        // only match the first instruction of in a contiguous range
+        bool currMatched = locSet.find(std::make_pair(filename, loc.getLine())) != locSet.end();
+        if (currMatched && !prevMatched) {
+          llvm::errs() << filename << ":" << loc.getLine() << " matched\n";
+          Instruction &I = *i;
+
+          std::vector<llvm::Type *> argTypes;
+          llvm::LLVMContext &C = f->getContext();
+          llvm::Type *voidTy = Type::getVoidTy(C);
+          llvm::FunctionType *FTy = FunctionType::get(voidTy, argTypes, false);
+          llvm::InlineAsm *IA =
+            llvm::InlineAsm::get(FTy, "tag", "r,~{dirflag},~{fpsr},~{flags}", true, false);
+
+          std::vector<llvm::Value *> args;
+          Instruction *insertBeforeI = &I;
+          Instruction *CI = llvm::CallInst::Create(IA, args, "");
+          CI->insertBefore(insertBeforeI);
+          CI->setDebugLoc(i->getDebugLoc());
+        }
+        prevMatched = currMatched;
+      }
+      if (funcNotMatched) {
+        break;
+      }
+    }
+  }
+  return true;
+}
+
+bool TagPass::runOnModule(Module &M) {
+  if (useDbgInfo)
+    return runOnModuleByLoc(M);
+  else
+    return runOnModuleByInst(M);
+}
+

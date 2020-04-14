@@ -45,8 +45,12 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <assert.h>
+#include <pthread.h>
+#include <stdio.h>
 
 #include <klee/klee.h>
+
+char useSymbolicgettimeofday;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Sleeping Operations
@@ -76,15 +80,32 @@ unsigned int sleep(unsigned int seconds) {
 }
 
 int gettimeofday(struct timeval *tv, struct timezone *tz) {
-  if (tv) {
-    uint64_t ktime = klee_get_time();
-    tv->tv_sec = ktime / 1000000;
-    tv->tv_usec = ktime % 1000000;
-  }
+  static unsigned int call_cnt = 0;
+  if (useSymbolicgettimeofday) {
+    pthread_t tid = pthread_self();
+    char symname[64];
+    if (tv) {
+      snprintf(symname, sizeof(symname), "gettimeofday_timeval_T%02lu_N%02u",
+               tid, call_cnt);
+      klee_make_symbolic(tv, sizeof(struct timeval), symname);
+    }
+    if (tz) {
+      snprintf(symname, sizeof(symname), "gettimeofday_timezone_T%02lu_N%02u",
+               tid, call_cnt);
+      klee_make_symbolic(tv, sizeof(struct timezone), symname);
+    }
+    ++call_cnt;
+  } else {
+    if (tv) {
+      uint64_t ktime = klee_get_time();
+      tv->tv_sec = ktime / 1000000;
+      tv->tv_usec = ktime % 1000000;
+    }
 
-  if (tz) {
-    tz->tz_dsttime = 0;
-    tz->tz_minuteswest = 0;
+    if (tz) {
+      tz->tz_dsttime = 0;
+      tz->tz_minuteswest = 0;
+    }
   }
 
   return 0;

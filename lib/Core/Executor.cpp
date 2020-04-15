@@ -25,6 +25,7 @@
 #include "UserSearcher.h"
 #include "ExecutorDebugHelper.h"
 #include "ExecutorCmdLine.h"
+#include "ExecutorConfig.h"
 
 #include "klee/Common.h"
 #include "klee/Config/Version.h"
@@ -1736,14 +1737,26 @@ void Executor::executeCall(ExecutionState &state,
     unsigned numFormals = f->arg_size();
     for (unsigned i=0; i<numFormals; ++i)
       bindArgument(kf, i, state, arguments[i]);
-    if (kf->function->hasFnAttribute("InPOSIX")) {
+    if (f->hasFnAttribute("InPOSIX")) {
       bool hasSymbolicArgs = false;
       std::vector<ref<Expr>> symbolicArgs;
+      // By default, none of POSIX call arguments can be symbolic
+      whitelist_mask_t whitelist_mask = 0;
+      // argmask contains only one valid bit representing the arguments we are
+      // checking
+      whitelist_mask_t argmask = 1;
+      SymbolicCallWhiteList_t::iterator find_it =
+          SymbolicPOSIXWhiteList.find(f->getName());
+      if (find_it != SymbolicPOSIXWhiteList.end()) {
+        whitelist_mask = find_it->second;
+      }
       for (unsigned i=0; i<numFormals; ++i) {
-        if (arguments[i].get() && !isa<ConstantExpr>(arguments[i])) {
+        if (arguments[i].get() && !isa<ConstantExpr>(arguments[i]) &&
+            !(whitelist_mask & argmask)) {
           symbolicArgs.push_back(arguments[i]);
           hasSymbolicArgs = true;
         }
+        argmask <<= 1;
       }
       if (!AllowSymbolicPOSIXCall && hasSymbolicArgs) {
         std::string sbuf;

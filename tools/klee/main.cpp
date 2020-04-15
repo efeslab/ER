@@ -1406,12 +1406,12 @@ createLibCWrapper(std::vector<std::unique_ptr<llvm::Module>> &modules,
 }
 static void markPOSIXModuleFnAttr(llvm::Module *pM) {
   for (auto &f: *pM) {
-    f.addFnAttr("InPOSIX", "AddFnAttr!");
+    f.addFnAttr(TAGPOSIX);
   }
 }
 static void markLibCModuleFnAttr(llvm::Module *pM) {
   for (auto &f: *pM) {
-    f.addFnAttr("InLIBC", "AddFnAttr!");
+    f.addFnAttr(TAGLIBC);
   }
 }
 

@@ -18,6 +18,7 @@
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
 #include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/Internal/Support/ModuleUtil.h"
 #include "klee/OptionCategories.h"
 #include "CoreStats.h"
 #include "ExecutorCmdLine.h"
@@ -58,10 +59,10 @@ cl::opt<std::string> PathRecordingEntryPoint(
 
 /** Internal Routine **/
 static inline bool isKFunctionInPOSIX(KFunction *kf) {
-  return kf->function->hasFnAttribute("InPOSIX");
+  return kf->function->hasFnAttribute(TAGPOSIX);
 }
 static inline bool isKFunctionInLIBC(KFunction *kf) {
-  return kf->function->hasFnAttribute("IsINLIBC");
+  return kf->function->hasFnAttribute(TAGLIBC);
 }
 
 /***/

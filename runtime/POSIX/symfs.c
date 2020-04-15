@@ -327,6 +327,12 @@ void klee_init_symfs(fs_init_descriptor_t *fid) {
     }
   }
 
+  __sym_fs.allow_unsafe = fid->allow_unsafe;
+  if (__sym_fs.allow_unsafe)
+    klee_warning("set allow_unsafe");
+  else
+    klee_warning("unset allow_unsafe");
+
   /* setting symbolic stdin */
   if (fid->sym_stdin_len) {
     __sym_fs.sym_stdin = malloc(sizeof(*__sym_fs.sym_stdin));

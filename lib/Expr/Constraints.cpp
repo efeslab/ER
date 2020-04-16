@@ -13,6 +13,7 @@
 #include "klee/Internal/Module/KModule.h"
 #include "klee/OptionCategories.h"
 #include "klee/Solver/SolverCmdLine.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
@@ -22,6 +23,8 @@
 #include <unordered_set>
 #include "klee/Expr/ExprHashMap.h"
 #include "klee/util/RefHashMap.h"
+
+#include <fstream>
 
 using namespace klee;
 
@@ -551,6 +554,23 @@ void ConstraintManager::IndepElementSetIndexer::checkExprsSum(size_t NExprs) {
   assert(n == NExprs);
 }
 
+// For debugging, dump all equalities to a given file
+void ConstraintManager::dumpEqualities(const char *filename) {
+  char fallback_filename[] = "-";
+  if (!filename) filename = fallback_filename;
+  std::error_code ec;
+  llvm::raw_fd_ostream os(filename, ec);
+  for (auto mapit: equalities) {
+    const ref<Expr> &k = mapit.first;
+    const ref<Expr> &v = mapit.second;
+    os << "===========================\n";
+    k->print(os);
+    os << "\nequals\n";
+    v->print(os);
+    os << "\n===========================\n";
+  }
+}
+
 /*
  * Template instantiation for embedding useful debugging helpers
  * Avoid "cannot evaluate" problems in gdb
@@ -563,3 +583,4 @@ template class std::unordered_set<IndependentElementSet*>;
 template class std::unordered_map<const Array *, std::vector<IndependentElementSet*>>;
 // for wholeObj_index
 template class std::unordered_map<const Array *, IndependentElementSet*>;
+

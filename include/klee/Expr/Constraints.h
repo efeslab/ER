@@ -78,6 +78,7 @@ public:
   void
   getRelatedIndependentElementSets(const Constraints_ty &constraints,
                                    IndepElemSetPtrSet_ty &out_elemsets) const;
+  void dumpEqualities(const char *filename=nullptr);
 
 private:
   Constraints_ty constraints;

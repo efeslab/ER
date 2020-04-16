@@ -432,6 +432,13 @@ cl::opt<bool> AllowSymbolicMalloc(
              "klee will stop replaying and dump symbolic args for "
              "ptwrite instrumentation (default=false)"),
     cl::cat(HASECat));
+cl::opt<bool> AllowMemoryForking(
+    "allow-mem-fork", cl::init(false),
+    cl ::desc(
+        "Allow state forking due to ambiguous (potential out of bound access) "
+        " in the Memory model. Terminate and dump the ambiguous address if "
+        "disallowed. (default=false)"),
+    cl::cat(HASECat));
 cl::opt<bool>
     DebugScheduling("debug-schedule", cl::init(false),
                     cl::desc("Print debug info related to scheduling, context "
@@ -4124,7 +4131,9 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     }
   }
   TimerStatIncrementer timerErrHandl(stats::executeMemopTimeErrHandl);
-  klee_warning("Out of bound memory access, forking in Memory Model, address kinst: %s", address->getKInstUniqueID().c_str());
+  klee_warning(
+      "Out of bound memory access, forking in Memory Model, address kinst: %s",
+      address->getKInstUniqueID().c_str());
 
   // we are on an error path (no resolution, multiple resolution, one
   // resolution with out of bounds)
@@ -4134,6 +4143,23 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   solver->setTimeout(coreSolverTimeout);
   bool incomplete = state.addressSpace.resolve(state, solver, address, rl,
                                                0, coreSolverTimeout);
+  // if it could be a multi-resolution address but we do not want to fork
+  // then just dump that address and terminate
+  if (!rl.empty() && !AllowMemoryForking) {
+    std::vector<ref<Expr>> symbolicAddress;
+    symbolicAddress.push_back(address);
+    std::string sbuf;
+    llvm::raw_string_ostream sos(sbuf);
+    state.dumpStack(sos);
+    klee_message("Ambiguous Memory access found at:\n%s\n", sos.str().c_str());
+    std::string file_path =
+        interpreterHandler->getOutputFilename("AmbiguousAddress.kquery");
+    debugDumpConstraintsEval(state, state.constraints, symbolicAddress,
+                             file_path.c_str());
+    terminateStateOnError(state, "ambiguous memory address", Abort);
+    return;
+  }
+
   solver->setTimeout(time::Span());
 
   // XXX there is some query wasteage here. who cares?

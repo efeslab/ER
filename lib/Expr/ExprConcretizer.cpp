@@ -303,7 +303,7 @@ IndirectReadDepthCalculator::IndirectReadDepthCalculator(
 }
 
 
-int IndirectReadDepthCalculator::query(const Expr *e) {
+int IndirectReadDepthCalculator::query(const Expr *e) const {
   auto it = depthStore.find(e);
   if (it == depthStore.end()) {
     return -1;

@@ -41,6 +41,7 @@
 #include "llvm/Support/Signals.h"
 
 #include "GraphvizDOTDrawer.h"
+#include "JsonDrawer.h"
 #include "ExprInPlaceTransformation.h"
 
 using namespace klee;
@@ -87,6 +88,17 @@ llvm::cl::opt<bool> SimplifyDrawing(
     llvm::cl::desc("Simplify dependency graphs by omitting constant nodes and "
       "transforming \"A->B->C\" to \"A->C\""),
     llvm::cl::init(false),
+    llvm::cl::cat(klee::HASECat));
+
+enum class DrawFormats { GraphVizDOT, JSON };
+static llvm::cl::opt<DrawFormats> DrawFormat(
+    llvm::cl::desc("Drawing output format"),
+    llvm::cl::init(DrawFormats::GraphVizDOT),
+    llvm::cl::values(
+        clEnumValN(DrawFormats::GraphVizDOT, "dot",
+                   "Output to GraphVizDOT format, *.dot (default)"),
+        clEnumValN(DrawFormats::JSON, "json", "Output to JSON format, *.json")
+            KLEE_LLVM_CL_VAL_END),
     llvm::cl::cat(klee::HASECat));
 
 enum ToolActions { PrintTokens, PrintAST, PrintSMTLIBv2, Evaluate, Analyze, Draw, KTestEval};
@@ -485,18 +497,34 @@ static bool DrawInputAST(const char *Filename,
     return false;
 
   std::vector<Decl*> &Decls = ast.getDecls();
-  std::ofstream of(std::string(Filename) + ".dot");
+
+  std::string output_file(Filename);
+  if (DrawFormat == DrawFormats::JSON) {
+    output_file += ".json";
+  } else {
+    output_file += ".dot";
+  }
   for (Decl *D: Decls) {
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
+      std::ofstream of(output_file);
       if (SimplifyDrawing) {
-        Constraints_ty simplified_constraints;
         ExprInPlaceTransformer EIPT(*QC);
-        GraphvizDOTDrawer drawer(of, *(EIPT.getNewQCptr()));
-        drawer.draw();
+        if (DrawFormat == DrawFormats::JSON) {
+          JsonDrawer drawer(of, *(EIPT.getNewQCptr()));
+          drawer.draw();
+        } else {
+          GraphvizDOTDrawer drawer(of, *(EIPT.getNewQCptr()));
+          drawer.draw();
+        }
       }
       else {
-        GraphvizDOTDrawer drawer(of, *QC);
-        drawer.draw();
+        if (DrawFormat == DrawFormats::JSON) {
+          JsonDrawer drawer(of, *QC);
+          drawer.draw();
+        } else {
+          GraphvizDOTDrawer drawer(of, *QC);
+          drawer.draw();
+        }
       }
       // Assuming there will only be one QueryComamnd
       break;

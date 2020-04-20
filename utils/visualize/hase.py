@@ -25,10 +25,11 @@ try:
     import org.gephi.scripting.wrappers.GyGraph as GyGraph
 except ImportError:
     print("Failed to import Gephi related lib, fallback to cli mode")
-    import sys
     import json
     from fakegynode import FakeGyNode
     from fakegynode import FakeGyEdge
+finally:
+    import sys
 
 def RunForceAtlas2_nooverlap(iters):
     fa2 = ForceAtlas2().buildLayout()
@@ -269,6 +270,8 @@ class PyGraph(object):
         self.all_nodes_topo_order = sorted(self.gynodes,
                 key=lambda n: self.topological_map[n.id])
         self.calculate_idep()
+        # MustConcreteize
+        self.mustconcretize_cache = {}
 
     """
     Perform topological sort and store the result in self.topological_map
@@ -594,6 +597,43 @@ class PyGraph(object):
                 break
         return filtered
 
+    """
+    @rtype: int
+    @return: in bytes
+    """
+    def GetKInstSetRecordingSize(self, kinstset):
+        return sum(self.id_map[next(iter(self.kinst2nodes[k]))].freq*8
+                for k in kinstset)
+
+
+    """
+    @type nid: str
+    @param nid: The string id of the node you must concretize
+    @type minbytes: int
+    @rtype Set(str)
+    @return A set of instruction identifiers representing the minimum
+    number of bytes you need to record the recover data of the nid node.
+    """
+    def MustConcretize(self, nid):
+        if nid in self.mustconcretize_cache:
+            return self.mustconcretize_cache[nid]
+        n = self.id_map[nid]
+        if isKInstValid(n) and n.ispointer == "false":
+            self_bytes = 8 * n.freq
+        else:
+            self_bytes = sys.maxsize
+        child_kinstset = set()
+        for e in self.edges.get(nid, set()):
+            kinstset = self.MustConcretize(e.target.id)
+            child_kinstset |= kinstset
+        child_bytes = self.GetKInstSetRecordingSize(child_kinstset)
+        if child_bytes > 0 and child_bytes <= self_bytes:
+            return_set = child_kinstset
+        else:
+            return_set = set([n.kinst])
+        self.mustconcretize_cache[nid] = return_set
+        return return_set
+
 
 class HaseUtils(object):
     def __init__(self, globals_ref):
@@ -777,10 +817,13 @@ if __name__ == "__main__":
         query_nodes = list(filter(lambda n: n.category == "Q", h.gynodes))
         if len(query_nodes) > 0:
             for n in query_nodes:
-                filtered = h.FilterMustRecordQuery(r, n.id)
+                kinstset = h.MustConcretize(n.id)
+                record_bytes = h.GetKInstSetRecordingSize(kinstset)
                 print("Query Expression with kinst \"%s\" can be "
-                      "covered by:" % (n.kinst))
-                h.printCandidateRecInstsInfo(filtered)
+                      "covered by recording %d bytes from:" % (n.kinst,
+                          record_bytes))
+                for k in kinstset:
+                    print(k)
         else:
             sr = h.sortRecInstsbyCoverageScore(r)
             srf = h.sortRecInstsbyCoverageScoreFreq(r)

@@ -117,6 +117,15 @@ std::string klee::getKInstDbgInfo(const KInstruction *ki) {
   }
 }
 
+std::string klee::getKInstIsPtrType(const KInstruction *ki) {
+  if (ki) {
+    if (ki->inst->getType()->isPointerTy()) {
+      return "true";
+    }
+  }
+  return "false";
+}
+
 ref<Expr> Expr::createTempRead(const Array *array, Expr::Width w) {
   UpdateList ul(array, 0);
 

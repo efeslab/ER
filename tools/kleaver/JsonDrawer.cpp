@@ -16,6 +16,7 @@ void JsonDrawer::declareExpr(const Expr *e, const char *category) {
       {"Category", category},
       {"KInst", e->getKInstUniqueID()},
       {"DbgInfo", e->getKInstDbgInfo()},
+      {"IsPointer", e->getKInstIsPtrType()},
       {"Freq", e->getKInstLoadedFreq()},
   };
 };
@@ -34,6 +35,7 @@ void JsonDrawer::declareLastLevelRead(const ReadExpr *RE,
       {"Category", category},
       {"KInst", RE->getKInstUniqueID()},
       {"DbgInfo", RE->getKInstDbgInfo()},
+      {"IsPointer", RE->getKInstIsPtrType()},
       {"Freq", RE->getKInstLoadedFreq()},
   };
 }
@@ -49,6 +51,7 @@ void JsonDrawer::declareUpdateNode(const UpdateNode *un, const Array *root,
       {"Category", category},
       {"KInst", un->getKInstUniqueID()},
       {"DbgInfo", un->getKInstDbgInfo()},
+      {"IsPointer", false},
       {"Freq", un->getKInstLoadedFreq()},
   };
 }

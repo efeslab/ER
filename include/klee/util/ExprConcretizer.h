@@ -133,11 +133,15 @@ namespace klee {
     // all calculation is done in the constructor
     IndirectReadDepthCalculator(const Constraints_ty &constraints);
     IndirectReadDepthCalculator(const expr::QueryCommand &constraints);
-    int getMax() { return maxLevel; }
+    int getMax() const { return maxLevel; }
     std::set<ref<ReadExpr>>& getLastLevelReads() { return lastLevelReads; }
-    int query(const Expr *e);
-    int query(const ref<Expr> &e) { return query(e.get()); }
-    int query(const UpdateNode *un) { return depthStoreUNode[un]; }
+    int query(const Expr *e) const;
+    int query(const ref<Expr> &e) const { return query(e.get()); }
+    int query(const UpdateNode *un) const {
+      auto find_it = depthStoreUNode.find(un);
+      assert(find_it != depthStoreUNode.end());
+      return find_it->second;
+    }
     // indirect depth of each top-level constraint
     std::vector<unsigned int> depths;
   };

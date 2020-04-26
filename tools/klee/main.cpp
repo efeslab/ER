@@ -1046,13 +1046,18 @@ static const char *modelledExternals[] = {
   "__ubsan_handle_mul_overflow",
   "__ubsan_handle_divrem_overflow",
   // ported from cloud9
-  "klee_get_time",
+  "klee_thread_create",
+  "klee_thread_terminate",
+  "klee_get_context",
   "klee_get_wlist",
-  "klee_make_shared",
-  "klee_set_time",
-  "klee_thread_notify",
   "klee_thread_preempt",
   "klee_thread_sleep",
+  "klee_thread_notify",
+  "klee_process_fork",
+  "klee_process_terminate",
+  "klee_make_shared",
+  "klee_get_time",
+  "klee_set_time",
 };
 
 
@@ -1406,12 +1411,12 @@ createLibCWrapper(std::vector<std::unique_ptr<llvm::Module>> &modules,
 }
 static void markPOSIXModuleFnAttr(llvm::Module *pM) {
   for (auto &f: *pM) {
-    f.addFnAttr("InPOSIX", "AddFnAttr!");
+    f.addFnAttr(TAGPOSIX);
   }
 }
 static void markLibCModuleFnAttr(llvm::Module *pM) {
   for (auto &f: *pM) {
-    f.addFnAttr("InLIBC", "AddFnAttr!");
+    f.addFnAttr(TAGLIBC);
   }
 }
 

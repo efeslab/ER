@@ -69,5 +69,6 @@ bool loadFile(const std::string &libraryName, llvm::LLVMContext &context,
               std::string &errorMsg, void(*moduleCB)(llvm::Module*)=nullptr);
 bool stripDebugInfo(llvm::Module &module);
 }
-
+constexpr char TAGPOSIX[] = "InPOSIX";
+constexpr char TAGLIBC[] = "InLIBC";
 #endif /* KLEE_MODULEUTIL_H */

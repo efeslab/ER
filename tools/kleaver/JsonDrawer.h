@@ -1,14 +1,16 @@
-#ifndef KLEE_GRAPHVIZDOTDRAWER_H
-#define KLEE_GRAPHVIZDOTDRAWER_H
+#ifndef KLEAVER_JSONDRAWER_H
+#define KLEAVER_JSONDRAWER_H
 #include "Drawer.h"
-
+#include "json.hpp"
+using json = nlohmann::json;
 using namespace klee;
 
-class GraphvizDOTDrawer : public Drawer {
+class JsonDrawer : public Drawer {
 protected:
   std::ostream &os;
-  virtual void printHeader();
-  virtual void printFooter();
+  json jsongraph;
+  json &nodes;
+  json &edges;
   virtual void declareExpr(const Expr *e, const char *category) override;
   virtual void declareLastLevelRead(const ReadExpr *RE,
                                     const char *category) override;
@@ -20,7 +22,11 @@ protected:
                         double weight) override;
 
 public:
-  GraphvizDOTDrawer(std::ostream &_os, const klee::expr::QueryCommand &QC)
-      : Drawer(QC), os(_os) {}
+  JsonDrawer(std::ostream &_os, const klee::expr::QueryCommand &QC)
+      : Drawer(QC), os(_os), nodes(jsongraph["nodes"]),
+        edges(jsongraph["edges"]) {}
+  // declareXXX will only adding stuff to in-memory the json object
+  // Output Json to os at the end of JsonDrawer::draw()
+  void draw();
 };
-#endif // KLEE_GRAPHVIZDOTDRAWER_H
+#endif // KLEAVER_JSONDRAWER_H

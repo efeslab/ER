@@ -103,7 +103,7 @@ disk_file_t *__get_sym_file(const char *pathname) {
       matched = (strcmp(pathname, sym_name) == 0);
     }
     if (matched) {
-      printf("get symbolic file %s\n", __sym_fs.sym_files[i].name);
+      posix_debug_msg("get symbolic file %s\n", __sym_fs.sym_files[i].name);
       disk_file_t *df = &__sym_fs.sym_files[i];
       if (df->stat->st_ino == 0)
         return NULL;
@@ -370,4 +370,7 @@ void klee_init_symfs(fs_init_descriptor_t *fid) {
     __sym_fs.stdout_writes = 0;
   }
   else __sym_fs.sym_stdout = NULL;
+  /* setting misc options */
+  __sym_fs.allow_unsafe = fid->allow_unsafe;
+  __sym_fs.overlapped_writes = fid->overlapped_writes;
 }

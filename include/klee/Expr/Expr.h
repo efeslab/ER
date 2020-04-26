@@ -96,6 +96,7 @@ std::string getKInstUniqueID(const KInstruction *ki);
 // This helper is supposed to used inside gdb
 std::string getInstUniqueID(const llvm::Instruction *I);
 std::string getKInstDbgInfo(const KInstruction *ki);
+std::string getKInstIsPtrType(const KInstruction *ki);
 
 class Expr {
 public:
@@ -317,6 +318,7 @@ public:
   static const char *getKindStr(enum Kind k);
   std::string getKInstUniqueID() const { return klee::getKInstUniqueID(kinst); }
   std::string getKInstDbgInfo() const { return klee::getKInstDbgInfo(kinst); }
+  std::string getKInstIsPtrType() const { return klee::getKInstIsPtrType(kinst); }
   unsigned int getKInstLoadedFreq() const {
     if (kinst)
       return kinst->getLoadedFreq();

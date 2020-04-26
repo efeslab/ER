@@ -87,6 +87,7 @@ typedef struct {
   int *read_fail, *write_fail, *close_fail, *ftruncate_fail, *getcwd_fail;
   int *chmod_fail, *fchmod_fail;
 
+  // MISC Options
   // allow non-RD_ONLY (unsafe) access to concrete files
   char allow_unsafe;
   // keep per-state concrete file offsets. Enable this flag is cloud9's default

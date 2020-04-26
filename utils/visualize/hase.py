@@ -12,16 +12,24 @@ Nodes should already have an integer attr named "idepi" representing indirect de
     e.g., for v in g.nodes: v.idepi = int(v.idep)
 """
 # initialize
-import org.openide.util.Lookup as Lookup
-import org.gephi.layout.api.LayoutController
-LayoutController = Lookup.getDefault().lookup(org.gephi.layout.api.LayoutController)
-import org.gephi.visualization.VizController
-VizController = Lookup.getDefault().lookup(org.gephi.visualization.VizController)
-import org.gephi.layout.plugin.forceAtlas2.ForceAtlas2Builder as ForceAtlas2
-import java.awt.Color as jcolor
-import time
-import org.gephi.scripting.wrappers.GyNode as GyNode
-import org.gephi.scripting.wrappers.GyGraph as GyGraph
+try:
+    import org.openide.util.Lookup as Lookup
+    import org.gephi.layout.api.LayoutController
+    LayoutController = Lookup.getDefault().lookup(org.gephi.layout.api.LayoutController)
+    import org.gephi.visualization.VizController
+    VizController = Lookup.getDefault().lookup(org.gephi.visualization.VizController)
+    import org.gephi.layout.plugin.forceAtlas2.ForceAtlas2Builder as ForceAtlas2
+    import java.awt.Color as jcolor
+    import time
+    import org.gephi.scripting.wrappers.GyNode as GyNode
+    import org.gephi.scripting.wrappers.GyGraph as GyGraph
+except ImportError:
+    print("Failed to import Gephi related lib, fallback to cli mode")
+    import json
+    from fakegynode import FakeGyNode
+    from fakegynode import FakeGyEdge
+finally:
+    import sys
 
 def RunForceAtlas2_nooverlap(iters):
     fa2 = ForceAtlas2().buildLayout()
@@ -147,6 +155,8 @@ class PyGraph(object):
     @classmethod
     def buildFromGyGraph(cls, gygraph):
         if isinstance(gygraph, GyGraph):
+            # Here we filter out the "dummy nodes" which are used to scale edge
+            # width in Gephi
             gynodes = set([n for n in gygraph.nodes if n.kind is not None])
             gyedges = set([e for e in gygraph.edges if e.source.kind is not None
                 and e.target.kind is not None])
@@ -170,6 +180,42 @@ class PyGraph(object):
             return PyGraph(subgynodes, subgyedges)
         else:
             return None
+
+    """
+    @type graphdict: Dict, The json graph seems like:
+    {
+        "edges": [
+            {
+                "source": "94530732880448",
+                "target": "94530732878272",
+                "weight": 1.0
+            }, ...
+        ]
+        "nodes": {
+            "94530648900736": {
+                "Category": "N"/"Q"/"C",
+                "DbgInfo": "N/A",
+                "Freq": 0,
+                "IDep": 0,
+                "KInst": "N/A",
+                "Kind": 3,
+                "Width": 8,
+                "label": "model_version[0]"
+            }, ...
+        }
+    }
+    """
+    @classmethod
+    def buildFromPyDict(cls, graphdict):
+        nodes = graphdict["nodes"]
+        edges = graphdict["edges"]
+        fakegynodes = {}
+        for nid, nprop in nodes.items():
+            fakegynodes[nid] = FakeGyNode(nid, nprop)
+        GyNodeSet = set(fakegynodes.values())
+        GyEdgeSet = set([FakeGyEdge(fakegynodes[e["source"]],
+        fakegynodes[e["target"]], e) for e in edges])
+        return PyGraph(GyNodeSet, GyEdgeSet)
 
     """
     @type GyNodeSet: set(GyNode)
@@ -215,15 +261,17 @@ class PyGraph(object):
             self.redges.setdefault(e.target.id, set()).add(e)
         for n in self.gynodes:
             self.id_map[n.id] = n
-            if n.indegree == 0:
+            if n.id not in self.redges:
                 self.innodes.add(n.id)
-            if n.outdegree == 0:
+            if n.id not in self.edges:
                 self.outnodes.add(n.id)
         self.topological_sort()
         self.build_kinst2nodes()
         self.all_nodes_topo_order = sorted(self.gynodes,
                 key=lambda n: self.topological_map[n.id])
         self.calculate_idep()
+        # MustConcreteize
+        self.mustconcretize_cache = {}
 
     """
     Perform topological sort and store the result in self.topological_map
@@ -388,8 +436,8 @@ class PyGraph(object):
                         if len(const_nodes) + len(known_symbolic_nodes) > \
                         len(self.edges[node.id]):
                             raise RuntimeError("sum of out edges wrong")
-                result.append(recinsts + [RecordableInst(n.kinst, int(n.Width),
-                    int(n.Freq), self.kinst2nodes[n.kinst], hidden_nodes,
+                result.append(recinsts + [RecordableInst(n.kinst, int(n.width),
+                    int(n.freq), self.kinst2nodes[n.kinst], hidden_nodes,
                     local_concretized_set - concretized_set)])
         return result
 
@@ -398,8 +446,9 @@ class PyGraph(object):
     @return: the heuristic score of this Recordable Instruction. expression
     width and indirect depth are considered
     """
-    def coverageScore(self, recinst):
-        return float(sum([int(self.id_map[nid].Width)*int(self.id_map[nid].idep)\
+    def coverageScore(self, recinsts):
+        return float(sum([int(self.id_map[nid].width)*int(self.id_map[nid].idep) \
+                for recinst in recinsts \
                 for nid in recinst.concretized_nodes]))
     """
     @type recinstsL: List(List(RecordableInst))
@@ -411,27 +460,25 @@ class PyGraph(object):
     """
     def sortRecInstsbyCoverageScore(self, recinstsL):
         return sorted(recinstsL, key=lambda recinsts:
-                self.coverageScore(recinsts[-1]))
+                self.coverageScore(recinsts))
 
     """
     @rtype: float
     @return: Heuristics take instruction frequency into consideration
     """
-    def coverageScoreFreq(self, recinst):
-        if recinst.freq == 0:
-            return 0
-        else:
-            # since we cannot just record 8B in a ptwrite instruction
-            # we have to assume each recordable instructions cost 64B
-            # so we use 64B instead of recinst.width
-            return self.coverageScore(recinst) / (recinst.freq * 64)
+    def coverageScoreFreq(self, recinsts):
+        # since we cannot just record 8B in a ptwrite instruction
+        # we have to assume each recordable instructions cost 64B
+        # so we use 64B instead of recinst.width
+        return self.coverageScore(recinsts) /\
+               (sum([recinst.freq for recinst in recinsts]) * 64)
 
     """
     same as above
     """
     def sortRecInstsbyCoverageScoreFreq(self, recinstsL):
         return sorted(recinstsL, key=lambda recinsts:
-                self.coverageScoreFreq(recinsts[-1]))
+                self.coverageScoreFreq(recinsts))
 
     """
     @type recinsts: List(RecordableInst)
@@ -460,6 +507,8 @@ class PyGraph(object):
                 ', '.join([self.id_map[nid].label for nid in recinst.rec_nodes])
             msgstring += "\n"
 
+        msgstring += "CoverageScore=%f, CoverageFreqScore=%f\n" % (
+                self.coverageScore(recinsts), self.coverageScoreFreq(recinsts))
         msgstring += "Total: "
         percent_concretized = \
         (float(len(concretized_nodes))/len(self.gynodes)*100)
@@ -547,6 +596,43 @@ class PyGraph(object):
                     filtered.append(recinsts)
                 break
         return filtered
+
+    """
+    @rtype: int
+    @return: in bytes
+    """
+    def GetKInstSetRecordingSize(self, kinstset):
+        return sum(self.id_map[next(iter(self.kinst2nodes[k]))].freq*8
+                for k in kinstset)
+
+
+    """
+    @type nid: str
+    @param nid: The string id of the node you must concretize
+    @type minbytes: int
+    @rtype Set(str)
+    @return A set of instruction identifiers representing the minimum
+    number of bytes you need to record the recover data of the nid node.
+    """
+    def MustConcretize(self, nid):
+        if nid in self.mustconcretize_cache:
+            return self.mustconcretize_cache[nid]
+        n = self.id_map[nid]
+        if isKInstValid(n) and n.ispointer == "false":
+            self_bytes = 8 * n.freq
+        else:
+            self_bytes = sys.maxsize
+        child_kinstset = set()
+        for e in self.edges.get(nid, set()):
+            kinstset = self.MustConcretize(e.target.id)
+            child_kinstset |= kinstset
+        child_bytes = self.GetKInstSetRecordingSize(child_kinstset)
+        if child_bytes > 0 and child_bytes <= self_bytes:
+            return_set = child_kinstset
+        else:
+            return_set = set([n.kinst])
+        self.mustconcretize_cache[nid] = return_set
+        return return_set
 
 
 class HaseUtils(object):
@@ -638,16 +724,18 @@ class HaseUtils(object):
     Will evenly spread roots (sorted) along Y-axis on the left most border
     (min x-axis) of that level
     """
-    def layout_idep_root(self, idep):
+    def layout_idep_root(self, idep, cols=1, xstep=50):
         subg = self.idep_subg[idep]
         roots = self.idep_roots[idep]
         layout_ymin = min([v.y for v in subg.nodes])
         layout_ymax = max([v.y for v in subg.nodes])
         layout_xmin = min([v.x for v in subg.nodes])
-        ystep = (layout_ymax - layout_ymin) / (len(roots)+1)
+        ystep = (layout_ymax - layout_ymin) / (len(roots)//cols+1)
         for (i,r) in enumerate(roots):
-            r.x = layout_xmin
-            r.y = layout_ymin + (i+1) * ystep
+            row = i//cols;
+            col = i%cols;
+            r.x = layout_xmin + col * xstep
+            r.y = layout_ymin + (row+1) * ystep
 
     """
     If the spread roots are too close to each other, you may want to scale them
@@ -693,15 +781,15 @@ class HaseUtils(object):
             prev_maxx = max([v.x for v in self.idep_subg[start_idep-1].nodes])
             self.move_right(start_idep, prev_maxx + 100 - cur_minx)
 
-    def auto_layout_all(self, iters=500):
-        for i in range(self.maxIDep+1):
+    def auto_layout_all(self, iters=500, start=0):
+        for i in range(start, self.maxIDep+1):
             self.focus_idep(i)
             RunForceAtlas2_nooverlap(iters)
             self.move_right_auto(i)
         self.setAllVisible()
 
-    def auto_relayout_all(self, iters=500):
-        for i in range(self.maxIDep+1):
+    def auto_relayout_all(self, iters=500, start=0):
+        for i in range(start, self.maxIDep+1):
             self.visible_idep(i)
             RunForceAtlas2_nooverlap(iters)
             self.move_right_auto(i)
@@ -715,3 +803,31 @@ class HaseUtils(object):
 
 def setVisible(gs, subgraph):
     gs['visible'] = subgraph
+
+if __name__ == "__main__":
+    if (len(sys.argv) < 2):
+        print("Usage: %s graph.json" % sys.argv[0])
+        sys.exit()
+    else:
+        graph = json.load(open(sys.argv[1]))
+        h = PyGraph.buildFromPyDict(graph)
+        print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
+            len(h.gyedges), h.max_idep()))
+        r = h.analyze_recordable()
+        query_nodes = list(filter(lambda n: n.category == "Q", h.gynodes))
+        if len(query_nodes) > 0:
+            for n in query_nodes:
+                kinstset = h.MustConcretize(n.id)
+                record_bytes = h.GetKInstSetRecordingSize(kinstset)
+                print("Query Expression with kinst \"%s\" can be "
+                      "covered by recording %d bytes from:" % (n.kinst,
+                          record_bytes))
+                for k in kinstset:
+                    print(k)
+        else:
+            sr = h.sortRecInstsbyCoverageScore(r)
+            srf = h.sortRecInstsbyCoverageScoreFreq(r)
+            print("Coverage Score Highest 5:")
+            h.printCandidateRecInstsInfo(sr[-5:])
+            print("Coverage Freq Score Highest 5:")
+            h.printCandidateRecInstsInfo(srf[-5:])

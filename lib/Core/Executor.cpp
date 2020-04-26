@@ -25,6 +25,7 @@
 #include "UserSearcher.h"
 #include "ExecutorDebugHelper.h"
 #include "ExecutorCmdLine.h"
+#include "ExecutorConfig.h"
 
 #include "klee/Common.h"
 #include "klee/Config/Version.h"
@@ -432,11 +433,51 @@ cl::opt<bool> AllowSymbolicMalloc(
              "klee will stop replaying and dump symbolic args for "
              "ptwrite instrumentation (default=false)"),
     cl::cat(HASECat));
+cl::opt<bool> AllowMemoryForking(
+    "allow-mem-fork", cl::init(false),
+    cl ::desc(
+        "Allow state forking due to ambiguous (potential out of bound access) "
+        " in the Memory model. Terminate and dump the ambiguous address if "
+        "disallowed. (default=false)"),
+    cl::cat(HASECat));
 cl::opt<bool>
     DebugScheduling("debug-schedule", cl::init(false),
                     cl::desc("Print debug info related to scheduling, context "
                              "switch, etc. (default=false)"),
                     cl::cat(HASECat));
+enum class KInstBindingPolicy {
+  // The following policy will always update bindings if the instruction is from
+  // the application itself (i.e. avoiding recording POSIX and LIBC
+  // instructions)
+  FirstOccur, // do not overwrite existing bindings
+  LastOccur,  // always overwrite existing bindings
+  LessFreq,   // only overwrite existing bindings if new binding has less
+              // frequency
+  CallStackTopFirstOccur, // only overwrite existing bindings if new binding is
+                          // from a different function
+};
+cl::opt<KInstBindingPolicy> KInstBinding(
+    "kinst-binding", cl::desc("Specify the KInst binding policy"),
+    cl::values(
+        clEnumValN(KInstBindingPolicy::FirstOccur, "firstoccur",
+                   "Bind a symbolic expression to the instruction during its "
+                   "first occurence. i.e., do not overwrite existing bindings"),
+        clEnumValN(
+            KInstBindingPolicy::LastOccur, "lastoccur",
+            "(default) Bind a symbolic expression to the latest instruction "
+            "associating to it. i.e., always overwrite existing bindings"),
+        clEnumValN(
+            KInstBindingPolicy::CallStackTopFirstOccur, "callstacktopfirst",
+            "Bind a symbolic expression to the instruction, that is from "
+            "the callstack top function, but the first occurance in "
+            "that function."),
+        clEnumValN(
+            KInstBindingPolicy::LessFreq, "lessfreq",
+            "Bind a symbolic expression to the instruction associating to it "
+            "which has less frequency than existing bindings. i.e. only "
+            "overwrite existing bindings if new bindings has less frequency.")
+            KLEE_LLVM_CL_VAL_END),
+    cl::init(KInstBindingPolicy::CallStackTopFirstOccur), cl::cat(HASECat));
 } // namespace
 
 
@@ -1286,16 +1327,35 @@ void Executor::bindLocal(KInstruction *target, ExecutionState &state,
                          ref<Expr> value) {
   getDestCell(state, target).value = value;
   // I mark LLVM functions from POSIX and LIBC with special function
-  // attributes. Then we only bind a kinst to a symbolic expression in either of
-  // the following scenarios:
-  //   1) the symbolic expression has not been bound to any kinst
-  //   2) the kinst is from the target program (not from POSIX nor LIBC) and it
-  //   has lower frequency (less recording overhead)
-  // NOTE: Since kinst tracked in this way is no longer guaranteed to be the
-  // latest instruction bind this symbolic value to a llvm register, I should
-  // never use Expr.kinst to locate a llvm register.
-  if (!value->kinst || (value->kinst->frequency > target->frequency &&
-                        state.isInTargetProgram())) {
+  // attributes.
+  // I should only bind a kinst to a symbolic expression if the kinst does not
+  // belong to POSIX nor LIBC. Besides, whether I should overwrite an existing
+  // binding depends on "KInstBindingPolicy" (see --help)
+  //
+  // NOTE: Since kinst tracked with "lastoccur" or "lessfreq" policy is no
+  // longer guaranteed to be the latest instruction bind this symbolic value to
+  // a llvm register, I should never use Expr.kinst to locate a llvm register.
+
+  bool should_update = state.isInTargetProgram();
+  switch (KInstBinding) {
+  case KInstBindingPolicy::FirstOccur:
+    should_update &= !value->kinst;
+    break;
+  case KInstBindingPolicy::LessFreq:
+    should_update &=
+        (!value->kinst || (value->kinst->frequency > target->frequency));
+    break;
+  case KInstBindingPolicy::CallStackTopFirstOccur:
+    should_update &=
+        (!value->kinst || (value->kinst->inst->getParent()->getParent() !=
+                           target->inst->getParent()->getParent()));
+  default /*(KInstBindingPolicy::LastOccur)*/:
+    break;
+  }
+  if (should_update) {
+    /*if (target->inst->getParent()->getParent()->getName() == "memset") {
+      klee_message("Bind to memset?");
+    }*/
     value->kinst = target;
     value->flags |= Expr::Expr::FLAG_INSTRUCTION_ROOT;
   }
@@ -1685,14 +1745,26 @@ void Executor::executeCall(ExecutionState &state,
     unsigned numFormals = f->arg_size();
     for (unsigned i=0; i<numFormals; ++i)
       bindArgument(kf, i, state, arguments[i]);
-    if (kf->function->hasFnAttribute("InPOSIX")) {
+    if (f->hasFnAttribute("InPOSIX")) {
       bool hasSymbolicArgs = false;
       std::vector<ref<Expr>> symbolicArgs;
+      // By default, none of POSIX call arguments can be symbolic
+      whitelist_mask_t whitelist_mask = 0;
+      // argmask contains only one valid bit representing the arguments we are
+      // checking
+      whitelist_mask_t argmask = 1;
+      SymbolicCallWhiteList_t::iterator find_it =
+          SymbolicPOSIXWhiteList.find(f->getName());
+      if (find_it != SymbolicPOSIXWhiteList.end()) {
+        whitelist_mask = find_it->second;
+      }
       for (unsigned i=0; i<numFormals; ++i) {
-        if (arguments[i].get() && !isa<ConstantExpr>(arguments[i])) {
+        if (arguments[i].get() && !isa<ConstantExpr>(arguments[i]) &&
+            !(whitelist_mask & argmask)) {
           symbolicArgs.push_back(arguments[i]);
           hasSymbolicArgs = true;
         }
+        argmask <<= 1;
       }
       if (!AllowSymbolicPOSIXCall && hasSymbolicArgs) {
         std::string sbuf;
@@ -4075,7 +4147,9 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     }
   }
   TimerStatIncrementer timerErrHandl(stats::executeMemopTimeErrHandl);
-  klee_warning("Out of bound memory access, forking in Memory Model, address kinst: %s", address->getKInstUniqueID().c_str());
+  klee_warning(
+      "Out of bound memory access, forking in Memory Model, address kinst: %s",
+      address->getKInstUniqueID().c_str());
 
   // we are on an error path (no resolution, multiple resolution, one
   // resolution with out of bounds)
@@ -4085,6 +4159,23 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   solver->setTimeout(coreSolverTimeout);
   bool incomplete = state.addressSpace.resolve(state, solver, address, rl,
                                                0, coreSolverTimeout);
+  // if it could be a multi-resolution address but we do not want to fork
+  // then just dump that address and terminate
+  if (!rl.empty() && !AllowMemoryForking) {
+    std::vector<ref<Expr>> symbolicAddress;
+    symbolicAddress.push_back(address);
+    std::string sbuf;
+    llvm::raw_string_ostream sos(sbuf);
+    state.dumpStack(sos);
+    klee_message("Ambiguous Memory access found at:\n%s\n", sos.str().c_str());
+    std::string file_path =
+        interpreterHandler->getOutputFilename("AmbiguousAddress.kquery");
+    debugDumpConstraintsEval(state, state.constraints, symbolicAddress,
+                             file_path.c_str());
+    terminateStateOnError(state, "ambiguous memory address", Abort);
+    return;
+  }
+
   solver->setTimeout(time::Span());
 
   // XXX there is some query wasteage here. who cares?

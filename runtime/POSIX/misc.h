@@ -53,5 +53,7 @@ void klee_init_mmap(void);
 
 void _yield_sleep(unsigned sec, unsigned usec);
 
+// This flag denots if the `gettimeofday` should return symbolic value
+extern char useSymbolicgettimeofday;
 
 #endif /* MISC_H_ */

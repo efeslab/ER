@@ -8,8 +8,10 @@
 #===------------------------------------------------------------------------===#
 add_executable(kleaver
   main.cpp
-  GraphvizDOTDrawer.cpp
   ExprInPlaceTransformation.cpp
+  Drawer.cpp
+  GraphvizDOTDrawer.cpp
+  JsonDrawer.cpp
 )
 
 set(KLEE_LIBS

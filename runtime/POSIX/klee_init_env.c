@@ -119,10 +119,14 @@ void klee_init_env(int *argcPtr, char ***argvPtr) {
   fid.sym_file_stdin_flag = 0;
   fid.sym_stdout_flag = 0;
   fid.max_failures = 0;
+  /* Global option initialization */
   // This is defined in common.c
   enableDebug = 0;
   // This is defined in sockets_simulator.c
   useSymbolicHandler = 0;
+  // This is defined in misc.c
+  useSymbolicgettimeofday = 0;
+
   const char *sock_handler_name = NULL;
 
   sym_arg_name[5] = '\0';
@@ -311,6 +315,10 @@ usage: (klee_init_env) [options] [program arguments]\n\
                __streq(argv[k], "-symbolic-sock-handler")) {
       k++;
       useSymbolicHandler = 1;
+    } else if (__streq(argv[k], "--symbolic-gettimeofday") ||
+               __streq(argv[k], "-symbolic-gettimeofday")) {
+      k++;
+      useSymbolicgettimeofday = 1;
     } else {
       /* simply copy arguments */
       __add_arg(&new_argc, new_argv, argv[k++], 1024);

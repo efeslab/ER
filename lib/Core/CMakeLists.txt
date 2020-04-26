@@ -28,6 +28,7 @@ klee_add_component(kleeCore
   UserSearcher.cpp
   dlmalloc.cpp
   ExecutorDebugHelper.cpp
+  ExecutorConfig.cpp
   Threading.cpp
 )
 

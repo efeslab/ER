@@ -629,6 +629,8 @@ class PyGraph(object):
         child_bytes = self.GetKInstSetRecordingSize(child_kinstset)
         if child_bytes > 0 and child_bytes <= self_bytes:
             return_set = child_kinstset
+        elif n.kind == 0: # this is a constant node, already concretized
+            return set()
         else:
             return_set = set([n.kinst])
         self.mustconcretize_cache[nid] = return_set
@@ -820,8 +822,8 @@ if __name__ == "__main__":
                 kinstset = h.MustConcretize(n.id)
                 record_bytes = h.GetKInstSetRecordingSize(kinstset)
                 print("Query Expression with kinst \"%s\" can be "
-                      "covered by recording %d bytes from:" % (n.kinst,
-                          record_bytes))
+                      "covered by recording %d bytes from %d instructions:" %
+                      (n.kinst, record_bytes, len(kinstset)))
                 for k in kinstset:
                     print(k)
         else:

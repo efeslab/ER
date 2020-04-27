@@ -54,14 +54,14 @@ def RunForceAtlas2_nooverlap(iters):
 Represent a recordable instruction (valid kinst) in the expression/constraint
 graph
 
-@type kinst: str
-@param kinst: a global unique identifier of this instruction
+@type pygraph: PyGraph
+@param pygraph: the PyGraph this recordable instruction is originally from. This
+graph will be used to generate the subgraph assuming current instruction is
+recorded.
 
-@type width:int
-@param width: the width of the result(destination register) of this instruction
-
-@type freq: int
-@param freq: how many times this instruction got executed in the entire trace
+@type gynode: GyNode
+@param gynode: We get more information of this instruction from the associated
+node in the constraint graph.
 
 @type max_idep: int
 @param max_idep: the maximum indirect depth of nodes which still cannot be
@@ -79,16 +79,38 @@ concretized if you record this instruction
 concretized after you record this instruction. Note that this list will include
 rec_nodes and hidden_nodes, but will not include any ConstantExpr nodes.
 
-A RecordableInstruction will be represented by a list of RecordableNode
+Important properties:
+    pygraph (PyGraph): see @param above
+    subgraph (PyGraph): the PyGraph after concretizing current recordable
+        instruction.  This can be used to query indirect depth after recording
+    kinst (str): a global unique identifier of this instruction
+    width (int): the width of the result(destination register) of this
+        instruction
+    freq (int): how many times this instruction got executed in the entire trace
 """
 class RecordableInst(object):
-    def __init__(self, kinst, width, freq, rec_nodes, hidden_nodes, concretized_nodes):
-        self.kinst = kinst
-        self.width = width
-        self.freq = freq
+    def __init__(self, pygraph, gynode, rec_nodes, hidden_nodes,
+            concretized_nodes):
+        self.pygraph = pygraph
+        self.kinst = gynode.kinst
+        self.width = int(gynode.width)
+        self.freq = int(gynode.freq)
+        self.ispointer = True if gynode.ispointer == "true" else False
         self.rec_nodes = rec_nodes
         self.hidden_nodes = hidden_nodes
         self.concretized_nodes = concretized_nodes
+        # heuristics related property
+        self.coverageScore = sum([
+            float(self.pygraph.id_map[nid].width) / 8 * \
+            (1+self.pygraph.idep_map[nid]) for nid in self.concretized_nodes
+            ])
+        self.recordSize = self.freq * 8 # 8B (64b), not self.width,
+                                        # because of ptwrite limitation
+        self.coverageScoreFreq = self.coverageScore / self.recordSize
+        subgraph = pygraph.buildFromPyGraph(self.pygraph, concretized_nodes)
+        self.max_idep = subgraph.max_idep()
+        self.remainScore = sum([float(n.width) / 8 * (1+subgraph.idep_map[n.id])
+            for n in subgraph.gynodes])
         # sanity check
         if not isinstance(rec_nodes, set):
             raise RuntimeError("rec_nodes is not a set ")
@@ -96,7 +118,7 @@ class RecordableInst(object):
             raise RuntimeError("hidden_nodes is not a set ")
         if not isinstance(concretized_nodes, set):
             raise RuntimeError("concretized_nodes is not a set ")
-        if width == 0:
+        if self.width == 0:
             raise RuntimeError("Zero Width instruction")
 
     def __str__(self):
@@ -143,6 +165,7 @@ l = [ x for x in g.nodes ]
 l[0] in g.nodes
 ```
 """
+rcnt = 0
 class PyGraph(object):
 
     """
@@ -172,6 +195,8 @@ class PyGraph(object):
     """
     @classmethod
     def buildFromPyGraph(cls, pygraph, deleted_nodes):
+        global rcnt
+        rcnt += 1
         if isinstance(pygraph, PyGraph) and isinstance(deleted_nodes, set):
             subgynodes = set([ n for n in pygraph.gynodes if n.id not in
                 deleted_nodes])
@@ -197,6 +222,7 @@ class PyGraph(object):
                 "DbgInfo": "N/A",
                 "Freq": 0,
                 "IDep": 0,
+                "IsPointer": "false",
                 "KInst": "N/A",
                 "Kind": 3,
                 "Width": 8,
@@ -404,52 +430,73 @@ class PyGraph(object):
 
         for seqid, n in enumerate(self.all_nodes_topo_order):
             if (isKInstValid(n)) and (n.id not in checked_kinst_set):
-                local_concretized_set = concretized_set.copy()
-                hidden_nodes = set()
-                max_unconcretized_depth = 0
                 for nid in self.kinst2nodes[n.kinst]:
                     checked_kinst_set.add(nid)
-                    local_concretized_set.add(nid)
-                for node in self.all_nodes_topo_order[seqid+1:]:
-                    # skip ConstantExpr and nodes without out edges
-                    # only consider nontrivial intermediate nodes
-                    if (node.kind != "0") and (node.id in self.edges) and \
-                    (node.id not in local_concretized_set):
-                        const_nodes = [e.target.id for e in self.edges[node.id]
-                                if e.target.kind == "0"]
-                        known_symbolic_nodes = [e.target.id for e in
-                                self.edges[node.id] if e.target.id in
-                                local_concretized_set]
-                        # this node can be concretized
-                        if len(const_nodes) + len(known_symbolic_nodes) == \
-                        len(self.edges[node.id]):
-                            local_concretized_set.add(node.id)
-                            # this node is hidden if:
-                            # 1) it can be concretized here
-                            # 2) it has a valid KInst
-                            # 3) (TODO) recording this node is guaranteed to
-                            # record more data than recording the recordable
-                            # instruction we are currently looking at.
-                            if len(known_symbolic_nodes) > 0 and isKInstValid(node):
-                                checked_kinst_set.add(node.id)
-                                hidden_nodes.add(node.id)
-                        if len(const_nodes) + len(known_symbolic_nodes) > \
-                        len(self.edges[node.id]):
-                            raise RuntimeError("sum of out edges wrong")
-                result.append(recinsts + [RecordableInst(n.kinst, int(n.width),
-                    int(n.freq), self.kinst2nodes[n.kinst], hidden_nodes,
-                    local_concretized_set - concretized_set)])
+                newRecordableInst = self.analyze_single_kinst(n.kinst,
+                        concretized_set, seqid)
+                result.append(recinsts + [newRecordableInst])
         return result
+
+    """
+    @type kinst: str
+    @param kinst: The instruction identifier I want to record
+    @type concretized_set: set(node.id)
+    @param concretize_set: contains nodes assumed to be concretized
+    @type hint_topo: int
+    @param hint_topo: A hint of the position from which I should traverse the
+        graph in topological order
+    @rtype RecordableInst
+    @return construct a new RecordableInst based on a given kinst and already
+    concretized nodes
+    """
+    def analyze_single_kinst(self, kinst, concretized_set, hint_topo = -1):
+        local_concretized_set = concretized_set.copy()
+        hidden_nodes = set()
+        for nid in self.kinst2nodes[kinst]:
+            local_concretized_set.add(nid)
+        n = self.id_map[self.kinst2nodes[kinst].__iter__().__next__()]
+        for node in self.all_nodes_topo_order[hint_topo+1:]:
+            # skip ConstantExpr and nodes without out edges
+            # only consider nontrivial intermediate nodes
+            if (node.kind != "0") and (node.id in self.edges) and \
+            (node.id not in local_concretized_set):
+                const_nodes = [e.target.id for e in self.edges[node.id]
+                        if e.target.kind == "0"]
+                known_symbolic_nodes = [e.target.id for e in
+                        self.edges[node.id] if e.target.id in
+                        local_concretized_set]
+                # this node can be concretized
+                if len(const_nodes) + len(known_symbolic_nodes) == \
+                len(self.edges[node.id]):
+                    local_concretized_set.add(node.id)
+                    # this node is hidden if:
+                    # 1) it can be concretized here
+                    # 2) it has a valid KInst
+                    if len(known_symbolic_nodes) > 0 and isKInstValid(node):
+                        hidden_nodes.add(node.id)
+                if len(const_nodes) + len(known_symbolic_nodes) > \
+                len(self.edges[node.id]):
+                    raise RuntimeError("sum of out edges wrong")
+        return RecordableInst(self, n, self.kinst2nodes[n.kinst], hidden_nodes,
+                local_concretized_set - concretized_set)
+
+    """
+    @rtype: int
+    @return: total bytes need to be recorded for the given instruction list
+    """
+    @classmethod
+    def recordSize(cls, recinsts):
+        return sum([recinst.recordSize for recinst in recinsts])
 
     """
     @rtype: float
     @return: the heuristic score of this Recordable Instruction. expression
     width and indirect depth are considered
+    (higher is better)
     """
-    def coverageScore(self, recinsts):
-        return float(sum([int(self.id_map[nid].width)*int(self.id_map[nid].idep) \
-                for recinst in recinsts \
-                for nid in recinst.concretized_nodes]))
+    @classmethod
+    def coverageScore(cls, recinsts):
+        return sum([recinst.coverageScore for recinst in recinsts])
     """
     @type recinstsL: List(List(RecordableInst))
     @param recinstsL: list of list of recordable instructions from
@@ -458,27 +505,46 @@ class PyGraph(object):
     @rtype: List(List(RecordableInst))
     @return: sorted list, sorted according to coverageScore
     """
-    def sortRecInstsbyCoverageScore(self, recinstsL):
+    @classmethod
+    def sortRecInstsbyCoverageScore(cls, recinstsL):
         return sorted(recinstsL, key=lambda recinsts:
-                self.coverageScore(recinsts))
+                cls.coverageScore(recinsts))
 
     """
     @rtype: float
     @return: Heuristics take instruction frequency into consideration
+    (higher is better)
     """
-    def coverageScoreFreq(self, recinsts):
-        # since we cannot just record 8B in a ptwrite instruction
-        # we have to assume each recordable instructions cost 64B
-        # so we use 64B instead of recinst.width
-        return self.coverageScore(recinsts) /\
-               (sum([recinst.freq for recinst in recinsts]) * 64)
+    @classmethod
+    def coverageScoreFreq(cls, recinsts):
+        return cls.coverageScore(recinsts) / cls.recordSize(recinsts)
 
     """
     same as above
     """
-    def sortRecInstsbyCoverageScoreFreq(self, recinstsL):
+    @classmethod
+    def sortRecInstsbyCoverageScoreFreq(cls, recinstsL):
         return sorted(recinstsL, key=lambda recinsts:
-                self.coverageScoreFreq(recinsts))
+                cls.coverageScoreFreq(recinsts))
+
+    """
+    @rtype float
+    @return Heuristics only consider the graph after give instructions are
+    recorded
+    (lower is better)
+    """
+    @classmethod
+    def remainScore(cls, recinsts):
+        return recinsts[-1].remainScore
+    @classmethod
+    def sortRecInstbyRemainScoreFreq(cls, recinstsL):
+        return sorted(recinstsL, key=lambda recinsts:
+                (recinsts[-1].max_idep, cls.recordSize(recinsts),
+                    cls.remainScore(recinsts)))
+
+    @classmethod
+    def hasPointer(cls, recinsts):
+        return any([recinst.ispointer for recinst in recinsts])
 
     """
     @type recinsts: List(RecordableInst)
@@ -497,24 +563,29 @@ class PyGraph(object):
                 raise RuntimeError(
                 "recordable instruction list has concretized_nodes overlap")
             concretized_nodes |=  recinst.concretized_nodes
-        # the subgraph after deleting all concretized nodes
-        subgraph = self.buildFromPyGraph(self, concretized_nodes)
         msgstring = ""
         for seq, recinst in enumerate(recinsts):
             msgstring += "Rec[%d]: " % seq
-            msgstring += recinst.__str__() + "\n"
+            msgstring += "[Ptr]" if recinst.ispointer else "[Val]"
+            msgstring += recinst.__str__() + "\t"
+            msgstring += "max idep %d -> %d\n" % (recinst.pygraph.max_idep(),
+                    recinst.max_idep)
             msgstring += 'rec_nodes_label: ' + \
-                ', '.join([self.id_map[nid].label for nid in recinst.rec_nodes])
+                    ', '.join([self.id_map[nid].label for nid in
+                        list(recinst.rec_nodes)[:10]])
+            if len(recinst.rec_nodes) > 10:
+                msgstring += ", ..."
             msgstring += "\n"
 
-        msgstring += "CoverageScore=%f, CoverageFreqScore=%f\n" % (
-                self.coverageScore(recinsts), self.coverageScoreFreq(recinsts))
+        msgstring += "CoverageScore=%f, " % self.coverageScore(recinsts) +\
+                "CoverageFreqScore=%f, " % self.coverageScoreFreq(recinsts) +\
+                "RemainScore=%f, " % self.remainScore(recinsts) +\
+                "RecordSize=%d\n" % self.recordSize(recinsts)
         msgstring += "Total: "
         percent_concretized = \
         (float(len(concretized_nodes))/len(self.gynodes)*100)
-        msgstring += '%d(%f%%) nodes concretized, max idep %d.' % \
-                (len(concretized_nodes), percent_concretized,\
-                        subgraph.max_idep())
+        msgstring += '%d(%f%%) nodes concretized.' % \
+                (len(concretized_nodes), percent_concretized)
         return msgstring
 
     """
@@ -808,14 +879,13 @@ def setVisible(gs, subgraph):
 
 if __name__ == "__main__":
     if (len(sys.argv) < 2):
-        print("Usage: %s graph.json" % sys.argv[0])
+        print("Usage: %s graph.json [kinst0] [kinst1] ..." % sys.argv[0])
         sys.exit()
     else:
         graph = json.load(open(sys.argv[1]))
         h = PyGraph.buildFromPyDict(graph)
         print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
             len(h.gyedges), h.max_idep()))
-        r = h.analyze_recordable()
         query_nodes = list(filter(lambda n: n.category == "Q", h.gynodes))
         if len(query_nodes) > 0:
             for n in query_nodes:
@@ -827,9 +897,27 @@ if __name__ == "__main__":
                 for k in kinstset:
                     print(k)
         else:
+            concretized_set = set()
+            input_kinst_list = []
+            subh = h
+            if (len(sys.argv) > 2):
+                for kinst in sys.argv[2:]:
+                    newRI = h.analyze_single_kinst(kinst, concretized_set)
+                    subh = subh.buildFromPyGraph(h, newRI.concretized_nodes)
+                    concretized_set |= newRI.concretized_nodes
+                    input_kinst_list.append(newRI)
+
+            r = subh.analyze_recordable(input_kinst_list)
+            print("%d recordable instructions" % len(r))
+
+            print("Coverage Score Low to High:")
             sr = h.sortRecInstsbyCoverageScore(r)
+            h.printCandidateRecInstsInfo(sr)
+
+            print("Coverage Freq Score Low to High")
             srf = h.sortRecInstsbyCoverageScoreFreq(r)
-            print("Coverage Score Highest 5:")
-            h.printCandidateRecInstsInfo(sr[-5:])
-            print("Coverage Freq Score Highest 5:")
-            h.printCandidateRecInstsInfo(srf[-5:])
+            h.printCandidateRecInstsInfo(srf)
+
+            print("Remain Score and RecordSize High (worse) to Low (better)")
+            rsf = h.sortRecInstbyRemainScoreFreq(r)
+            h.printCandidateRecInstsInfo(reversed(rsf))

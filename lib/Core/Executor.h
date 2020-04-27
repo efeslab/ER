@@ -565,7 +565,7 @@ public:
   /// use a given constant value to concretize the result of a given
   /// KInstruction.
   void concretizeKInst(ExecutionState &state, KInstruction *KI,
-      ref<ConstantExpr> loadedValue);
+      ref<ConstantExpr> loadedValue, bool writeMem);
   /// Record given KInstruction if it is selected to do so.
   /// \param[out] true if given KInst is recorded successfully
   bool tryStoreDataRecording(ExecutionState &state, KInstruction *KI);

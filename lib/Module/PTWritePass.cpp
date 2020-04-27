@@ -31,12 +31,12 @@
 
 #include <fstream>
 #include <sstream>
-#include <string>
 
 using namespace llvm;
 using namespace klee;
 
 char PTWritePass::ID;
+const std::string PTWritePass::castPrefix("ptwritecast");
 
 PTWritePass::PTWritePass(std::string &cfg) : ModulePass(ID) {
   if (cfg != "") {
@@ -137,7 +137,7 @@ bool PTWritePass::runOnModule(Module &M) {
         }
         else if (itype != TyInt64) {
           // need type cast
-          Twine castname = Twine("ptwritecast") + Twine(ptwrite_cnt++);
+          Twine castname = castPrefix + Twine(ptwrite_cnt++);
           CastInst *castI = CastInst::CreateZExtOrBitCast(&I, TyInt64, castname);
           castI->insertAfter(&I);
           args.push_back(castI);

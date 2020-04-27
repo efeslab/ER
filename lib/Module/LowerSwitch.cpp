@@ -14,7 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Passes.h"
+#include "klee/Internal/Module/Passes.h"
 #include "klee/Config/Version.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"

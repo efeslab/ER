@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Passes.h"
+#include "klee/Internal/Module/Passes.h"
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/OptionCategories.h"
 

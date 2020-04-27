@@ -9,7 +9,7 @@
 
 #define DEBUG_TYPE "KModule"
 
-#include "Passes.h"
+#include "klee/Internal/Module/Passes.h"
 
 #include "klee/Config/Version.h"
 #include "klee/Internal/Module/Cell.h"

@@ -6,7 +6,7 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-#include "Passes.h"
+#include "klee/Internal/Module/Passes.h"
 #include "klee/Config/Version.h"
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"

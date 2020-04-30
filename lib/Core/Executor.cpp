@@ -4924,6 +4924,7 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
       }
     }
     else {
+      bool shouldAddConstraint = true;
       if (replayedValue->getWidth() != loadedValue->getWidth()) {
         klee_warning("Width mismatch: Loaded ConstantExpr %u != Replayed %u",
             loadedValue->getWidth(), replayedValue->getWidth());
@@ -4933,6 +4934,7 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
         executeMemoryOperation(state, true, base, loadedValue, KI);
       }
       if (CastInst *ci = dyn_cast<CastInst>(KI->inst)) {
+        bool isptwritecast = ci->getName().startswith(PTWritePass::castPrefix);
         // Further concretization opportunity:
         // e.g. if we can concretize (ZExt w64 (Read w8 xxx))
         // Then we can also concretize the inner ReadExpr
@@ -4946,23 +4948,39 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
         // values if the CastInst is inserted by PTWritePass. PTWritePass
         // guarantees that additional CastInst immediately follows the
         // instruction to record.
+
+        Instruction *innerI = dyn_cast<llvm::Instruction>(ci->getOperand(0));
+        KInstruction *innerKInst = kmodule->getKInstruction(innerI);
+        // When the replayedValue is CastExpr, it could be
+        // 1. This is an instrumented ptwritecast
+        // 2. This is a normal zext/sext IR happening to be recorded
         if (CastExpr *castE = dyn_cast<CastExpr>(replayedValue)) {
-          klee_message("Further CastExpr concretization base on %s",
-                       ci->getName().str().c_str());
-          Instruction *innerI = dyn_cast<llvm::Instruction>(ci->getOperand(0));
-          KInstruction *innerKInst = kmodule->getKInstruction(innerI);
+          klee_message("Further CastInst concretization base on %s",
+              ci->getName().str().c_str());
           ref<Expr> innerExpr = castE->src;
           assert(innerI != nullptr && innerKInst != nullptr);
           assert(innerI->getType() == ci->getSrcTy());
           assert(getWidthForLLVMType(ci->getDestTy()) == castE->getWidth());
           assert(getWidthForLLVMType(innerI->getType()) ==
                  innerExpr->getWidth());
-          bool writeMem = ci->getName().startswith(PTWritePass::castPrefix);
           concretizeKInst(state, innerKInst,
                           loadedValue->Extract(0, innerExpr->getWidth()),
-                          writeMem);
+                          isptwritecast);
+          shouldAddConstraint = false;
+        } else if ((ci->getOpcode() == Instruction::PtrToInt) &&
+                   isptwritecast) {
+          klee_message("Further PtrToInt concretization base on %s",
+                       ci->getName().str().c_str());
+          // This is an ptwritecast instruction instrumented by PTWritePass,
+          // which helps record pointer values.
+          // We should further concretize the underlying pointer value
+          assert(getWidthForLLVMType(innerI->getType()) ==
+                 loadedValue->getWidth());
+          concretizeKInst(state, innerKInst, loadedValue, isptwritecast);
+          shouldAddConstraint = false;
         }
-      } else {
+      }
+      if (shouldAddConstraint) {
         // we avoid adding multiple constraints in case of CastExpr
         // we only constrain the inner expression
         // here we add a new constraint: replayedValue == loadedValue

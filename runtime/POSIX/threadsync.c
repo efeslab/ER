@@ -244,7 +244,7 @@ int pthread_cond_destroy(pthread_cond_t *cond) {
 
 int pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
     const struct timespec *abstime) {
-  assert(0 && "not implemented");
+  pthread_cond_wait(cond, mutex);
   return -1;
 }
 

@@ -41,6 +41,7 @@
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
 #include "klee/Internal/Module/KModule.h"
+#include "klee/Internal/Module/Passes.h"
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Internal/Support/FileHandling.h"
 #include "klee/Internal/Support/FloatEvaluation.h"
@@ -4150,6 +4151,18 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   klee_warning(
       "Out of bound memory access, forking in Memory Model, address kinst: %s",
       address->getKInstUniqueID().c_str());
+  if (!AllowMemoryForking) {
+    std::vector<ref<Expr>> symbolicAddress;
+    symbolicAddress.push_back(address);
+    std::string sbuf;
+    llvm::raw_string_ostream sos(sbuf);
+    state.dumpStack(sos);
+    klee_message("Ambiguous Memory access found at:\n%s\n", sos.str().c_str());
+    std::string file_path =
+        interpreterHandler->getOutputFilename("AmbiguousAddress.kquery");
+    debugDumpConstraintsEval(state, state.constraints, symbolicAddress,
+                             file_path.c_str());
+  }
 
   // we are on an error path (no resolution, multiple resolution, one
   // resolution with out of bounds)
@@ -4162,16 +4175,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   // if it could be a multi-resolution address but we do not want to fork
   // then just dump that address and terminate
   if (!rl.empty() && !AllowMemoryForking) {
-    std::vector<ref<Expr>> symbolicAddress;
-    symbolicAddress.push_back(address);
-    std::string sbuf;
-    llvm::raw_string_ostream sos(sbuf);
-    state.dumpStack(sos);
-    klee_message("Ambiguous Memory access found at:\n%s\n", sos.str().c_str());
-    std::string file_path =
-        interpreterHandler->getOutputFilename("AmbiguousAddress.kquery");
-    debugDumpConstraintsEval(state, state.constraints, symbolicAddress,
-                             file_path.c_str());
     terminateStateOnError(state, "ambiguous memory address", Abort);
     return;
   }
@@ -4907,7 +4910,7 @@ bool Executor::tryLoadDataRecording(ExecutionState &state, KInstruction *KI) {
       ++stats::dataRecLoadedEffective;
       klee_message("Effective dataRecLoaded at %u", state.replayDataRecEntriesPosition-1);
     }
-    concretizeKInst(state, KI, loadedValue);
+    concretizeKInst(state, KI, loadedValue, true);
     return true;
   }
   return false;
@@ -4924,9 +4927,11 @@ bool Executor::tryLoadDataRecording(ExecutionState &state, KInstruction *KI) {
  * will be concretized
  * \param[in] KI The KInstruction you recorded and want to concretize now
  * \param[in] loadedValue the recorded value from trace
+ * \param[in] writeMem Whether we should write a recovered LoadInst back to the
+ *      memory.
  */
 void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
-    ref<ConstantExpr> loadedValue) {
+    ref<ConstantExpr> loadedValue, bool writeMem) {
   ref<Expr> replayedValue = getDestCell(state, KI).value;
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(replayedValue)) {
       if (loadedValue->getZExtValue() != CE->getZExtValue()) {
@@ -4939,7 +4944,7 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
         klee_warning("Width mismatch: Loaded ConstantExpr %u != Replayed %u",
             loadedValue->getWidth(), replayedValue->getWidth());
       }
-      if (KI->inst->getOpcode() == Instruction::Load) {
+      if (writeMem && (KI->inst->getOpcode() == Instruction::Load)) {
         ref<Expr> base = eval(KI, 0, state).value;
         executeMemoryOperation(state, true, base, loadedValue, KI);
       }
@@ -4947,8 +4952,16 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
         // Further concretization opportunity:
         // e.g. if we can concretize (ZExt w64 (Read w8 xxx))
         // Then we can also concretize the inner ReadExpr
-        // Note that we do not add constraints for the CastExpr but add
+        // Note that:
+        // 1. We do not add constraints for the CastExpr but add
         // constraints to the expression inside instead.
+        // 2. When the inner instruction of a CastInst is a LoadInst, we can
+        // only write back the recovered value if there is no other
+        // memory overwrites between the LoadInst and the CastInst.
+        // Considering it is hard to tell if overwrite happens, I only writeback
+        // values if the CastInst is inserted by PTWritePass. PTWritePass
+        // guarantees that additional CastInst immediately follows the
+        // instruction to record.
         if (CastExpr *castE = dyn_cast<CastExpr>(replayedValue)) {
           klee_message("Further CastExpr concretization base on %s",
                        ci->getName().str().c_str());
@@ -4960,8 +4973,10 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
           assert(getWidthForLLVMType(ci->getDestTy()) == castE->getWidth());
           assert(getWidthForLLVMType(innerI->getType()) ==
                  innerExpr->getWidth());
+          bool writeMem = ci->getName().startswith(PTWritePass::castPrefix);
           concretizeKInst(state, innerKInst,
-                          loadedValue->Extract(0, innerExpr->getWidth()));
+                          loadedValue->Extract(0, innerExpr->getWidth()),
+                          writeMem);
         }
       } else {
         // we avoid adding multiple constraints in case of CastExpr

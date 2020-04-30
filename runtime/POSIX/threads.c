@@ -47,8 +47,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 // PThread Internal Data Structure
 ////////////////////////////////////////////////////////////////////////////////
-struct pthread_attr {
+struct pthread_attr_internal {
   char joinable;
+  int scope;
 };
 ////////////////////////////////////////////////////////////////////////////////
 // The PThreads API
@@ -82,7 +83,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
   tdata->wlist = klee_get_wlist();
   // read from attr
   if (attr) {
-    struct pthread_attr *iattr = (struct pthread_attr*)attr;
+    struct pthread_attr_internal *iattr = (struct pthread_attr_internal *)attr;
     tdata->joinable = iattr->joinable;
   } else {
     tdata->joinable = 0;
@@ -174,8 +175,10 @@ int pthread_detach(pthread_t thread) {
 }
 
 int pthread_attr_init(pthread_attr_t *attr) {
-  assert(sizeof(*attr) >= sizeof(struct pthread_attr));
+  assert(sizeof(*attr) >= sizeof(struct pthread_attr_internal));
   memset(attr, 0, sizeof(*attr));
+  struct pthread_attr_internal *iattr = (struct pthread_attr_internal *)attr;
+  iattr->scope = PTHREAD_SCOPE_SYSTEM;
   return 0;
 }
 
@@ -185,12 +188,30 @@ int pthread_attr_destroy(pthread_attr_t *attr) {
 }
 
 int pthread_attr_setdetachstate(pthread_attr_t *attr, int detachstate) {
-  struct pthread_attr *iattr = (struct pthread_attr *)attr;
+  struct pthread_attr_internal *iattr = (struct pthread_attr_internal *)attr;
   if (detachstate == PTHREAD_CREATE_JOINABLE) {
     iattr->joinable = 1;
   } else {
     iattr->joinable = 0;
   }
+  return 0;
+}
+
+int pthread_attr_setscope(pthread_attr_t *attr, int scope) {
+  struct pthread_attr_internal *iattr = (struct pthread_attr_internal *)attr;
+  if (scope == PTHREAD_SCOPE_SYSTEM) {
+    iattr->scope = PTHREAD_SCOPE_SYSTEM;
+    return 0;
+  } else if (scope == PTHREAD_SCOPE_PROCESS) {
+    return ENOTSUP;
+  } else {
+    return EINVAL;
+  }
+}
+
+int pthread_attr_getscope(const pthread_attr_t *attr, int *scope) {
+  struct pthread_attr_internal *iattr = (struct pthread_attr_internal *)attr;
+  *scope = iattr->scope;
   return 0;
 }
 

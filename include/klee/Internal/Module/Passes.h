@@ -21,6 +21,7 @@
 
 #include <unordered_set>
 #include <set>
+#include <string>
 
 namespace llvm {
 class Function;
@@ -243,6 +244,7 @@ private:
   std::unordered_set<std::string> dataRecInstSet;
 public:
   static char ID;
+  static const std::string castPrefix;
   PTWritePass(std::string &cfg);
   bool runOnModule(llvm::Module &M) override;
 };

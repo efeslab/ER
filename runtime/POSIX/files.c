@@ -996,6 +996,8 @@ int __fd_getdents(unsigned int fd, struct dirent64 *dirp, unsigned int count) {
   }
 
   klee_warning("getdents is broken now, you need to fix this before using it");
+  int r = CALL_UNDERLYING(getdents64, file->concrete_fd, dirp, count);
+  return r;
 
   if ((unsigned long) file->offset < 4096u) {
     /* Return our dirents */

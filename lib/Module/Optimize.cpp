@@ -19,7 +19,7 @@
 #include "klee/OptionCategories.h"
 
 #ifdef USE_WORKAROUND_LLVM_PR39177
-#include "Passes.h"
+#include "klee/Internal/Module/Passes.h"
 #endif
 
 #include "llvm/Analysis/GlobalsModRef.h"

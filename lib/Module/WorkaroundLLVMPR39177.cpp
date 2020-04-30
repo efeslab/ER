@@ -11,7 +11,7 @@
 // For more information on this, please refer to the comments in
 // cmake/workaround_llvm_pr39177.cmake
 
-#include "Passes.h"
+#include "klee/Internal/Module/Passes.h"
 #include "klee/Internal/Support/ErrorHandling.h"
 
 #include "llvm/Transforms/Utils/Cloning.h"

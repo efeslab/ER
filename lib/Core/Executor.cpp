@@ -4135,6 +4135,18 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   klee_warning(
       "Out of bound memory access, forking in Memory Model, address kinst: %s",
       address->getKInstUniqueID().c_str());
+  if (!AllowMemoryForking) {
+    std::vector<ref<Expr>> symbolicAddress;
+    symbolicAddress.push_back(address);
+    std::string sbuf;
+    llvm::raw_string_ostream sos(sbuf);
+    state.dumpStack(sos);
+    klee_message("Ambiguous Memory access found at:\n%s\n", sos.str().c_str());
+    std::string file_path =
+        interpreterHandler->getOutputFilename("AmbiguousAddress.kquery");
+    debugDumpConstraintsEval(state, state.constraints, symbolicAddress,
+                             file_path.c_str());
+  }
 
   // we are on an error path (no resolution, multiple resolution, one
   // resolution with out of bounds)
@@ -4147,16 +4159,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   // if it could be a multi-resolution address but we do not want to fork
   // then just dump that address and terminate
   if (!rl.empty() && !AllowMemoryForking) {
-    std::vector<ref<Expr>> symbolicAddress;
-    symbolicAddress.push_back(address);
-    std::string sbuf;
-    llvm::raw_string_ostream sos(sbuf);
-    state.dumpStack(sos);
-    klee_message("Ambiguous Memory access found at:\n%s\n", sos.str().c_str());
-    std::string file_path =
-        interpreterHandler->getOutputFilename("AmbiguousAddress.kquery");
-    debugDumpConstraintsEval(state, state.constraints, symbolicAddress,
-                             file_path.c_str());
     terminateStateOnError(state, "ambiguous memory address", Abort);
     return;
   }

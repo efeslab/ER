@@ -1150,11 +1150,11 @@ int unlinkat(int dirfd, const char *pathname, int flags) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define _WRAP_FILE_SYSCALL_ERROR(call, ...)                                    \
+#define _WRAP_FILE_SYSCALL_ERROR_CUSTOM(call, ERR, ...)                        \
   do {                                                                         \
     if (__get_sym_file(pathname)) {                                            \
-      klee_warning("symbolic path, " #call " unsupported (ENOENT)");           \
-      errno = ENOENT;                                                          \
+      klee_warning("symbolic path, " #call " unsupported (" #ERR ")");         \
+      errno = ERR;                                                             \
       return -1;                                                               \
     }                                                                          \
     int ret =                                                                  \
@@ -1163,6 +1163,9 @@ int unlinkat(int dirfd, const char *pathname, int flags) {
       errno = klee_get_errno();                                                \
     return ret;                                                                \
   } while (0)
+
+#define _WRAP_FILE_SYSCALL_ERROR(call, ...)                                    \
+  _WRAP_FILE_SYSCALL_ERROR_CUSTOM(call, ENOENT, ##__VA_ARGS__)
 
 #define _WRAP_FILE_SYSCALL_IGNORE(call, ...)                                   \
   do {                                                                         \
@@ -1185,7 +1188,10 @@ int unlinkat(int dirfd, const char *pathname, int flags) {
   } while (0)
 
 DEFINE_MODEL(ssize_t, readlink, const char *pathname, char *buf, size_t bufsize) {
-  _WRAP_FILE_SYSCALL_ERROR(readlink, buf, bufsize);
+  // I assume all symbolic files are not symbolic links. Thus I should return
+  // "not a symbolic link" when the given pathname is matched with known
+  // symbolic files
+  _WRAP_FILE_SYSCALL_ERROR_CUSTOM(readlink, EINVAL, buf, bufsize);
 }
 
 DEFINE_MODEL(int, chroot, const char *pathname) {

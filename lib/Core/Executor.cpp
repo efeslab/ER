@@ -822,7 +822,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
       MemoryObject *mo = memory->allocate(size, /*isLocal=*/false,
                                           /*isGlobal=*/true, /*allocSite=*/v,
                                           /*alignment=*/globalObjectAlignment,
-                                          /*isInPOSIX*/false);
+                                          /*isDeterm*/true);
       ObjectState *os = bindObjectInState(state, mo, false);
       globalObjects.insert(std::make_pair(v, mo));
       globalAddresses.insert(std::make_pair(v, mo->getBaseExpr()));
@@ -849,7 +849,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
       MemoryObject *mo = memory->allocate(size, /*isLocal=*/false,
                                           /*isGlobal=*/true, /*allocSite=*/v,
                                           /*alignment=*/globalObjectAlignment,
-                                          /*isInPOSIX*/false);
+                                          /*isDeterm=*/true);
       if (!mo)
         llvm::report_fatal_error("out of memory");
       ObjectState *os = bindObjectInState(state, mo, false);
@@ -1698,7 +1698,7 @@ void Executor::executeCall(ExecutionState &state,
       MemoryObject *mo = sf.varargs =
           memory->allocate(size, /*isLocal=*/true, /*isGlobal=*/false, state.prevPC()->inst,
                            (requires16ByteAlignment ? 16 : 8),
-                           /*isInPOSIX*/(state.isInPOSIX() || !state.isInUserMain));
+                           /*isDeterm=*/state.shouldRecord());
       if (!mo && size) {
         terminateStateOnExecError(state, "out of memory (varargs)");
         return;
@@ -3829,7 +3829,7 @@ void Executor::executeAlloc(ExecutionState &state,
     MemoryObject *mo =
         memory->allocate(CE->getZExtValue(), isLocal, /*isGlobal=*/false,
                          allocSite, allocationAlignment,
-                         /*isInPOSIX*/(state.isInPOSIX() || !state.isInUserMain));
+                         /*isDeterm=*/state.shouldRecord());
     if (!mo) {
       bindLocal(target, state,
                 ConstantExpr::alloc(0, Context::get().getPointerWidth()));
@@ -4325,7 +4325,7 @@ void Executor::runFunctionAsMain(Function *f,
           memory->allocate((argc + 1 + envc + 1 + 1) * NumPtrBytes,
                            /*isLocal=*/false, /*isGlobal=*/true,
                            /*allocSite=*/first, /*alignment=*/8,
-                           /*isInPOSIX*/false);
+                           /*isDeterm*/false);
 
       if (!argvMO)
         klee_error("Could not allocate memory for function arguments");
@@ -4378,7 +4378,7 @@ void Executor::runFunctionAsMain(Function *f,
         MemoryObject *arg =
             memory->allocate(len + 1, /*isLocal=*/false, /*isGlobal=*/true,
                              /*allocSite=*/state->pc()->inst, /*alignment=*/8,
-                             /*isInPOSIX*/false);
+                             /*isDeterm*/false);
         if (!arg)
           klee_error("Could not allocate memory for function arguments");
         ObjectState *os = bindObjectInState(*state, arg, false);

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 How to reload this module:
     import hase
@@ -24,10 +25,11 @@ try:
     import org.gephi.scripting.wrappers.GyNode as GyNode
     import org.gephi.scripting.wrappers.GyGraph as GyGraph
 except ImportError:
-    print("Failed to import Gephi related lib, fallback to cli mode")
+    print("Failed to import Gephi related lib, fallback to cli mode (python3)")
     import json
     from fakegynode import FakeGyNode
     from fakegynode import FakeGyEdge
+    import argparse
 finally:
     import sys
 
@@ -878,46 +880,51 @@ def setVisible(gs, subgraph):
     gs['visible'] = subgraph
 
 if __name__ == "__main__":
-    if (len(sys.argv) < 2):
-        print("Usage: %s graph.json [kinst0] [kinst1] ..." % sys.argv[0])
-        sys.exit()
+    parser = argparse.ArgumentParser(description=
+      "HASE cosntraint graph analysis cli mode (python3)")
+    parser.add_argument("--ignore-evaluation", action="store_true",
+            help="Ignore the evaluation list in the query and always perform "
+                 "full graph analysis")
+    parser.add_argument("graph_json", type=str, action="store",
+            help="the json file describing the cosntraint graph")
+    parser.add_argument("selected_kinst", nargs='*', type=str,
+            help="kinst already chosen to be recorded")
+    args = parser.parse_args()
+    graph = json.load(open(args.graph_json))
+    h = PyGraph.buildFromPyDict(graph)
+    print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
+        len(h.gyedges), h.max_idep()))
+    query_nodes = list(filter(lambda n: n.category == "Q", h.gynodes))
+    if len(query_nodes) > 0 and not args.ignore_evaluation:
+        for n in query_nodes:
+            kinstset = h.MustConcretize(n.id)
+            record_bytes = h.GetKInstSetRecordingSize(kinstset)
+            print("Query Expression with kinst \"%s\" can be "
+                  "covered by recording %d bytes from %d instructions:" %
+                  (n.kinst, record_bytes, len(kinstset)))
+            for k in kinstset:
+                print(k)
     else:
-        graph = json.load(open(sys.argv[1]))
-        h = PyGraph.buildFromPyDict(graph)
-        print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
-            len(h.gyedges), h.max_idep()))
-        query_nodes = list(filter(lambda n: n.category == "Q", h.gynodes))
-        if len(query_nodes) > 0:
-            for n in query_nodes:
-                kinstset = h.MustConcretize(n.id)
-                record_bytes = h.GetKInstSetRecordingSize(kinstset)
-                print("Query Expression with kinst \"%s\" can be "
-                      "covered by recording %d bytes from %d instructions:" %
-                      (n.kinst, record_bytes, len(kinstset)))
-                for k in kinstset:
-                    print(k)
-        else:
-            concretized_set = set()
-            input_kinst_list = []
-            subh = h
-            if (len(sys.argv) > 2):
-                for kinst in sys.argv[2:]:
-                    newRI = h.analyze_single_kinst(kinst, concretized_set)
-                    subh = subh.buildFromPyGraph(h, newRI.concretized_nodes)
-                    concretized_set |= newRI.concretized_nodes
-                    input_kinst_list.append(newRI)
+        concretized_set = set()
+        input_kinst_list = []
+        subh = h
+        for kinst in args.selected_kinst:
+            newRI = h.analyze_single_kinst(kinst, concretized_set)
+            subh = subh.buildFromPyGraph(h, newRI.concretized_nodes)
+            concretized_set |= newRI.concretized_nodes
+            input_kinst_list.append(newRI)
 
-            r = subh.analyze_recordable(input_kinst_list)
-            print("%d recordable instructions" % len(r))
+        r = subh.analyze_recordable(input_kinst_list)
+        print("%d recordable instructions" % len(r))
 
-            print("Coverage Score Low to High:")
-            sr = h.sortRecInstsbyCoverageScore(r)
-            h.printCandidateRecInstsInfo(sr)
+        print("Coverage Score Low to High:")
+        sr = h.sortRecInstsbyCoverageScore(r)
+        h.printCandidateRecInstsInfo(sr)
 
-            print("Coverage Freq Score Low to High")
-            srf = h.sortRecInstsbyCoverageScoreFreq(r)
-            h.printCandidateRecInstsInfo(srf)
+        print("Coverage Freq Score Low to High")
+        srf = h.sortRecInstsbyCoverageScoreFreq(r)
+        h.printCandidateRecInstsInfo(srf)
 
-            print("Remain Score and RecordSize High (worse) to Low (better)")
-            rsf = h.sortRecInstbyRemainScoreFreq(r)
-            h.printCandidateRecInstsInfo(reversed(rsf))
+        print("Remain Score and RecordSize High (worse) to Low (better)")
+        rsf = h.sortRecInstbyRemainScoreFreq(r)
+        h.printCandidateRecInstsInfo(reversed(rsf))

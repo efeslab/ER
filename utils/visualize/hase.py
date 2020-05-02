@@ -690,6 +690,11 @@ class PyGraph(object):
     def MustConcretize(self, nid):
         if nid in self.mustconcretize_cache:
             return self.mustconcretize_cache[nid]
+        # nid is not in the constraint graph
+        # it could already concretized, or not a valid node
+        # In no matter which case, we do not need to record anything
+        if nid not in self.id_map:
+            return set()
         n = self.id_map[nid]
         if isKInstValid(n) and n.ispointer == "false":
             self_bytes = 8 * n.freq
@@ -895,9 +900,21 @@ if __name__ == "__main__":
     print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
         len(h.gyedges), h.max_idep()))
     query_nodes = list(filter(lambda n: n.category == "Q", h.gynodes))
+    concretized_set = set()
+    input_kinst_list = []
+    subh = h
+    for kinst in args.selected_kinst:
+        newRI = h.analyze_single_kinst(kinst, concretized_set)
+        subh = subh.buildFromPyGraph(h, newRI.concretized_nodes)
+        concretized_set |= newRI.concretized_nodes
+        input_kinst_list.append(newRI)
+
     if len(query_nodes) > 0 and not args.ignore_evaluation:
+        if len(input_kinst_list) > 0:
+            print("Assuming record:")
+            print(h.getRecInstsInfo(input_kinst_list))
         for n in query_nodes:
-            kinstset = h.MustConcretize(n.id)
+            kinstset = subh.MustConcretize(n.id)
             record_bytes = h.GetKInstSetRecordingSize(kinstset)
             print("Query Expression with kinst \"%s\" can be "
                   "covered by recording %d bytes from %d instructions:" %
@@ -905,15 +922,6 @@ if __name__ == "__main__":
             for k in kinstset:
                 print(k)
     else:
-        concretized_set = set()
-        input_kinst_list = []
-        subh = h
-        for kinst in args.selected_kinst:
-            newRI = h.analyze_single_kinst(kinst, concretized_set)
-            subh = subh.buildFromPyGraph(h, newRI.concretized_nodes)
-            concretized_set |= newRI.concretized_nodes
-            input_kinst_list.append(newRI)
-
         r = subh.analyze_recordable(input_kinst_list)
         print("%d recordable instructions" % len(r))
 

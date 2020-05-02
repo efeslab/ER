@@ -917,14 +917,14 @@ if __name__ == "__main__":
         r = subh.analyze_recordable(input_kinst_list)
         print("%d recordable instructions" % len(r))
 
-        print("Coverage Score Low to High:")
+        print("Heuristic: Coverage Score Low to High:")
         sr = h.sortRecInstsbyCoverageScore(r)
         h.printCandidateRecInstsInfo(sr)
 
-        print("Coverage Freq Score Low to High")
+        print("Heuristic: Coverage Freq Score Low to High")
         srf = h.sortRecInstsbyCoverageScoreFreq(r)
         h.printCandidateRecInstsInfo(srf)
 
-        print("Remain Score and RecordSize High (worse) to Low (better)")
+        print("Heuristic: Remain Score and RecordSize High (worse) to Low (better)")
         rsf = h.sortRecInstbyRemainScoreFreq(r)
         h.printCandidateRecInstsInfo(reversed(rsf))

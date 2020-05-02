@@ -609,6 +609,8 @@ int _open_concrete(int concrete_fd, int flags) {
   return fd;
 }
 
+// "mode" is not used here because we do not handle special flags which require
+// "mode" to be something meaningful
 int _open_symbolic(disk_file_t *dfile, int flags, mode_t mode) {
   // Checking the flags
   if ((flags & O_CREAT) && (flags & O_EXCL)) {
@@ -633,14 +635,10 @@ int _open_symbolic(disk_file_t *dfile, int flags, mode_t mode) {
   }
 
   if (!_can_open(flags, dfile->stat)) {
+    posix_debug_msg("dfile %p failed with mode %d\n", dfile, dfile->stat->st_mode);
     errno = EACCES;
     return -1;
-  } else {
-    dfile->stat->st_mode =
-        ((dfile->stat->st_mode & ~0777) | (mode & ~__exe_env.umask));
-    /*    clear existing file mode   |  requested mode - umask */
   }
-
   // Now we can allocate a FD
   int fd = __fd_allocate();
 

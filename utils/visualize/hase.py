@@ -907,6 +907,8 @@ if __name__ == "__main__":
     parser.add_argument("--ignore-evaluation", action="store_true",
             help="Ignore the evaluation list in the query and always perform "
                  "full graph analysis")
+    parser.add_argument("--evalinst", action="store", type=str, default=[],
+            help="a list of kinst id to evaluate, separated by comma")
     parser.add_argument("graph_json", type=str, action="store",
             help="the json file describing the cosntraint graph")
     parser.add_argument("selected_kinst", nargs='*', type=str,
@@ -916,7 +918,13 @@ if __name__ == "__main__":
     h = PyGraph.buildFromPyDict(graph)
     print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
         len(h.gyedges), h.max_idep()))
-    query_nodes = list(filter(lambda n: n.category == "Q", h.gynodes))
+    query_nodes = []
+    if not args.ignore_evaluation:
+        query_nodes += list(filter(lambda n: n.category == "Q", h.gynodes))
+    if len(args.evalinst) > 0:
+        evalinst = set(args.evalinst.split(','))
+        query_nodes += list(filter(lambda n: n.kinst in evalinst, h.gynodes))
+
     concretized_set = set()
     input_kinst_list = []
     subh = h
@@ -926,7 +934,7 @@ if __name__ == "__main__":
         concretized_set |= newRI.concretized_nodes
         input_kinst_list.append(newRI)
 
-    if len(query_nodes) > 0 and not args.ignore_evaluation:
+    if len(query_nodes) > 0:
         if len(input_kinst_list) > 0:
             print("Assuming record:")
             print(h.getRecInstsInfo(input_kinst_list))

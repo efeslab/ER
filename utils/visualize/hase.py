@@ -102,6 +102,7 @@ class RecordableInst(object):
         self.hidden_nodes = hidden_nodes
         self.concretized_nodes = concretized_nodes
         # heuristics related property
+        self.nodeReduction = len(self.concretized_nodes)
         self.coverageScore = sum([
             float(self.pygraph.id_map[nid].width) / 8 * \
             (1+self.pygraph.idep_map[nid]) for nid in self.concretized_nodes
@@ -529,6 +530,22 @@ class PyGraph(object):
         return sorted(recinstsL, key=lambda recinsts:
                 cls.coverageScoreFreq(recinsts))
 
+    @classmethod
+    def nodeReduction(cls, recinsts):
+        return sum([recinst.nodeReduction for recinst in recinsts])
+
+    @classmethod
+    def sortRecInstsbyNodeReduction(cls, recinstsL):
+        return sorted(recinstsL, key=lambda recinsts:
+                cls.nodeReduction(recinsts))
+    @classmethod
+    def nodeReductionPerByte(cls, recinsts):
+        return cls.nodeReduction(recinsts) / cls.recordSize(recinsts)
+    @classmethod
+    def sortRecInstsbyNodeReductionPerByte(cls, recinstsL):
+        return sorted(recinstsL, key=lambda recinsts:
+                cls.nodeReductionPerByte(recinsts))
+
     """
     @rtype float
     @return Heuristics only consider the graph after give instructions are
@@ -925,13 +942,21 @@ if __name__ == "__main__":
         r = subh.analyze_recordable(input_kinst_list)
         print("%d recordable instructions" % len(r))
 
-        print("Heuristic: Coverage Score Low to High:")
+        print("Heuristic: Coverage Score Highest 10:")
         sr = h.sortRecInstsbyCoverageScore(r)
-        h.printCandidateRecInstsInfo(sr)
+        h.printCandidateRecInstsInfo(sr[-10:])
 
-        print("Heuristic: Coverage Freq Score Low to High")
+        print("Heuristic: Coverage Freq Score Highest 10:")
         srf = h.sortRecInstsbyCoverageScoreFreq(r)
-        h.printCandidateRecInstsInfo(srf)
+        h.printCandidateRecInstsInfo(srf[-10:])
+
+        print("Heuristic: Node Reduction Highest 10:")
+        nreduction = h.sortRecInstsbyNodeReduction(r)
+        h.printCandidateRecInstsInfo(nreduction[-10:])
+
+        print("Heuristic: Node Reduction Per Byte Highest 10:")
+        nreduction_B = h.sortRecInstsbyNodeReductionPerByte(r)
+        h.printCandidateRecInstsInfo(nreduction_B[-10:])
 
         print("Heuristic: Remain Score and RecordSize High (worse) to Low (better)")
         rsf = h.sortRecInstbyRemainScoreFreq(r)

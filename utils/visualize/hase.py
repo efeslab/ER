@@ -731,6 +731,24 @@ class PyGraph(object):
         self.mustconcretize_cache[nid] = return_set
         return return_set
 
+    """
+    @type kinsts: List of str
+    @param kinsts: a list of kinst to be recorded in the given order.
+    @rtype: tuple(List of RecordableInst, PyGraph)
+    @return (A list of analyzed RecordableInst, the PyGraph after recording
+    given kinsts)
+    """
+    def buildRecKInstL(self, kinsts):
+        subh = self
+        kinst_list = []
+        concretized_set = set()
+        for kinst in kinsts:
+            newRI = self.analyze_single_kinst(kinst, concretized_set)
+            subh = subh.buildFromPyGraph(subh, newRI.concretized_nodes)
+            concretized_set |= newRI.concretized_nodes
+            kinst_list.append(newRI)
+        return (kinst_list, subh)
+
 
 class HaseUtils(object):
     def __init__(self, globals_ref):
@@ -925,19 +943,12 @@ if __name__ == "__main__":
         evalinst = set(args.evalinst.split(','))
         query_nodes += list(filter(lambda n: n.kinst in evalinst, h.gynodes))
 
-    concretized_set = set()
-    input_kinst_list = []
-    subh = h
-    for kinst in args.selected_kinst:
-        newRI = h.analyze_single_kinst(kinst, concretized_set)
-        subh = subh.buildFromPyGraph(h, newRI.concretized_nodes)
-        concretized_set |= newRI.concretized_nodes
-        input_kinst_list.append(newRI)
+    input_kinst_list, subh = h.buildRecKInstL(args.selected_kinst)
 
+    if len(input_kinst_list) > 0:
+        print("Assuming record:")
+        print(h.getRecInstsInfo(input_kinst_list))
     if len(query_nodes) > 0:
-        if len(input_kinst_list) > 0:
-            print("Assuming record:")
-            print(h.getRecInstsInfo(input_kinst_list))
         for n in query_nodes:
             kinstset = subh.MustConcretize(n.id)
             record_bytes = h.GetKInstSetRecordingSize(kinstset)

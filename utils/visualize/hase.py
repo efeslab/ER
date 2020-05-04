@@ -456,7 +456,7 @@ class PyGraph(object):
         hidden_nodes = set()
         for nid in self.kinst2nodes[kinst]:
             local_concretized_set.add(nid)
-        n = self.id_map[self.kinst2nodes[kinst].__iter__().__next__()]
+        n = self.id_map[list(self.kinst2nodes[kinst])[0]]
         for node in self.all_nodes_topo_order[hint_topo+1:]:
             # skip ConstantExpr and nodes without out edges
             # only consider nontrivial intermediate nodes

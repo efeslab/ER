@@ -114,6 +114,7 @@ class RecordableInst(object):
             ])
         self.recordSize = self.freq * 8 # 8B (64b), not self.width,
                                         # because of ptwrite limitation
+        self.recordSizeNONPT = self.freq * self.width / 8
         self.coverageScoreFreq = self.coverageScore / self.recordSize
         subgraph = pygraph.buildFromPyGraph(self.pygraph, concretized_nodes)
         self.max_idep = subgraph.max_idep()
@@ -175,6 +176,8 @@ l[0] in g.nodes
 """
 rcnt = 0
 class PyGraph(object):
+    # If we assume PTWRITE limitation (minimum record 8B)
+    PTWRITE = True
 
     """
     @type gygraph: GyGraph
@@ -530,11 +533,22 @@ class PyGraph(object):
 
     """
     @rtype: int
-    @return: total bytes need to be recorded for the given instruction list
+    @return: total bytes need to be recorded for the given instruction list,
+        assuming PT limitation (8B minimum recording unit)
     """
     @classmethod
     def recordSize(cls, recinsts):
         return sum([recinst.recordSize for recinst in recinsts])
+
+    """
+    @rtype: float
+    @return: total bytes need to be recorded for the given instruction list,
+        the real width of each instruction is considered (not assuming PT
+        limitation)
+    """
+    @classmethod
+    def recordSizeNONPT(cls, recinsts):
+        return sum([recinst.recordSizeNONPT for recinst in recinsts])
 
     """
     @rtype: float
@@ -644,7 +658,8 @@ class PyGraph(object):
         msgstring += "CoverageScore=%f, " % self.coverageScore(recinsts) +\
                 "CoverageFreqScore=%f, " % self.coverageScoreFreq(recinsts) +\
                 "RemainScore=%f, " % self.remainScore(recinsts) +\
-                "RecordSize=%d\n" % self.recordSize(recinsts)
+                "RecordSize=%d, " % self.recordSize(recinsts) +\
+                "RecordSizeNOPT=%d\n" % self.recordSizeNONPT(recinsts)
         msgstring += "Total: "
         percent_concretized = \
         (float(len(concretized_nodes))/len(self.gynodes)*100)
@@ -737,8 +752,22 @@ class PyGraph(object):
     @return: in bytes
     """
     def GetKInstSetRecordingSize(self, kinstset):
-        return sum(self.id_map[next(iter(self.kinst2nodes[k]))].freq*8
-                for k in kinstset)
+        return sum([self.GetNodeRecordingSize(n) for n in
+            [self.id_map[list(self.kinst2nodes[k])[0]] for k in kinstset]
+            ])
+
+    """
+    @type n: GyNode
+    @param n: node to reason about
+    @rtype: float/int
+    @return: in bytes
+    """
+    @classmethod
+    def GetNodeRecordingSize(cls, n):
+        if cls.PTWRITE:
+            return int(n.freq) * 8
+        else:
+            return int(n.freq)*int(n.width) / 8
 
 
     """
@@ -765,7 +794,7 @@ class PyGraph(object):
                 # collect and compare with children
                 n = self.id_map[wnid]
                 if isKInstValid(n) and n.ispointer == "false":
-                    self_bytes = 8 * n.freq
+                    self_bytes = self.GetNodeRecordingSize(n)
                 else:
                     self_bytes = maxint
                 child_nidset = set()
@@ -1062,12 +1091,15 @@ if __name__ == "__main__":
     parser.add_argument("--recordUN", action="store", type=str, default=None,
             help="a list of array name, whose update lists should be "
                  "concretized, separated by comma")
+    parser.add_argument("--noptwrite", action="store_true",
+            help="Do not assume the minimum data entry to record is 8B")
     parser.add_argument("graph_json", type=str, action="store",
             help="the json file describing the cosntraint graph")
     parser.add_argument("selected_kinst", nargs='*', type=str,
             help="kinst already chosen to be recorded")
     args = parser.parse_args()
     graph = json.load(open(args.graph_json))
+    PyGraph.PTWRITE = not args.noptwrite
     h = PyGraph.buildFromPyDict(graph)
     print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
         len(h.gyedges), h.max_idep()))

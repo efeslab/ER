@@ -925,8 +925,10 @@ if __name__ == "__main__":
     parser.add_argument("--ignore-evaluation", action="store_true",
             help="Ignore the evaluation list in the query and always perform "
                  "full graph analysis")
-    parser.add_argument("--evalinst", action="store", type=str, default=[],
+    parser.add_argument("--evalinst", action="store", type=str, default=None,
             help="a list of kinst id to evaluate, separated by comma")
+    parser.add_argument("--evalnid", action="store", type=str, default=None,
+            help="a list of node id to evaluate, separated by comma")
     parser.add_argument("graph_json", type=str, action="store",
             help="the json file describing the cosntraint graph")
     parser.add_argument("selected_kinst", nargs='*', type=str,
@@ -936,18 +938,22 @@ if __name__ == "__main__":
     h = PyGraph.buildFromPyDict(graph)
     print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
         len(h.gyedges), h.max_idep()))
-    query_nodes = []
+    query_nodes = set()
     if not args.ignore_evaluation:
-        query_nodes += list(filter(lambda n: n.category == "Q", h.gynodes))
-    if len(args.evalinst) > 0:
+        query_nodes |= set(filter(lambda n: n.category == "Q", h.gynodes))
+    if args.evalinst is not None:
         evalinst = set(args.evalinst.split(','))
-        query_nodes += list(filter(lambda n: n.kinst in evalinst, h.gynodes))
+        query_nodes |= set(filter(lambda n: n.kinst in evalinst, h.gynodes))
+    if args.evalnid is not None:
+        evalnid = set(args.evalnid.split(','))
+        query_nodes |= set(filter(lambda n: n.id in evalnid, h.gynodes))
 
     input_kinst_list, subh = h.buildRecKInstL(args.selected_kinst)
 
     if len(input_kinst_list) > 0:
         print("Assuming record:")
         print(h.getRecInstsInfo(input_kinst_list))
+
     if len(query_nodes) > 0:
         for n in query_nodes:
             kinstset = subh.MustConcretize(n.id)

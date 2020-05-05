@@ -32,6 +32,10 @@ except ImportError:
     import argparse
 finally:
     import sys
+    if sys.version_info >= (2,7):
+        from sys import maxsize as maxint
+    else:
+        from sys import maxint as maxint
 
 def RunForceAtlas2_nooverlap(iters):
     fa2 = ForceAtlas2().buildLayout()

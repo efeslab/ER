@@ -3404,7 +3404,19 @@ void Executor::run(ExecutionState &initialState) {
   std::vector<ExecutionState *> newStates(states.begin(), states.end());
   searcher->update(0, newStates, std::vector<ExecutionState *>());
 
+  std::time_t startT_time_t = std::time(nullptr);
+  interpreterHandler->getInfoStream()
+      << "Executor run started: "
+      << std::asctime(std::localtime(&startT_time_t)) << '\n';
+  time::Point lastReportT = time::getWallTime();
   while (!states.empty() && !haltExecution) {
+    // report per 5 mins
+    time::Point nowT = time::getWallTime();
+    time::Span elapsed = nowT - lastReportT;
+    if (elapsed.toSeconds() >= 60*5) {
+      lastReportT = nowT;
+      info_requested = true;
+    }
     if (info_requested) {
       info_requested = false;
       printInfo(llvm::errs());

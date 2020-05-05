@@ -299,7 +299,7 @@ class PyGraph(object):
         self.all_nodes_topo_order = sorted(self.gynodes,
                 key=lambda n: self.topological_map[n.id])
         self.calculate_idep()
-        # MustConcreteize
+        # Cache MustConcretize results
         self.mustconcretize_cache = {}
 
     """
@@ -705,31 +705,41 @@ class PyGraph(object):
     number of bytes you need to record the recover data of the nid node.
     """
     def MustConcretize(self, nid):
-        if nid in self.mustconcretize_cache:
-            return self.mustconcretize_cache[nid]
         # nid is not in the constraint graph
         # it could already concretized, or not a valid node
         # In no matter which case, we do not need to record anything
         if nid not in self.id_map:
             return set()
-        n = self.id_map[nid]
-        if isKInstValid(n) and n.ispointer == "false":
-            self_bytes = 8 * n.freq
-        else:
-            self_bytes = sys.maxsize
-        child_kinstset = set()
-        for e in self.edges.get(nid, set()):
-            kinstset = self.MustConcretize(e.target.id)
-            child_kinstset |= kinstset
-        child_bytes = self.GetKInstSetRecordingSize(child_kinstset)
-        if child_bytes > 0 and child_bytes <= self_bytes:
-            return_set = child_kinstset
-        elif n.kind == 0: # this is a constant node, already concretized
-            return set()
-        else:
-            return_set = set([n.kinst])
-        self.mustconcretize_cache[nid] = return_set
-        return return_set
+        # DFS
+        worklist = [nid]
+        visited_nid = set()
+        while len(worklist) > 0:
+            wnid = worklist[-1]
+            if wnid in visited_nid:
+                worklist.pop()
+                # collect and compare with children
+                n = self.id_map[wnid]
+                if isKInstValid(n) and n.ispointer == "false":
+                    self_bytes = 8 * n.freq
+                else:
+                    self_bytes = maxint
+                child_kinstset = set()
+                for e in self.edges.get(wnid, set()):
+                    child_kinstset |= self.mustconcretize_cache[e.target.id]
+                child_bytes = self.GetKInstSetRecordingSize(child_kinstset)
+                if child_bytes > 0 and child_bytes <= self_bytes:
+                    self.mustconcretize_cache[wnid] = child_kinstset
+                elif n.kind == 0: # this is a constant node, already concretized
+                    self.mustconcretize_cache[wnid] = set()
+                else:
+                    self.mustconcretize_cache[wnid] = set([n.kinst])
+            else:
+                visited_nid.add(wnid)
+                # recursive add childs to worklist
+                for e in self.edges.get(wnid, set()):
+                    if e.target.id not in self.mustconcretize_cache:
+                        worklist.append(e.target.id)
+        return self.mustconcretize_cache[nid]
 
     """
     @type kinsts: List of str

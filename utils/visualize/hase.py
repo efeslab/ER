@@ -174,7 +174,6 @@ l = [ x for x in g.nodes ]
 l[0] in g.nodes
 ```
 """
-rcnt = 0
 class PyGraph(object):
     # If we assume PTWRITE limitation (minimum record 8B)
     PTWRITE = True
@@ -206,8 +205,6 @@ class PyGraph(object):
     """
     @classmethod
     def buildFromPyGraph(cls, pygraph, deleted_nodes):
-        global rcnt
-        rcnt += 1
         if isinstance(pygraph, PyGraph) and isinstance(deleted_nodes, set):
             subgynodes = set([ n for n in pygraph.gynodes if n.id not in
                 deleted_nodes])

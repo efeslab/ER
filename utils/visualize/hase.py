@@ -34,6 +34,7 @@ finally:
     import sys
     if sys.version_info >= (2,7):
         from sys import maxsize as maxint
+        from functools import reduce
     else:
         from sys import maxint as maxint
 
@@ -279,8 +280,11 @@ class PyGraph(object):
         # (from high indirect depth to low indirect depth)
         self.all_nodes_topo_order = None
 
-        # @type: Dict(str->set(GyNode))
+        # @type: Dict(str->set(nid))
         self.kinst2nodes = None
+        # @type: Dict(nid->set(nid))
+        # The post dominator of every kinst
+        self.nodePostDom = None
         # @type: Dict(node_id->int)
         # map a node_id to indirect depth
         self.idep_map = None
@@ -300,10 +304,12 @@ class PyGraph(object):
                 self.outnodes.add(n.id)
         self.topological_sort()
         self.build_kinst2nodes()
+        self.build_nodePostDom()
         self.all_nodes_topo_order = sorted(self.gynodes,
                 key=lambda n: self.topological_map[n.id])
         self.calculate_idep()
         # Cache MustConcretize results
+        # Dict(nid->set(nid))
         self.mustconcretize_cache = {}
 
     """
@@ -374,6 +380,41 @@ class PyGraph(object):
             if isKInstValid(node):
                 self.kinst2nodes.setdefault(node.kinst, set()).add(node.id)
 
+    """
+    Depedency: id_map
+    """
+    def build_nodePostDom(self):
+        self.nodePostDom = {}
+        worklist = []
+        all_nids = frozenset(self.id_map.keys())
+        for n in self.gynodes:
+            if n.id in self.edges:
+                self.nodePostDom[n.id] = all_nids
+            else:
+                self.nodePostDom[n.id] = frozenset()
+                worklist.append(n.id)
+        while len(worklist) > 0:
+            newworklist = []
+            for changed_nid in worklist:
+                for e in self.redges.get(changed_nid, set()):
+                    n = e.source
+                    edges = self.edges.get(n.id, set())
+                    successors = set([e.target.id for e in edges])
+                    nsuccessor = len(successors)
+                    assert(nsuccessor > 0)
+                    if nsuccessor == 1:
+                        single_succ = list(successors)[0]
+                        newPostDom = self.nodePostDom[single_succ] | \
+                                frozenset([single_succ])
+                    else:
+                        succPostDom = [self.nodePostDom[succ] for succ in
+                                successors]
+                        newPostDom = reduce(frozenset.intersection,
+                                succPostDom)
+                    if newPostDom != self.nodePostDom[n.id]:
+                        self.nodePostDom[n.id] = newPostDom
+                        newworklist.append(n.id)
+            worklist = newworklist
 
     """
     Dependency: topological_map
@@ -727,23 +768,62 @@ class PyGraph(object):
                     self_bytes = 8 * n.freq
                 else:
                     self_bytes = maxint
-                child_kinstset = set()
+                child_nidset = set()
                 for e in self.edges.get(wnid, set()):
-                    child_kinstset |= self.mustconcretize_cache[e.target.id]
+                    child_nidset |= self.mustconcretize_cache[e.target.id]
+                child_nidset_dedup = set([nid for nid in child_nidset if
+                    len(self.nodePostDom[nid]) == 0 or
+                    not self.nodePostDom[nid].issubset(child_nidset)])
+                #if child_nidset_dedup != child_nidset:
+                #    print("Dedup, removed %s" %
+                #            ', '.join(child_nidset - child_nidset_dedup))
+                child_kinstset = set([self.id_map[nid].kinst for nid in
+                    child_nidset_dedup])
                 child_bytes = self.GetKInstSetRecordingSize(child_kinstset)
                 if child_bytes > 0 and child_bytes <= self_bytes:
-                    self.mustconcretize_cache[wnid] = child_kinstset
+                    self.mustconcretize_cache[wnid] = child_nidset_dedup
+                    #self.id_map[wnid].color = jcolor.pink
                 elif n.kind == 0: # this is a constant node, already concretized
                     self.mustconcretize_cache[wnid] = set()
+                    #self.id_map[wnid].color = jcolor.orange
                 else:
-                    self.mustconcretize_cache[wnid] = set([n.kinst])
+                    self.mustconcretize_cache[wnid] = set([n.id])
+                    #self.id_map[wnid].color = jcolor.blue
             else:
                 visited_nid.add(wnid)
                 # recursive add childs to worklist
                 for e in self.edges.get(wnid, set()):
                     if e.target.id not in self.mustconcretize_cache:
                         worklist.append(e.target.id)
-        return self.mustconcretize_cache[nid]
+        return set([self.id_map[cnid].kinst for cnid in
+            self.mustconcretize_cache[nid]])
+
+    """
+    @type arraynames: set of string
+    @param arraynames: the arrays, upon which you want to get rid of all
+    symbolic index access.
+    @rtype: list of RecordableInst
+    @return: the list of RecordableInst to concretize all symbolic indirect
+        access (Read and Write/UN)
+    """
+    def UpdateListConcretize(self, arraynames):
+        kinstset = set()
+        visited_nids = set()
+        for n in self.all_nodes_topo_order:
+            if str(n.kind) == "UN" and n.root in arraynames:
+                for e in self.edges[n.id]:
+                    if e.weight == 1.5 and e.target.id not in visited_nids:
+                        visited_nids.add(e.target.id)
+                        kinstset |= self.MustConcretize(e.target.id)
+            if str(n.kind) == "3" and n.root in arraynames: # ReadExpr
+                readnode = n
+                for re in self.edges[readnode.id]:
+                    if re.weight == 1.5 and \
+                            re.target.id not in visited_nids:
+                        visited_nids.add(re.target.id)
+                        kinstset |= self.MustConcretize(re.target.id)
+        newRIlist, subh = self.recursiveOptimizeRecKInstL(kinstset)
+        return newRIlist
 
     """
     @type kinsts: List of str
@@ -757,11 +837,47 @@ class PyGraph(object):
         kinst_list = []
         concretized_set = set()
         for kinst in kinsts:
-            newRI = self.analyze_single_kinst(kinst, concretized_set)
-            subh = subh.buildFromPyGraph(subh, newRI.concretized_nodes)
-            concretized_set |= newRI.concretized_nodes
-            kinst_list.append(newRI)
+            if kinst in subh.kinst2nodes:
+                newRI = subh.analyze_single_kinst(kinst, concretized_set)
+                subh = subh.buildFromPyGraph(subh, newRI.concretized_nodes)
+                concretized_set |= newRI.concretized_nodes
+                kinst_list.append(newRI)
         return (kinst_list, subh)
+
+    def recursiveOptimizeRecKInstL(self, _kinsts):
+        print("############################################")
+        print("Start Recursive with %s" % ', '.join(_kinsts))
+        print("############################################")
+
+        kinsts = list(set(_kinsts))
+        if len(kinsts) == 0:
+            return ([], self)
+        while True:
+            changed = False
+            start = kinsts[0]
+            #print("Iteration: %s" % ', '.join(kinsts))
+            while True:
+                k = kinsts.pop(0)
+                #print("Reasoning %s based on %s" % (k, ', '.join(kinsts)))
+                kl, subh = self.buildRecKInstL(kinsts)
+                knodes = set(filter(lambda n: n.kinst == k, self.gynodes))
+                kset = set()
+                for kn in knodes:
+                    newkset = subh.MustConcretize(kn.id)
+                    #print("nid: %s, newkset %s" % (kn.id, ', '.join(newkset)))
+                    kset |= newkset
+                if k not in kset:
+                    #print("Replace %s with %s" % (k, ', '.join(kset)))
+                    changed = True
+                    kinsts.extend(kset)
+                    break;
+                else:
+                    kinsts.append(k)
+                if kinsts[0] == start:
+                    break
+            if not changed:
+                break
+        return self.buildRecKInstL(kinsts)
 
 
 class HaseUtils(object):
@@ -943,6 +1059,9 @@ if __name__ == "__main__":
             help="a list of kinst id to evaluate, separated by comma")
     parser.add_argument("--evalnid", action="store", type=str, default=None,
             help="a list of node id to evaluate, separated by comma")
+    parser.add_argument("--recordUN", action="store", type=str, default=None,
+            help="a list of array name, whose update lists should be "
+                 "concretized, separated by comma")
     parser.add_argument("graph_json", type=str, action="store",
             help="the json file describing the cosntraint graph")
     parser.add_argument("selected_kinst", nargs='*', type=str,
@@ -953,6 +1072,7 @@ if __name__ == "__main__":
     print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
         len(h.gyedges), h.max_idep()))
     query_nodes = set()
+    array_to_concretize = set()
     if not args.ignore_evaluation:
         query_nodes |= set(filter(lambda n: n.category == "Q", h.gynodes))
     if args.evalinst is not None:
@@ -961,6 +1081,8 @@ if __name__ == "__main__":
     if args.evalnid is not None:
         evalnid = set(args.evalnid.split(','))
         query_nodes |= set(filter(lambda n: n.id in evalnid, h.gynodes))
+    if args.recordUN is not None:
+        array_to_concretize |= set(args.recordUN.split(','))
 
     input_kinst_list, subh = h.buildRecKInstL(args.selected_kinst)
 
@@ -978,9 +1100,16 @@ if __name__ == "__main__":
             for k in kinstset:
                 print(k)
     elif len(array_to_concretize) > 0:
-        kinstsL = subh.UpdateListConcretize(array_to_concretize)
+        recinsts = subh.UpdateListConcretize(array_to_concretize)
         print("To concretize UN upon %s" % ','.join(array_to_concretize))
-        subh.printCandidateRecInstsInfo(kinstsL)
+        print(subh.getRecInstsInfo(recinsts))
+        print("Python kinst list:")
+        print("\"%s\"" % '\", \"'.join([r.kinst for r in recinsts]))
+        print("Datarec.cfg:")
+        print("%s" % '\n'.join([r.kinst for r in recinsts]))
+        print("All Label:")
+        print("%s" % ', '.join(sorted([subh.id_map[nid].label for r in recinsts
+            for nid in subh.kinst2nodes[r.kinst]])))
 
     else:
         r = subh.analyze_recordable(input_kinst_list)

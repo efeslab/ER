@@ -4053,11 +4053,11 @@ void Executor::resolveExact(ExecutionState &state,
   }
 }
 
-void Executor::executeMemoryOperation(ExecutionState &state,
-                                      bool isWrite,
+void Executor::executeMemoryOperation(ExecutionState &state, bool isWrite,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
-                                      KInstruction *target /* undef if write */) {
+                                      KInstruction *target /* undef if write */,
+                                      bool force /* overwrite RO */) {
   TimerStatIncrementer timerS1(stats::executeMemopTimeS1);
   Expr::Width type = (isWrite ? value->getWidth() :
                      getWidthForLLVMType(target->inst->getType()));
@@ -4124,7 +4124,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       TimerStatIncrementer timerInBounds(stats::executeMemopTimeInBounds);
       const ObjectState *os = op.second;
       if (isWrite) {
-        if (os->readOnly) {
+        if (!force && os->readOnly) {
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
@@ -4137,6 +4137,14 @@ void Executor::executeMemoryOperation(ExecutionState &state,
         if (interpreterOpts.MakeConcreteSymbolic)
           result = replaceReadWithSymbolic(state, result);
 
+        // if (!isa<ConstantExpr>(result) &&
+        //     getKInstUniqueID(target) == "zend_inline_hash_func.13044:B9:B9I6") {
+        //   klee_message("Catch weird frequency instruction");
+        //   assert(0);
+        // }
+        if (getKInstUniqueID(target) == "sqlite3_stmt_status:B1:B1I4") {
+          assert(0);
+        }
         bindLocal(target, state, result);
       }
 
@@ -4198,7 +4206,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     // bound can be 0 on failure or overlapped
     if (bound) {
       if (isWrite) {
-        if (os->readOnly) {
+        if (!force && os->readOnly) {
           terminateStateOnError(*bound, "memory error: object read only",
                                 ReadOnly);
         } else {
@@ -4941,9 +4949,15 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
         klee_warning("Width mismatch: Loaded ConstantExpr %u != Replayed %u",
             loadedValue->getWidth(), replayedValue->getWidth());
       }
+      // Note: I should not just write something back, because the memory object
+      // could be readonly. Thus, I have to rely on constraints rewriting. But
+      // that cannot rewrite updatelist. emm...
+      // So for now, I force write things back until constraints rewriting works
+      //
       if (writeMem && (KI->inst->getOpcode() == Instruction::Load)) {
         ref<Expr> base = eval(KI, 0, state).value;
-        executeMemoryOperation(state, true, base, loadedValue, KI);
+        executeMemoryOperation(state, true, base, loadedValue, KI,
+                               true /*force*/);
       }
       if (CastInst *ci = dyn_cast<CastInst>(KI->inst)) {
         bool isptwritecast = ci->getName().startswith(PTWritePass::castPrefix);

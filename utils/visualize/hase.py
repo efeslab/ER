@@ -963,26 +963,31 @@ if __name__ == "__main__":
                   (n.kinst, record_bytes, len(kinstset)))
             for k in kinstset:
                 print(k)
+    elif len(array_to_concretize) > 0:
+        kinstsL = subh.UpdateListConcretize(array_to_concretize)
+        print("To concretize UN upon %s" % ','.join(array_to_concretize))
+        subh.printCandidateRecInstsInfo(kinstsL)
+
     else:
         r = subh.analyze_recordable(input_kinst_list)
         print("%d recordable instructions" % len(r))
 
         print("Heuristic: Coverage Score Highest 10:")
-        sr = h.sortRecInstsbyCoverageScore(r)
-        h.printCandidateRecInstsInfo(sr[-10:])
+        sr = subh.sortRecInstsbyCoverageScore(r)
+        subh.printCandidateRecInstsInfo(sr[-10:])
 
         print("Heuristic: Coverage Freq Score Highest 10:")
-        srf = h.sortRecInstsbyCoverageScoreFreq(r)
-        h.printCandidateRecInstsInfo(srf[-10:])
+        srf = subh.sortRecInstsbyCoverageScoreFreq(r)
+        subh.printCandidateRecInstsInfo(srf[-10:])
 
         print("Heuristic: Node Reduction Highest 10:")
-        nreduction = h.sortRecInstsbyNodeReduction(r)
-        h.printCandidateRecInstsInfo(nreduction[-10:])
+        nreduction = subh.sortRecInstsbyNodeReduction(r)
+        subh.printCandidateRecInstsInfo(nreduction[-10:])
 
         print("Heuristic: Node Reduction Per Byte Highest 10:")
-        nreduction_B = h.sortRecInstsbyNodeReductionPerByte(r)
-        h.printCandidateRecInstsInfo(nreduction_B[-10:])
+        nreduction_B = subh.sortRecInstsbyNodeReductionPerByte(r)
+        subh.printCandidateRecInstsInfo(nreduction_B[-10:])
 
         print("Heuristic: Remain Score and RecordSize High (worse) to Low (better)")
-        rsf = h.sortRecInstbyRemainScoreFreq(r)
-        h.printCandidateRecInstsInfo(reversed(rsf))
+        rsf = subh.sortRecInstbyRemainScoreFreq(r)
+        subh.printCandidateRecInstsInfo(reversed(rsf))

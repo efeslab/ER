@@ -18,7 +18,11 @@ void GraphvizDOTDrawer::declareExpr(const Expr *e, const char *category) {
      << "DbgInfo=\"" << e->getKInstDbgInfo() << "\""
      << ","
      << "IsPointer=" << e->getKInstIsPtrType() << ","
-     << "Freq=" << e->getKInstLoadedFreq() << "];\n";
+     << "Freq=" << e->getKInstLoadedFreq();
+  if (const ReadExpr *RE = dyn_cast<ReadExpr>(e)) {
+    os << ", Root=" << RE->updates.root->name;
+  }
+   os << "];\n";
 }
 
 void GraphvizDOTDrawer::declareLastLevelRead(const ReadExpr *RE,
@@ -37,6 +41,7 @@ void GraphvizDOTDrawer::declareLastLevelRead(const ReadExpr *RE,
      << "DbgInfo=\"" << RE->getKInstDbgInfo() << "\""
      << ","
      << "IsPointer=" << RE->getKInstIsPtrType() << ","
+     << "Root=" << RE->updates.root->name << ","
      << "Freq=" << RE->getKInstLoadedFreq() << "];\n";
 }
 

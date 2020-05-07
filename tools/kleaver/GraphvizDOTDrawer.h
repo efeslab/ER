@@ -7,8 +7,8 @@ using namespace klee;
 class GraphvizDOTDrawer : public Drawer {
 protected:
   std::ostream &os;
-  virtual void printHeader();
-  virtual void printFooter();
+  virtual void printHeader() override;
+  virtual void printFooter() override;
   virtual void declareExpr(const Expr *e, const char *category) override;
   virtual void declareLastLevelRead(const ReadExpr *RE,
                                     const char *category) override;

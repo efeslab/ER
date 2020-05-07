@@ -96,14 +96,13 @@ MemoryManager::~MemoryManager() {
 //   means allocation unrelated to application itself.
 // To make allocations inside application as determistic as possible,
 //   memory allocations inside POSIX are also considered as stack allocation.
-// Param isInPOSIX tells you if it is in POSIX. It is only meaningful when
-//   (isGlobal == false)
-// Note that the isInPOSIX here is not the same as ExecutionState::isInPOSIX.
-// Here we do not care if UserMain has been called.
+// Param isDeterm denotes if this allocation should be deterministic
+// Note that allocations inside POSIX are undeterministic since extra POSIX code
+// is responsible to simulate symbolic behaviours.
 MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
                                       bool isGlobal,
                                       const llvm::Value *allocSite,
-                                      size_t alignment, bool isInPOSIX) {
+                                      size_t alignment, bool isDeterm) {
   if (size > 10 * 1024 * 1024)
     klee_warning_once(0, "Large alloc: %" PRIu64
                          " bytes.  KLEE may run out of memory.",
@@ -119,21 +118,16 @@ MemoryObject *MemoryManager::allocate(uint64_t size, bool isLocal,
   }
 
   uint64_t address = 0;
-  bool isDeterm = false;
   if (DeterministicAllocation) {
     // Handle the case of 0-sized allocations as 1-byte allocations.
     // This way, we make sure we have this allocation between its own red zones
     size_t alloc_size = std::max(size, (uint64_t)1);
     // use dlmalloc to allocate in preserved virtual address space.
     int ret;
-    assert(!(isGlobal && isInPOSIX) && "Allocation cannot be both Global and InPOSIX");
-    if (isGlobal || isInPOSIX) {
-      // allocations inside POSIX are undeterministic since extra POSIX code
-      // is responsible to simulate symbolic behaviours.
+    if (!isDeterm) {
       ret = mspace_posix_memalign(undeterm_msp, (void **)&address, alignment, alloc_size);
     }
     else {
-      isDeterm = true;
       ret = mspace_posix_memalign(determ_msp, (void **)&address, alignment, alloc_size);
     }
     if (ret) { // non-zero means error appears, let us check error value

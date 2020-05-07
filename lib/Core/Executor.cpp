@@ -823,7 +823,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
       MemoryObject *mo = memory->allocate(size, /*isLocal=*/false,
                                           /*isGlobal=*/true, /*allocSite=*/v,
                                           /*alignment=*/globalObjectAlignment,
-                                          /*isInPOSIX*/false);
+                                          /*isDeterm*/true);
       ObjectState *os = bindObjectInState(state, mo, false);
       globalObjects.insert(std::make_pair(v, mo));
       globalAddresses.insert(std::make_pair(v, mo->getBaseExpr()));
@@ -850,7 +850,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
       MemoryObject *mo = memory->allocate(size, /*isLocal=*/false,
                                           /*isGlobal=*/true, /*allocSite=*/v,
                                           /*alignment=*/globalObjectAlignment,
-                                          /*isInPOSIX*/false);
+                                          /*isDeterm=*/true);
       if (!mo)
         llvm::report_fatal_error("out of memory");
       ObjectState *os = bindObjectInState(state, mo, false);
@@ -1699,7 +1699,7 @@ void Executor::executeCall(ExecutionState &state,
       MemoryObject *mo = sf.varargs =
           memory->allocate(size, /*isLocal=*/true, /*isGlobal=*/false, state.prevPC()->inst,
                            (requires16ByteAlignment ? 16 : 8),
-                           /*isInPOSIX*/(state.isInPOSIX() || !state.isInUserMain));
+                           /*isDeterm=*/state.shouldRecord());
       if (!mo && size) {
         terminateStateOnExecError(state, "out of memory (varargs)");
         return;
@@ -3420,7 +3420,19 @@ void Executor::run(ExecutionState &initialState) {
   std::vector<ExecutionState *> newStates(states.begin(), states.end());
   searcher->update(0, newStates, std::vector<ExecutionState *>());
 
+  std::time_t startT_time_t = std::time(nullptr);
+  interpreterHandler->getInfoStream()
+      << "Executor run started: "
+      << std::asctime(std::localtime(&startT_time_t)) << '\n';
+  time::Point lastReportT = time::getWallTime();
   while (!states.empty() && !haltExecution) {
+    // report per 5 mins
+    time::Point nowT = time::getWallTime();
+    time::Span elapsed = nowT - lastReportT;
+    if (elapsed.toSeconds() >= 60*5) {
+      lastReportT = nowT;
+      info_requested = true;
+    }
     if (info_requested) {
       info_requested = false;
       printInfo(llvm::errs());
@@ -3845,7 +3857,7 @@ void Executor::executeAlloc(ExecutionState &state,
     MemoryObject *mo =
         memory->allocate(CE->getZExtValue(), isLocal, /*isGlobal=*/false,
                          allocSite, allocationAlignment,
-                         /*isInPOSIX*/(state.isInPOSIX() || !state.isInUserMain));
+                         /*isDeterm=*/state.shouldRecord());
     if (!mo) {
       bindLocal(target, state,
                 ConstantExpr::alloc(0, Context::get().getPointerWidth()));
@@ -4057,11 +4069,11 @@ void Executor::resolveExact(ExecutionState &state,
   }
 }
 
-void Executor::executeMemoryOperation(ExecutionState &state,
-                                      bool isWrite,
+void Executor::executeMemoryOperation(ExecutionState &state, bool isWrite,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
-                                      KInstruction *target /* undef if write */) {
+                                      KInstruction *target /* undef if write */,
+                                      bool force /* overwrite RO */) {
   TimerStatIncrementer timerS1(stats::executeMemopTimeS1);
   Expr::Width type = (isWrite ? value->getWidth() :
                      getWidthForLLVMType(target->inst->getType()));
@@ -4128,7 +4140,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       TimerStatIncrementer timerInBounds(stats::executeMemopTimeInBounds);
       const ObjectState *os = op.second;
       if (isWrite) {
-        if (os->readOnly) {
+        if (!force && os->readOnly) {
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
@@ -4141,6 +4153,14 @@ void Executor::executeMemoryOperation(ExecutionState &state,
         if (interpreterOpts.MakeConcreteSymbolic)
           result = replaceReadWithSymbolic(state, result);
 
+        // if (!isa<ConstantExpr>(result) &&
+        //     getKInstUniqueID(target) == "zend_inline_hash_func.13044:B9:B9I6") {
+        //   klee_message("Catch weird frequency instruction");
+        //   assert(0);
+        // }
+        if (getKInstUniqueID(target) == "sqlite3_stmt_status:B1:B1I4") {
+          assert(0);
+        }
         bindLocal(target, state, result);
       }
 
@@ -4202,7 +4222,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     // bound can be 0 on failure or overlapped
     if (bound) {
       if (isWrite) {
-        if (os->readOnly) {
+        if (!force && os->readOnly) {
           terminateStateOnError(*bound, "memory error: object read only",
                                 ReadOnly);
         } else {
@@ -4341,7 +4361,7 @@ void Executor::runFunctionAsMain(Function *f,
           memory->allocate((argc + 1 + envc + 1 + 1) * NumPtrBytes,
                            /*isLocal=*/false, /*isGlobal=*/true,
                            /*allocSite=*/first, /*alignment=*/8,
-                           /*isInPOSIX*/false);
+                           /*isDeterm*/false);
 
       if (!argvMO)
         klee_error("Could not allocate memory for function arguments");
@@ -4394,7 +4414,7 @@ void Executor::runFunctionAsMain(Function *f,
         MemoryObject *arg =
             memory->allocate(len + 1, /*isLocal=*/false, /*isGlobal=*/true,
                              /*allocSite=*/state->pc()->inst, /*alignment=*/8,
-                             /*isInPOSIX*/false);
+                             /*isDeterm*/false);
         if (!arg)
           klee_error("Could not allocate memory for function arguments");
         ObjectState *os = bindObjectInState(*state, arg, false);
@@ -4940,15 +4960,23 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
       }
     }
     else {
+      bool shouldAddConstraint = true;
       if (replayedValue->getWidth() != loadedValue->getWidth()) {
         klee_warning("Width mismatch: Loaded ConstantExpr %u != Replayed %u",
             loadedValue->getWidth(), replayedValue->getWidth());
       }
+      // Note: I should not just write something back, because the memory object
+      // could be readonly. Thus, I have to rely on constraints rewriting. But
+      // that cannot rewrite updatelist. emm...
+      // So for now, I force write things back until constraints rewriting works
+      //
       if (writeMem && (KI->inst->getOpcode() == Instruction::Load)) {
         ref<Expr> base = eval(KI, 0, state).value;
-        executeMemoryOperation(state, true, base, loadedValue, KI);
+        executeMemoryOperation(state, true, base, loadedValue, KI,
+                               true /*force*/);
       }
       if (CastInst *ci = dyn_cast<CastInst>(KI->inst)) {
+        bool isptwritecast = ci->getName().startswith(PTWritePass::castPrefix);
         // Further concretization opportunity:
         // e.g. if we can concretize (ZExt w64 (Read w8 xxx))
         // Then we can also concretize the inner ReadExpr
@@ -4962,23 +4990,39 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
         // values if the CastInst is inserted by PTWritePass. PTWritePass
         // guarantees that additional CastInst immediately follows the
         // instruction to record.
+
+        Instruction *innerI = dyn_cast<llvm::Instruction>(ci->getOperand(0));
+        KInstruction *innerKInst = kmodule->getKInstruction(innerI);
+        // When the replayedValue is CastExpr, it could be
+        // 1. This is an instrumented ptwritecast
+        // 2. This is a normal zext/sext IR happening to be recorded
         if (CastExpr *castE = dyn_cast<CastExpr>(replayedValue)) {
-          klee_message("Further CastExpr concretization base on %s",
-                       ci->getName().str().c_str());
-          Instruction *innerI = dyn_cast<llvm::Instruction>(ci->getOperand(0));
-          KInstruction *innerKInst = kmodule->getKInstruction(innerI);
+          klee_message("Further CastInst concretization base on %s",
+              ci->getName().str().c_str());
           ref<Expr> innerExpr = castE->src;
           assert(innerI != nullptr && innerKInst != nullptr);
           assert(innerI->getType() == ci->getSrcTy());
           assert(getWidthForLLVMType(ci->getDestTy()) == castE->getWidth());
           assert(getWidthForLLVMType(innerI->getType()) ==
                  innerExpr->getWidth());
-          bool writeMem = ci->getName().startswith(PTWritePass::castPrefix);
           concretizeKInst(state, innerKInst,
                           loadedValue->Extract(0, innerExpr->getWidth()),
-                          writeMem);
+                          isptwritecast);
+          shouldAddConstraint = false;
+        } else if ((ci->getOpcode() == Instruction::PtrToInt) &&
+                   isptwritecast) {
+          klee_message("Further PtrToInt concretization base on %s",
+                       ci->getName().str().c_str());
+          // This is an ptwritecast instruction instrumented by PTWritePass,
+          // which helps record pointer values.
+          // We should further concretize the underlying pointer value
+          assert(getWidthForLLVMType(innerI->getType()) ==
+                 loadedValue->getWidth());
+          concretizeKInst(state, innerKInst, loadedValue, isptwritecast);
+          shouldAddConstraint = false;
         }
-      } else {
+      }
+      if (shouldAddConstraint) {
         // we avoid adding multiple constraints in case of CastExpr
         // we only constrain the inner expression
         // here we add a new constraint: replayedValue == loadedValue

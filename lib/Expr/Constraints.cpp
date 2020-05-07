@@ -133,6 +133,10 @@ ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
 }
 
 bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
+  if (representative.find(e) != representative.end()) {
+    // found a duplicated constraint, nothing changed, directly return
+    return false;
+  }
   // rewrite any known equalities and split Ands into different conjuncts
   bool changed = false;
   switch (e->getKind()) {

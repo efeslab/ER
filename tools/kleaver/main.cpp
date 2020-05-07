@@ -49,6 +49,7 @@ using namespace klee::expr;
 using llvm::MemoryBuffer;
 
 namespace {
+#include "EnumClass.h"
 llvm::cl::opt<std::string> InputFile(llvm::cl::desc("<input query log>"),
                                      llvm::cl::Positional, llvm::cl::init("-"),
                                      llvm::cl::cat(klee::ExprCat));
@@ -90,14 +91,20 @@ llvm::cl::opt<bool> SimplifyDrawing(
     llvm::cl::init(false),
     llvm::cl::cat(klee::HASECat));
 
-enum class DrawFormats { GraphVizDOT, JSON };
+enum class DrawFormats {
+  GraphVizDOT = 0x1 << 0,
+  JSON = 0x1 << 1,
+  ALL = GraphVizDOT | JSON
+};
+enableEnumClassBitmask(DrawFormats);
 static llvm::cl::opt<DrawFormats> DrawFormat(
     llvm::cl::desc("Drawing output format"),
     llvm::cl::init(DrawFormats::GraphVizDOT),
     llvm::cl::values(
         clEnumValN(DrawFormats::GraphVizDOT, "dot",
                    "Output to GraphVizDOT format, *.dot (default)"),
-        clEnumValN(DrawFormats::JSON, "json", "Output to JSON format, *.json")
+        clEnumValN(DrawFormats::JSON, "json", "Output to JSON format, *.json"),
+        clEnumValN(DrawFormats::ALL, "all", "Output to all possible formats")
             KLEE_LLVM_CL_VAL_END),
     llvm::cl::cat(klee::HASECat));
 
@@ -498,34 +505,27 @@ static bool DrawInputAST(const char *Filename,
 
   std::vector<Decl*> &Decls = ast.getDecls();
 
-  std::string output_file(Filename);
-  if (DrawFormat == DrawFormats::JSON) {
-    output_file += ".json";
-  } else {
-    output_file += ".dot";
-  }
+  std::string output_prefix(Filename);
   for (Decl *D: Decls) {
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
-      std::ofstream of(output_file);
+      ExprInPlaceTransformer *EIPT = nullptr;
+      const QueryCommand *QC_to_draw = QC;
       if (SimplifyDrawing) {
-        ExprInPlaceTransformer EIPT(*QC);
-        if (DrawFormat == DrawFormats::JSON) {
-          JsonDrawer drawer(of, *(EIPT.getNewQCptr()));
-          drawer.draw();
-        } else {
-          GraphvizDOTDrawer drawer(of, *(EIPT.getNewQCptr()));
-          drawer.draw();
-        }
+        EIPT = new ExprInPlaceTransformer(*QC);
+        QC_to_draw = EIPT->getNewQCptr();
       }
-      else {
-        if (DrawFormat == DrawFormats::JSON) {
-          JsonDrawer drawer(of, *QC);
-          drawer.draw();
-        } else {
-          GraphvizDOTDrawer drawer(of, *QC);
-          drawer.draw();
-        }
+      if (DrawFormat.getValue() & DrawFormats::JSON) {
+        std::ofstream of(output_prefix + ".json");
+        JsonDrawer drawer(of, *QC_to_draw);
+        drawer.draw();
       }
+      if (DrawFormat.getValue() & DrawFormats::GraphVizDOT) {
+        std::ofstream of(output_prefix + ".dot");
+        GraphvizDOTDrawer drawer(of, *QC_to_draw);
+        drawer.draw();
+      }
+      if (EIPT)
+        delete EIPT;
       // Assuming there will only be one QueryComamnd
       break;
     }

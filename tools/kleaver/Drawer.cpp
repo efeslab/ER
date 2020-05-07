@@ -143,4 +143,5 @@ void Drawer::draw() {
       }
     }
   }
+  printFooter();
 }

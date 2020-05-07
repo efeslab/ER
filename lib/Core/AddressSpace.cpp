@@ -12,6 +12,7 @@
 #include "TimingSolver.h"
 
 #include "klee/Expr/Expr.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/TimerStatIncrementer.h"
 
 using namespace klee;
@@ -36,7 +37,10 @@ const ObjectState *AddressSpace::findObject(const MemoryObject *mo) const {
 
 ObjectState *AddressSpace::getWriteable(const MemoryObject *mo,
                                         const ObjectState *os) {
-  assert(!os->readOnly);
+  if (os->readOnly) {
+    klee_warning("Attempt to write a readonly object, that is wrong unless you "
+                 "are concretizing data from the trace");
+  }
 
   if (cowKey==os->copyOnWriteOwner) {
     return const_cast<ObjectState*>(os);

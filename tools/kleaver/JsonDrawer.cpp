@@ -19,6 +19,9 @@ void JsonDrawer::declareExpr(const Expr *e, const char *category) {
       {"IsPointer", e->getKInstIsPtrType()},
       {"Freq", e->getKInstLoadedFreq()},
   };
+  if (const ReadExpr *RE = dyn_cast<ReadExpr>(e)) {
+   nodes[std::to_string((size_t)e)]["Root"] = RE->updates.root->name;
+  }
 };
 
 void JsonDrawer::declareLastLevelRead(const ReadExpr *RE,
@@ -37,6 +40,7 @@ void JsonDrawer::declareLastLevelRead(const ReadExpr *RE,
       {"DbgInfo", RE->getKInstDbgInfo()},
       {"IsPointer", RE->getKInstIsPtrType()},
       {"Freq", RE->getKInstLoadedFreq()},
+      {"Root", RE->updates.root->name},
   };
 }
 

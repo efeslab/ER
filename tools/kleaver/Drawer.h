@@ -57,7 +57,7 @@ protected:
 public:
   Drawer(const klee::expr::QueryCommand &_QC)
       : QC(_QC), IDCalc(_QC) {}
-  ~Drawer() { printFooter(); }
+  ~Drawer() {}
   // Actually start drawing, which is a pre-order traversal
   // This is designed to be called just once.
   void draw();

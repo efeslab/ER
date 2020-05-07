@@ -329,11 +329,13 @@ private:
 
   // do address resolution / object binding / out of bounds checking
   // and perform the operation
-  void executeMemoryOperation(ExecutionState &state,
-                              bool isWrite,
-                              ref<Expr> address,
-                              ref<Expr> value /* undef if read */,
-                              KInstruction *target /* undef if write */);
+  // \param[in] force: whether we should force overwritting a read only object.
+  // This is only meant to use when loading data from the trace
+  void
+  executeMemoryOperation(ExecutionState &state, bool isWrite, ref<Expr> address,
+                         ref<Expr> value /* undef if read */,
+                         KInstruction *target /* undef if write */,
+                         bool force = false /* overwrite read only object */);
 
   void executeMakeSymbolic(ExecutionState &state, const MemoryObject *mo,
                            const std::string &name);

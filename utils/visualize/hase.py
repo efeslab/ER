@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 How to reload this module:
     import hase
@@ -24,12 +25,18 @@ try:
     import org.gephi.scripting.wrappers.GyNode as GyNode
     import org.gephi.scripting.wrappers.GyGraph as GyGraph
 except ImportError:
-    print("Failed to import Gephi related lib, fallback to cli mode")
+    print("Failed to import Gephi related lib, fallback to cli mode (python3)")
     import json
     from fakegynode import FakeGyNode
     from fakegynode import FakeGyEdge
+    import argparse
 finally:
     import sys
+    if sys.version_info >= (2,7):
+        from sys import maxsize as maxint
+        from functools import reduce
+    else:
+        from sys import maxint as maxint
 
 def RunForceAtlas2_nooverlap(iters):
     fa2 = ForceAtlas2().buildLayout()
@@ -100,12 +107,14 @@ class RecordableInst(object):
         self.hidden_nodes = hidden_nodes
         self.concretized_nodes = concretized_nodes
         # heuristics related property
+        self.nodeReduction = len(self.concretized_nodes)
         self.coverageScore = sum([
             float(self.pygraph.id_map[nid].width) / 8 * \
             (1+self.pygraph.idep_map[nid]) for nid in self.concretized_nodes
             ])
         self.recordSize = self.freq * 8 # 8B (64b), not self.width,
                                         # because of ptwrite limitation
+        self.recordSizeNONPT = self.freq * self.width / 8
         self.coverageScoreFreq = self.coverageScore / self.recordSize
         subgraph = pygraph.buildFromPyGraph(self.pygraph, concretized_nodes)
         self.max_idep = subgraph.max_idep()
@@ -165,8 +174,9 @@ l = [ x for x in g.nodes ]
 l[0] in g.nodes
 ```
 """
-rcnt = 0
 class PyGraph(object):
+    # If we assume PTWRITE limitation (minimum record 8B)
+    PTWRITE = True
 
     """
     @type gygraph: GyGraph
@@ -195,8 +205,6 @@ class PyGraph(object):
     """
     @classmethod
     def buildFromPyGraph(cls, pygraph, deleted_nodes):
-        global rcnt
-        rcnt += 1
         if isinstance(pygraph, PyGraph) and isinstance(deleted_nodes, set):
             subgynodes = set([ n for n in pygraph.gynodes if n.id not in
                 deleted_nodes])
@@ -272,8 +280,11 @@ class PyGraph(object):
         # (from high indirect depth to low indirect depth)
         self.all_nodes_topo_order = None
 
-        # @type: Dict(str->set(GyNode))
+        # @type: Dict(str->set(nid))
         self.kinst2nodes = None
+        # @type: Dict(nid->set(nid))
+        # The post dominator of every kinst
+        self.nodePostDom = None
         # @type: Dict(node_id->int)
         # map a node_id to indirect depth
         self.idep_map = None
@@ -293,10 +304,12 @@ class PyGraph(object):
                 self.outnodes.add(n.id)
         self.topological_sort()
         self.build_kinst2nodes()
+        self.build_nodePostDom()
         self.all_nodes_topo_order = sorted(self.gynodes,
                 key=lambda n: self.topological_map[n.id])
         self.calculate_idep()
-        # MustConcreteize
+        # Cache MustConcretize results
+        # Dict(nid->set(nid))
         self.mustconcretize_cache = {}
 
     """
@@ -355,7 +368,10 @@ class PyGraph(object):
     @return: the max indirect depth in the current graph
     """
     def max_idep(self):
-        return max(self.idep_map.values())
+        if len(self.idep_map) > 0:
+            return max(self.idep_map.values())
+        else:
+            return 0
 
     """
     build the mapping from recordable instructions to all associated nodes in
@@ -367,6 +383,41 @@ class PyGraph(object):
             if isKInstValid(node):
                 self.kinst2nodes.setdefault(node.kinst, set()).add(node.id)
 
+    """
+    Depedency: id_map
+    """
+    def build_nodePostDom(self):
+        self.nodePostDom = {}
+        worklist = []
+        all_nids = frozenset(self.id_map.keys())
+        for n in self.gynodes:
+            if n.id in self.edges:
+                self.nodePostDom[n.id] = all_nids
+            else:
+                self.nodePostDom[n.id] = frozenset()
+                worklist.append(n.id)
+        while len(worklist) > 0:
+            newworklist = []
+            for changed_nid in worklist:
+                for e in self.redges.get(changed_nid, set()):
+                    n = e.source
+                    edges = self.edges.get(n.id, set())
+                    successors = set([e.target.id for e in edges])
+                    nsuccessor = len(successors)
+                    assert(nsuccessor > 0)
+                    if nsuccessor == 1:
+                        single_succ = list(successors)[0]
+                        newPostDom = self.nodePostDom[single_succ] | \
+                                frozenset([single_succ])
+                    else:
+                        succPostDom = [self.nodePostDom[succ] for succ in
+                                successors]
+                        newPostDom = reduce(frozenset.intersection,
+                                succPostDom)
+                    if newPostDom != self.nodePostDom[n.id]:
+                        self.nodePostDom[n.id] = newPostDom
+                        newworklist.append(n.id)
+            worklist = newworklist
 
     """
     Dependency: topological_map
@@ -454,7 +505,7 @@ class PyGraph(object):
         hidden_nodes = set()
         for nid in self.kinst2nodes[kinst]:
             local_concretized_set.add(nid)
-        n = self.id_map[self.kinst2nodes[kinst].__iter__().__next__()]
+        n = self.id_map[list(self.kinst2nodes[kinst])[0]]
         for node in self.all_nodes_topo_order[hint_topo+1:]:
             # skip ConstantExpr and nodes without out edges
             # only consider nontrivial intermediate nodes
@@ -482,11 +533,22 @@ class PyGraph(object):
 
     """
     @rtype: int
-    @return: total bytes need to be recorded for the given instruction list
+    @return: total bytes need to be recorded for the given instruction list,
+        assuming PT limitation (8B minimum recording unit)
     """
     @classmethod
     def recordSize(cls, recinsts):
         return sum([recinst.recordSize for recinst in recinsts])
+
+    """
+    @rtype: float
+    @return: total bytes need to be recorded for the given instruction list,
+        the real width of each instruction is considered (not assuming PT
+        limitation)
+    """
+    @classmethod
+    def recordSizeNONPT(cls, recinsts):
+        return sum([recinst.recordSizeNONPT for recinst in recinsts])
 
     """
     @rtype: float
@@ -526,6 +588,22 @@ class PyGraph(object):
     def sortRecInstsbyCoverageScoreFreq(cls, recinstsL):
         return sorted(recinstsL, key=lambda recinsts:
                 cls.coverageScoreFreq(recinsts))
+
+    @classmethod
+    def nodeReduction(cls, recinsts):
+        return sum([recinst.nodeReduction for recinst in recinsts])
+
+    @classmethod
+    def sortRecInstsbyNodeReduction(cls, recinstsL):
+        return sorted(recinstsL, key=lambda recinsts:
+                cls.nodeReduction(recinsts))
+    @classmethod
+    def nodeReductionPerByte(cls, recinsts):
+        return cls.nodeReduction(recinsts) / cls.recordSize(recinsts)
+    @classmethod
+    def sortRecInstsbyNodeReductionPerByte(cls, recinstsL):
+        return sorted(recinstsL, key=lambda recinsts:
+                cls.nodeReductionPerByte(recinsts))
 
     """
     @rtype float
@@ -580,7 +658,8 @@ class PyGraph(object):
         msgstring += "CoverageScore=%f, " % self.coverageScore(recinsts) +\
                 "CoverageFreqScore=%f, " % self.coverageScoreFreq(recinsts) +\
                 "RemainScore=%f, " % self.remainScore(recinsts) +\
-                "RecordSize=%d\n" % self.recordSize(recinsts)
+                "RecordSize=%d, " % self.recordSize(recinsts) +\
+                "RecordSizeNOPT=%d\n" % self.recordSizeNONPT(recinsts)
         msgstring += "Total: "
         percent_concretized = \
         (float(len(concretized_nodes))/len(self.gynodes)*100)
@@ -673,8 +752,22 @@ class PyGraph(object):
     @return: in bytes
     """
     def GetKInstSetRecordingSize(self, kinstset):
-        return sum(self.id_map[next(iter(self.kinst2nodes[k]))].freq*8
-                for k in kinstset)
+        return sum([self.GetNodeRecordingSize(n) for n in
+            [self.id_map[list(self.kinst2nodes[k])[0]] for k in kinstset]
+            ])
+
+    """
+    @type n: GyNode
+    @param n: node to reason about
+    @rtype: float/int
+    @return: in bytes
+    """
+    @classmethod
+    def GetNodeRecordingSize(cls, n):
+        if cls.PTWRITE:
+            return int(n.freq) * 8
+        else:
+            return int(n.freq)*int(n.width) / 8
 
 
     """
@@ -686,26 +779,139 @@ class PyGraph(object):
     number of bytes you need to record the recover data of the nid node.
     """
     def MustConcretize(self, nid):
-        if nid in self.mustconcretize_cache:
-            return self.mustconcretize_cache[nid]
-        n = self.id_map[nid]
-        if isKInstValid(n) and n.ispointer == "false":
-            self_bytes = 8 * n.freq
-        else:
-            self_bytes = sys.maxsize
-        child_kinstset = set()
-        for e in self.edges.get(nid, set()):
-            kinstset = self.MustConcretize(e.target.id)
-            child_kinstset |= kinstset
-        child_bytes = self.GetKInstSetRecordingSize(child_kinstset)
-        if child_bytes > 0 and child_bytes <= self_bytes:
-            return_set = child_kinstset
-        elif n.kind == 0: # this is a constant node, already concretized
+        # nid is not in the constraint graph
+        # it could already concretized, or not a valid node
+        # In no matter which case, we do not need to record anything
+        if nid not in self.id_map:
             return set()
-        else:
-            return_set = set([n.kinst])
-        self.mustconcretize_cache[nid] = return_set
-        return return_set
+        # DFS
+        worklist = [nid]
+        visited_nid = set()
+        while len(worklist) > 0:
+            wnid = worklist[-1]
+            if wnid in visited_nid:
+                worklist.pop()
+                # collect and compare with children
+                n = self.id_map[wnid]
+                if isKInstValid(n) and n.ispointer == "false":
+                    self_bytes = self.GetNodeRecordingSize(n)
+                else:
+                    self_bytes = maxint
+                child_nidset = set()
+                for e in self.edges.get(wnid, set()):
+                    child_nidset |= self.mustconcretize_cache[e.target.id]
+                child_nidset_dedup = set([nid for nid in child_nidset if
+                    len(self.nodePostDom[nid]) == 0 or
+                    not self.nodePostDom[nid].issubset(child_nidset)])
+                #if child_nidset_dedup != child_nidset:
+                #    print("Dedup, removed %s" %
+                #            ', '.join(child_nidset - child_nidset_dedup))
+                child_kinstset = set([self.id_map[nid].kinst for nid in
+                    child_nidset_dedup])
+                # if any child is non-recordable, then we use an empty
+                # child_kinstset, which leads to zero bytes to record.
+                # zero bytes to record is identified to be non-recordable
+                if 'N/A' in child_kinstset:
+                    child_kinstset = set()
+                child_bytes = self.GetKInstSetRecordingSize(child_kinstset)
+                if child_bytes > 0 and child_bytes <= self_bytes:
+                    self.mustconcretize_cache[wnid] = child_nidset_dedup
+                    #self.id_map[wnid].color = jcolor.pink
+                elif n.kind == 0: # this is a constant node, already concretized
+                    self.mustconcretize_cache[wnid] = set()
+                    #self.id_map[wnid].color = jcolor.orange
+                else:
+                    self.mustconcretize_cache[wnid] = set([n.id])
+                    #self.id_map[wnid].color = jcolor.blue
+            else:
+                visited_nid.add(wnid)
+                # recursive add childs to worklist
+                for e in self.edges.get(wnid, set()):
+                    if e.target.id not in self.mustconcretize_cache:
+                        worklist.append(e.target.id)
+        return set([self.id_map[cnid].kinst for cnid in
+            self.mustconcretize_cache[nid]])
+
+    """
+    @type arraynames: set of string
+    @param arraynames: the arrays, upon which you want to get rid of all
+    symbolic index access.
+    @rtype: list of RecordableInst
+    @return: the list of RecordableInst to concretize all symbolic indirect
+        access (Read and Write/UN)
+    """
+    def UpdateListConcretize(self, arraynames):
+        kinstset = set()
+        visited_nids = set()
+        for n in self.all_nodes_topo_order:
+            if str(n.kind) == "UN" and n.root in arraynames:
+                for e in self.edges[n.id]:
+                    if e.weight == 1.5 and e.target.id not in visited_nids:
+                        visited_nids.add(e.target.id)
+                        kinstset |= self.MustConcretize(e.target.id)
+            if str(n.kind) == "3" and n.root in arraynames: # ReadExpr
+                readnode = n
+                for re in self.edges[readnode.id]:
+                    if re.weight == 1.5 and \
+                            re.target.id not in visited_nids:
+                        visited_nids.add(re.target.id)
+                        kinstset |= self.MustConcretize(re.target.id)
+        newRIlist, subh = self.recursiveOptimizeRecKInstL(kinstset)
+        return newRIlist
+
+    """
+    @type kinsts: List of str
+    @param kinsts: a list of kinst to be recorded in the given order.
+    @rtype: tuple(List of RecordableInst, PyGraph)
+    @return (A list of analyzed RecordableInst, the PyGraph after recording
+    given kinsts)
+    """
+    def buildRecKInstL(self, kinsts):
+        subh = self
+        kinst_list = []
+        concretized_set = set()
+        for kinst in kinsts:
+            if kinst in subh.kinst2nodes:
+                newRI = subh.analyze_single_kinst(kinst, concretized_set)
+                subh = subh.buildFromPyGraph(subh, newRI.concretized_nodes)
+                concretized_set |= newRI.concretized_nodes
+                kinst_list.append(newRI)
+        return (kinst_list, subh)
+
+    def recursiveOptimizeRecKInstL(self, _kinsts):
+        print("############################################")
+        print("Start Recursive with %s" % ', '.join(_kinsts))
+        print("############################################")
+
+        kinsts = list(set(_kinsts))
+        if len(kinsts) == 0:
+            return ([], self)
+        while True:
+            changed = False
+            start = kinsts[0]
+            #print("Iteration: %s" % ', '.join(kinsts))
+            while True:
+                k = kinsts.pop(0)
+                #print("Reasoning %s based on %s" % (k, ', '.join(kinsts)))
+                kl, subh = self.buildRecKInstL(kinsts)
+                knodes = set(filter(lambda n: n.kinst == k, self.gynodes))
+                kset = set()
+                for kn in knodes:
+                    newkset = subh.MustConcretize(kn.id)
+                    #print("nid: %s, newkset %s" % (kn.id, ', '.join(newkset)))
+                    kset |= newkset
+                if k not in kset:
+                    #print("Replace %s with %s" % (k, ', '.join(kset)))
+                    changed = True
+                    kinsts.extend(kset)
+                    break;
+                else:
+                    kinsts.append(k)
+                if kinsts[0] == start:
+                    break
+            if not changed:
+                break
+        return self.buildRecKInstL(kinsts)
 
 
 class HaseUtils(object):
@@ -878,46 +1084,90 @@ def setVisible(gs, subgraph):
     gs['visible'] = subgraph
 
 if __name__ == "__main__":
-    if (len(sys.argv) < 2):
-        print("Usage: %s graph.json [kinst0] [kinst1] ..." % sys.argv[0])
-        sys.exit()
+    parser = argparse.ArgumentParser(description=
+      "HASE cosntraint graph analysis cli mode (python3)")
+    parser.add_argument("--ignore-evaluation", action="store_true",
+            help="Ignore the evaluation list in the query and always perform "
+                 "full graph analysis")
+    parser.add_argument("--evalinst", action="store", type=str, default=None,
+            help="a list of kinst id to evaluate, separated by comma")
+    parser.add_argument("--evalnid", action="store", type=str, default=None,
+            help="a list of node id to evaluate, separated by comma")
+    parser.add_argument("--recordUN", action="store", type=str, default=None,
+            help="a list of array name, whose update lists should be "
+                 "concretized, separated by comma")
+    parser.add_argument("--noptwrite", action="store_true",
+            help="Do not assume the minimum data entry to record is 8B")
+    parser.add_argument("graph_json", type=str, action="store",
+            help="the json file describing the cosntraint graph")
+    parser.add_argument("selected_kinst", nargs='*', type=str,
+            help="kinst already chosen to be recorded")
+    args = parser.parse_args()
+    graph = json.load(open(args.graph_json))
+    PyGraph.PTWRITE = not args.noptwrite
+    h = PyGraph.buildFromPyDict(graph)
+    print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
+        len(h.gyedges), h.max_idep()))
+    query_nodes = set()
+    array_to_concretize = set()
+    if not args.ignore_evaluation:
+        query_nodes |= set(filter(lambda n: n.category == "Q", h.gynodes))
+    if args.evalinst is not None:
+        evalinst = set(args.evalinst.split(','))
+        query_nodes |= set(filter(lambda n: n.kinst in evalinst, h.gynodes))
+    if args.evalnid is not None:
+        evalnid = set(args.evalnid.split(','))
+        query_nodes |= set(filter(lambda n: n.id in evalnid, h.gynodes))
+    if args.recordUN is not None:
+        array_to_concretize |= set(args.recordUN.split(','))
+
+    input_kinst_list, subh = h.buildRecKInstL(args.selected_kinst)
+
+    if len(input_kinst_list) > 0:
+        print("Assuming record:")
+        print(h.getRecInstsInfo(input_kinst_list))
+
+    if len(query_nodes) > 0:
+        for n in query_nodes:
+            kinstset = subh.MustConcretize(n.id)
+            record_bytes = h.GetKInstSetRecordingSize(kinstset)
+            print("Query Expression with kinst \"%s\" can be "
+                  "covered by recording %d bytes from %d instructions:" %
+                  (n.kinst, record_bytes, len(kinstset)))
+            RI, subhh = subh.buildRecKInstL(kinstset)
+            print(subh.getRecInstsInfo(RI))
+    elif len(array_to_concretize) > 0:
+        recinsts = subh.UpdateListConcretize(array_to_concretize)
+        print("To concretize UN upon %s" % ','.join(array_to_concretize))
+        print(subh.getRecInstsInfo(recinsts))
+        print("Python kinst list:")
+        print("\"%s\"" % '\", \"'.join([r.kinst for r in recinsts]))
+        print("Datarec.cfg:")
+        print("%s" % '\n'.join([r.kinst for r in recinsts]))
+        print("All Label:")
+        print("%s" % ', '.join(sorted([subh.id_map[nid].label for r in recinsts
+            for nid in subh.kinst2nodes[r.kinst]])))
+
     else:
-        graph = json.load(open(sys.argv[1]))
-        h = PyGraph.buildFromPyDict(graph)
-        print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
-            len(h.gyedges), h.max_idep()))
-        query_nodes = list(filter(lambda n: n.category == "Q", h.gynodes))
-        if len(query_nodes) > 0:
-            for n in query_nodes:
-                kinstset = h.MustConcretize(n.id)
-                record_bytes = h.GetKInstSetRecordingSize(kinstset)
-                print("Query Expression with kinst \"%s\" can be "
-                      "covered by recording %d bytes from %d instructions:" %
-                      (n.kinst, record_bytes, len(kinstset)))
-                for k in kinstset:
-                    print(k)
-        else:
-            concretized_set = set()
-            input_kinst_list = []
-            subh = h
-            if (len(sys.argv) > 2):
-                for kinst in sys.argv[2:]:
-                    newRI = h.analyze_single_kinst(kinst, concretized_set)
-                    subh = subh.buildFromPyGraph(h, newRI.concretized_nodes)
-                    concretized_set |= newRI.concretized_nodes
-                    input_kinst_list.append(newRI)
+        r = subh.analyze_recordable(input_kinst_list)
+        print("%d recordable instructions" % len(r))
 
-            r = subh.analyze_recordable(input_kinst_list)
-            print("%d recordable instructions" % len(r))
+        print("Heuristic: Coverage Score Highest 10:")
+        sr = subh.sortRecInstsbyCoverageScore(r)
+        subh.printCandidateRecInstsInfo(sr[-10:])
 
-            print("Coverage Score Low to High:")
-            sr = h.sortRecInstsbyCoverageScore(r)
-            h.printCandidateRecInstsInfo(sr)
+        print("Heuristic: Coverage Freq Score Highest 10:")
+        srf = subh.sortRecInstsbyCoverageScoreFreq(r)
+        subh.printCandidateRecInstsInfo(srf[-10:])
 
-            print("Coverage Freq Score Low to High")
-            srf = h.sortRecInstsbyCoverageScoreFreq(r)
-            h.printCandidateRecInstsInfo(srf)
+        print("Heuristic: Node Reduction Highest 10:")
+        nreduction = subh.sortRecInstsbyNodeReduction(r)
+        subh.printCandidateRecInstsInfo(nreduction[-10:])
 
-            print("Remain Score and RecordSize High (worse) to Low (better)")
-            rsf = h.sortRecInstbyRemainScoreFreq(r)
-            h.printCandidateRecInstsInfo(reversed(rsf))
+        print("Heuristic: Node Reduction Per Byte Highest 10:")
+        nreduction_B = subh.sortRecInstsbyNodeReductionPerByte(r)
+        subh.printCandidateRecInstsInfo(nreduction_B[-10:])
+
+        print("Heuristic: Remain Score and RecordSize High (worse) to Low (better)")
+        rsf = subh.sortRecInstbyRemainScoreFreq(r)
+        subh.printCandidateRecInstsInfo(reversed(rsf))

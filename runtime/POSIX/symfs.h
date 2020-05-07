@@ -93,6 +93,10 @@ typedef struct {
   // keep per-state concrete file offsets. Enable this flag is cloud9's default
   // option as well as klee's previous behaviour.
   char overlapped_writes;
+
+  unsigned n_remap_files;
+  char **remap_files;
+  char **remap_target_files;
 } filesystem_t;
 
 typedef struct {
@@ -124,6 +128,11 @@ typedef struct {
   char sym_stdout_flag;
   // max_failures: maximum number of system call failures
   unsigned max_failures;
+
+  // remap files
+  unsigned n_remap_files;
+  char *remap_files[MAX_FILES];
+  char *remap_target_files[MAX_FILES];
 } fs_init_descriptor_t;
 
 extern filesystem_t __sym_fs;

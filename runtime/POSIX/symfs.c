@@ -308,6 +308,13 @@ void klee_init_symfs(fs_init_descriptor_t *fid) {
   klee_make_shared(__sym_fs.sym_files,
                    sizeof(*__sym_fs.sym_files) * n_sym_files);
 
+  unsigned n_remap_files = fid->n_remap_files;
+  __sym_fs.n_remap_files = n_remap_files;
+  __sym_fs.remap_files = malloc(sizeof(char *)*n_remap_files);
+  __sym_fs.remap_target_files = malloc(sizeof(char *)*n_remap_files);
+  //klee_make_shared(__sym_fs.remap_files, sizeof(char *)*n_remap_files);
+  //klee_make_shared(__sym_fs.remap_target_files, sizeof(char *)*n_remap_files);
+
   unsigned pure_symbolic_cnt = 0;
   char pure_symbolic_name[] = "?";
   int i;
@@ -331,6 +338,11 @@ void klee_init_symfs(fs_init_descriptor_t *fid) {
                           /*make content symbolic?*/ 0);
         break;
     }
+  }
+
+  for (i=0; i < n_remap_files; ++i) {
+    __sym_fs.remap_files[i] = fid->remap_files[i];
+    __sym_fs.remap_target_files[i] = fid->remap_target_files[i];
   }
 
   /* setting symbolic stdin */

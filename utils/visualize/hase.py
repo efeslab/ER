@@ -368,7 +368,10 @@ class PyGraph(object):
     @return: the max indirect depth in the current graph
     """
     def max_idep(self):
-        return max(self.idep_map.values())
+        if len(self.idep_map) > 0:
+            return max(self.idep_map.values())
+        else:
+            return 0
 
     """
     build the mapping from recordable instructions to all associated nodes in
@@ -805,6 +808,11 @@ class PyGraph(object):
                 #            ', '.join(child_nidset - child_nidset_dedup))
                 child_kinstset = set([self.id_map[nid].kinst for nid in
                     child_nidset_dedup])
+                # if any child is non-recordable, then we use an empty
+                # child_kinstset, which leads to zero bytes to record.
+                # zero bytes to record is identified to be non-recordable
+                if 'N/A' in child_kinstset:
+                    child_kinstset = set()
                 child_bytes = self.GetKInstSetRecordingSize(child_kinstset)
                 if child_bytes > 0 and child_bytes <= self_bytes:
                     self.mustconcretize_cache[wnid] = child_nidset_dedup

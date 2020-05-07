@@ -1135,7 +1135,10 @@ if __name__ == "__main__":
                   "covered by recording %d bytes from %d instructions:" %
                   (n.kinst, record_bytes, len(kinstset)))
             RI, subhh = subh.buildRecKInstL(kinstset)
-            print(subh.getRecInstsInfo(RI))
+            if len(RI) > 0:
+                print(subh.getRecInstsInfo(RI))
+            else:
+                print("Already Concretized!")
     elif len(array_to_concretize) > 0:
         recinsts = subh.UpdateListConcretize(array_to_concretize)
         print("To concretize UN upon %s" % ','.join(array_to_concretize))

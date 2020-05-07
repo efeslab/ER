@@ -530,6 +530,16 @@ static int _can_open(int flags, const struct stat64 *s) {
   return 1;
 }
 
+static int __streq(const char *a, const char *b) {
+  while (*a == *b) {
+    if (!*a)
+      return 1;
+    a++;
+    b++;
+  }
+  return 0;
+}
+
 int __fd_open(const char *pathname, int flags, mode_t mode) {
   const char *cpathname = __concretize_string(pathname);
   posix_debug_msg("Attempting to open: %s\n", cpathname);
@@ -543,6 +553,15 @@ int __fd_open(const char *pathname, int flags, mode_t mode) {
       klee_warning("blocked non-r/o access to concrete file");
       errno = EACCES;
       return -1;
+    }
+
+    int i;
+    for (i = 0; i < __sym_fs.n_remap_files; i++) {
+      if (__streq(cpathname, __sym_fs.remap_files[i])) {
+        printf("fd_open: replace %s with %s\n", cpathname, __sym_fs.remap_target_files[i]);
+        cpathname = __sym_fs.remap_target_files[i];
+        break;
+      }
     }
 
     int concrete_fd = syscall(__NR_open, cpathname, flags, mode);

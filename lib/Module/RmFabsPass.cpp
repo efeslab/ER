@@ -1,4 +1,4 @@
-#include "Passes.h"
+#include "klee/Internal/Module/Passes.h"
 
 #include "klee/Config/Version.h"
 #include "llvm/IR/Constants.h"

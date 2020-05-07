@@ -99,6 +99,14 @@ static void __add_symfs_file(fs_init_descriptor_t *fid,
   sfd->file_path = file_path;
 }
 
+static void __add_remap_file(fs_init_descriptor_t *fid,
+                              const char *file_a,
+                              const char *file_b) {
+  fid->remap_files[fid->n_remap_files] = file_a;
+  fid->remap_target_files[fid->n_remap_files] = file_b;
+  fid->n_remap_files++;
+}
+
 void klee_init_env(int *argcPtr, char ***argvPtr) {
   int argc = *argcPtr;
   char **argv = *argvPtr;
@@ -113,6 +121,7 @@ void klee_init_env(int *argcPtr, char ***argvPtr) {
   int k = 0, i;
   fs_init_descriptor_t fid;
   fid.n_sym_files = 0;
+  fid.n_remap_files = 0;
   fid.sym_stdin_len = 0;
   fid.allow_unsafe = 0;
   fid.overlapped_writes = 1;
@@ -147,6 +156,7 @@ usage: (klee_init_env) [options] [program arguments]\n\
   -sym-stdin <N>            - Make stdin symbolic with size N.\n\
   -sym-file-stdin           - Make symbolic stdin behave like piped in from a file if set.\n\
   -sym-stdout               - Make stdout symbolic.\n\
+  -remap-file <FILE-A> <FILE-B> - Remap FILE-A to FILE-B. \n\
   -save-all-writes          - Allow write operations to execute as expected\n\
                               even if they exceed the file size. If set to 0, all\n\
                               writes exceeding the initial file size are discarded.\n\
@@ -252,6 +262,18 @@ usage: (klee_init_env) [options] [program arguments]\n\
 
       const char *file_path = argv[k++];
       __add_symfs_file(&fid, SYMBOLIC, file_path);
+    } else if (__streq(argv[k], "--remap-file") || 
+               __streq(argv[k], "-remap-file")) {
+      const char *msg = "--remap-file expect two arguments <FILE-A> <FILE-B>";
+
+      if (k+2 >= argc)
+        __emit_error(msg);
+      k++;
+
+      const char *file_a = argv[k++];
+      const char *file_b = argv[k++];
+      __add_remap_file(&fid, file_a, file_b);
+      //printf("will replace %s with %s\n", file_a, file_b);
     } else if (__streq(argv[k], "--con-file") ||
                __streq(argv[k], "-con-file")) {
       const char *msg = "--con-file expect one argument "

@@ -844,12 +844,12 @@ class PyGraph(object):
         kinstset = set()
         visited_nids = set()
         for n in self.all_nodes_topo_order:
-            if str(n.kind) == "UN" and n.root in arraynames:
+            if str(n.kind) == "UN" and n.root.split("[")[0] in arraynames:
                 for e in self.edges[n.id]:
                     if e.weight == 1.5 and e.target.id not in visited_nids:
                         visited_nids.add(e.target.id)
                         kinstset |= self.MustConcretize(e.target.id)
-            if str(n.kind) == "3" and n.root in arraynames: # ReadExpr
+            if str(n.kind) == "3" and n.root.split("[")[0] in arraynames: # ReadExpr
                 readnode = n
                 for re in self.edges[readnode.id]:
                     if re.weight == 1.5 and \
@@ -1096,6 +1096,8 @@ if __name__ == "__main__":
     parser.add_argument("--recordUN", action="store", type=str, default=None,
             help="a list of array name, whose update lists should be "
                  "concretized, separated by comma")
+    parser.add_argument("--getUN", action="store_true",
+            help="Analyze all UN and print the length of each UN")
     parser.add_argument("--noptwrite", action="store_true",
             help="Do not assume the minimum data entry to record is 8B")
     parser.add_argument("graph_json", type=str, action="store",
@@ -1127,7 +1129,26 @@ if __name__ == "__main__":
         print("Assuming record:")
         print(h.getRecInstsInfo(input_kinst_list))
 
-    if len(query_nodes) > 0:
+    if args.getUN:
+        # @type: Dict(arrayname -> list of UN len)
+        arr2UNlen = {}
+        for n in subh.all_nodes_topo_order:
+            if str(n.kind) == "UN":
+                arr2UNlen.setdefault(n.root, [0])[-1] += 1
+                if any([str(e.source.kind) == "3" for e in subh.redges[n.id]]):
+                    # this UpdateNode is pointed to by some ReadExpr
+                    # a new chain of UN appears
+                    arr2UNlen[n.root].append(0)
+        for arr, UNL in arr2UNlen.items():
+            print("Array: %s" % arr)
+            accu_l = int(arr[arr.find('[')+1:-1])
+            accumulate_len = []
+            for l in UNL:
+                accu_l += l
+                accumulate_len.append(accu_l)
+            print("\t%s" % ', '.join(["%d[%d]" % (l, accu_l) for l, accu_l in
+                zip(UNL, accumulate_len)]))
+    elif len(query_nodes) > 0:
         for n in query_nodes:
             kinstset = subh.MustConcretize(n.id)
             record_bytes = h.GetKInstSetRecordingSize(kinstset)

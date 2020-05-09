@@ -145,3 +145,7 @@ void Drawer::draw() {
   }
   printFooter();
 }
+
+std::string Drawer::getArrWithSize(const Array *root) {
+  return root->name + '[' + std::to_string(root->size) + ']';
+}

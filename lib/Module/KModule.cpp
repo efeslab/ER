@@ -391,6 +391,12 @@ void KModule::assignID(llvm::Module *M, std::string &prefix) {
   pm.run(*M);
 }
 
+void KModule::removeID(llvm::Module *M) {
+  legacy::PassManager pm;
+  pm.add(new RmIDPass());
+  pm.run(*M);
+}
+
 void KModule::addPTWrite(llvm::Module *M, std::string &cfg) {
   legacy::PassManager pm;
   pm.add(new PTWritePass(cfg));

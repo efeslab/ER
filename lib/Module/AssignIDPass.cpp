@@ -32,7 +32,6 @@
 #include <string>
 
 using namespace llvm;
-
 using namespace klee;
 
 char AssignIDPass::ID;
@@ -62,3 +61,29 @@ bool AssignIDPass::runOnModule(Module &M) {
 
   return true;
 }
+
+
+char RmIDPass::ID;
+
+RmIDPass::RmIDPass() : llvm::ModulePass(ID) {}
+
+bool RmIDPass::runOnModule(Module &M) {
+  for (Module::iterator f = M.begin(), fe = M.end(); f != fe; ++f) {
+    for (Function::iterator b = f->begin(), be = f->end(); b != be; ++b) {
+      if (b->getName() != "") {
+        b->setName("");
+      }
+      for (BasicBlock::iterator i = b->begin(), ie = b->end(); i != ie; ++i) {
+        if (!i->getType()->isVoidTy()) {
+          if (i->getName() != "") {
+            i->setName("");
+          }
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+

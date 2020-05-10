@@ -238,6 +238,13 @@ public:
   bool runOnModule(llvm::Module &M) override;
 };
 
+class RmIDPass : public llvm::ModulePass {
+public:
+  static char ID;
+  RmIDPass();
+  bool runOnModule(llvm::Module &M) override;
+};
+
 class PTWritePass : public llvm::ModulePass {
 private:
   std::unordered_set<std::string> dataRecFuncSet;

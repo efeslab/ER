@@ -360,10 +360,13 @@ bool ConstraintManager::addConstraint(ref<Expr> e) {
   }
   old.clear();
 
+  updateEqualities();
+
+  // NOTE that updateIndependentSet will destroy addedConstraints and
+  // deletedConstraints. Thus I should updateEqualities before this.
   if (UseIndependentSolver) {
     updateIndependentSet();
   }
-  updateEqualities();
 
   addedConstraints.clear();
   deleteConstraints.clear();

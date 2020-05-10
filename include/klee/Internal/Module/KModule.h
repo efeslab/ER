@@ -170,6 +170,9 @@ namespace klee {
     /// Add Tag fake instruction after sepecified instructions
     static void addTag(llvm::Module *M, std::string &cfg, bool useDbgInfo);
 
+    /// Remove the human readable ID from each instruction.
+    static void removeID(llvm::Module *M);
+
     /// Save Instruction and Function frequency to LLVM IR Module as metadata (MDNode).
     /// Those frequencies were maintained inside KInstruction/KFunction until
     /// this function is called.

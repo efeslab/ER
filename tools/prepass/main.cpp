@@ -71,9 +71,16 @@ llvm::cl::opt<bool> RemoveFP(
 
 llvm::cl::opt<bool> AssignID(
     "assign-id",
-    llvm::cl::desc("Assign a human-readable ID to each LLVM IR instructions."
+    llvm::cl::desc("Assign a human-readable ID to each LLVM IR instruction."
                    " (default=true)"),
     llvm::cl::init(true),
+    llvm::cl::cat(klee::HASEPrePassCat));
+
+llvm::cl::opt<bool> RemoveID(
+    "remove-id",
+    llvm::cl::desc("Remove the human-readable ID from LLVM IR instruction."
+                   " (default=false)"),
+    llvm::cl::init(false),
     llvm::cl::cat(klee::HASEPrePassCat));
 
 llvm::cl::opt<bool> InsertPTWrite(
@@ -161,6 +168,11 @@ int main(int argc, char **argv) {
     else if (InsertTag) {
       if (TagCFG!="")
         KModule::addTag(M, TagCFG, false);
+    }
+
+    /* We need to have this pass because the ID will hurt the performance of the compiled binary */
+    if (RemoveID || InsertPTWrite) {
+      KModule::removeID(M);
     }
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(7, 0)

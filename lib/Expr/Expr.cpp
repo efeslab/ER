@@ -106,7 +106,7 @@ std::string klee::getKInstDbgInfo(const KInstruction *ki) {
     if (info) {
       return info->file + ":" +
         std::to_string(info->line) + "," + std::to_string(info->column) +
-        " [asm " + std::to_string(info->assemblyLine) + " ]";
+        " [asm " + std::to_string(info->assemblyLine) + "]";
     }
     else {
       return "N/A";

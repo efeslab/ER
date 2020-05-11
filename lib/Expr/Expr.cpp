@@ -1171,7 +1171,11 @@ static ref<Expr> TryConstArrayOpt(const ref<ConstantExpr> &cl,
 
   return res;
 }
-
+static inline void kinstTransition(Expr *from, Expr *to) {
+  if (!to->kinst) {
+    to->kinst = from->kinst;
+  }
+}
 static ref<Expr> EqExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {  
   Expr::Width width = cl->getWidth();
 
@@ -1183,14 +1187,16 @@ static ref<Expr> EqExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
       // 0 == ...
       
       if (rk == Expr::Eq) {
-        const EqExpr *ree = cast<EqExpr>(r);
+        EqExpr *ree = cast<EqExpr>(r);
 
         // eliminate double negation
         if (ConstantExpr *CE = dyn_cast<ConstantExpr>(ree->left)) {
           // 0 == (0 == A) => A
           if (CE->getWidth() == Expr::Bool &&
-              CE->isFalse())
+              CE->isFalse()) {
+            kinstTransition(r, ree->right.get());
             return ree->right;
+          }
         }
       } else if (rk == Expr::Or) {
         const OrExpr *roe = cast<OrExpr>(r);

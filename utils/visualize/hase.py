@@ -1096,6 +1096,13 @@ if __name__ == "__main__":
     parser.add_argument("--recordUN", action="store", type=str, default=None,
             help="a list of array name, whose update lists should be "
                  "concretized, separated by comma")
+    parser.add_argument("--recordUN-out", action="store", type=str,
+            default="", help="A file to output datarec.cfg")
+    parser.add_argument("--UN-constraints", type=str, default=None,
+            help="A file each line giving a path of a (simplified) "
+                 "constraint graph json file.")
+    parser.add_argument("--recordUNCFG", type=str, default=None,
+            help="A datarec.cfg, containing all selected kinsts")
     parser.add_argument("--getUN", action="store_true",
             help="Analyze all UN and print the length of each UN")
     parser.add_argument("--noptwrite", action="store_true",
@@ -1105,8 +1112,37 @@ if __name__ == "__main__":
     parser.add_argument("selected_kinst", nargs='*', type=str,
             help="kinst already chosen to be recorded")
     args = parser.parse_args()
-    graph = json.load(open(args.graph_json))
     PyGraph.PTWRITE = not args.noptwrite
+    if args.UN_constraints is not None and args.recordUNCFG is not None:
+        # recursively optimize all kinst selected by previous iterations
+        PreOptimizedUNKinstset = set(open(args.recordUNCFG).read().splitlines())
+        UN_constraints = open(args.UN_constraints).read().splitlines()
+        changed = True
+        OptimizedUNKinstset = set()
+        while changed:
+            changed = False
+            for graph_path in UN_constraints:
+                print("Optimizing on %s" % (graph_path))
+                constraint_graph = json.load(open(graph_path))
+                PyG = PyGraph.buildFromPyDict(constraint_graph)
+                new_recinsts, new_PyG = PyG.recursiveOptimizeRecKInstL(\
+                        PreOptimizedUNKinstset)
+                for recinst in new_recinsts:
+                    OptimizedUNKinstset.add(recinst.kinst)
+            if OptimizedUNKinstset != PreOptimizedUNKinstset:
+                print("Optimized from: %s" %
+                        ','.join(PreOptimizedUNKinstset))
+                print("To :%s" % ','.join(OptimizedUNKinstset))
+                PreOptimizedUNKinstset = OptimizedUNKinstset
+                OptimizedUNKinstset = set()
+                Changed = True
+        kinst_sorted = sorted(list(OptimizedUNKinstset))
+        print("OptimizedUNKinstset: %s" % ','.join(kinst_sorted))
+        if len(args.recordUN_out) > 0:
+            with open(args.recordUN_out, "w") as f:
+                f.write("%s\n" % '\n'.join(kinst_sorted))
+        sys.exit(0)
+    graph = json.load(open(args.graph_json))
     h = PyGraph.buildFromPyDict(graph)
     print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
         len(h.gyedges), h.max_idep()))
@@ -1139,6 +1175,13 @@ if __name__ == "__main__":
                     # this UpdateNode is pointed to by some ReadExpr
                     # a new chain of UN appears
                     arr2UNlen[n.root].append(0)
+            if str(n.kind) == "3" and (n.id in subh.edges) and \
+               all([str(e.source.kind) != "UN" for e in subh.edges[n.id]]):
+                # this is a Read Node not depending on any UN
+                # Should keep tracking of its root
+                arr2UNlen.setdefault(n.root, [0])
+
+        bigarray_name = []
         for arr, UNL in arr2UNlen.items():
             print("Array: %s" % arr)
             accu_l = int(arr[arr.find('[')+1:-1])
@@ -1148,6 +1191,9 @@ if __name__ == "__main__":
                 accumulate_len.append(accu_l)
             print("\t%s" % ', '.join(["%d[%d]" % (l, accu_l) for l, accu_l in
                 zip(UNL, accumulate_len)]))
+            if accumulate_len[-1] > 4096:
+                bigarray_name.append(arr[0:arr.find('[')])
+        print("bigarray: %s" % ','.join(bigarray_name))
     elif len(query_nodes) > 0:
         for n in query_nodes:
             kinstset = subh.MustConcretize(n.id)
@@ -1162,16 +1208,20 @@ if __name__ == "__main__":
                 print("Already Concretized!")
     elif len(array_to_concretize) > 0:
         recinsts = subh.UpdateListConcretize(array_to_concretize)
+        kinst_sorted = sorted([r.kinst for r in recinsts])
         print("To concretize UN upon %s" % ','.join(array_to_concretize))
         print(subh.getRecInstsInfo(recinsts))
         print("Python kinst list:")
-        print("\"%s\"" % '\", \"'.join([r.kinst for r in recinsts]))
+        print("\"%s\"" % '\",\"'.join(kinst_sorted))
         print("Datarec.cfg:")
-        print("%s" % '\n'.join([r.kinst for r in recinsts]))
+        datarecCFG= "%s\n" % '\n'.join(kinst_sorted)
+        print(datarecCFG)
+        if len(args.recordUN_out) > 0:
+            with open(args.recordUN_out, "w") as f:
+                f.write(datarecCFG)
         print("All Label:")
-        print("%s" % ', '.join(sorted([subh.id_map[nid].label for r in recinsts
-            for nid in subh.kinst2nodes[r.kinst]])))
-
+        print("%s" % ', '.join(sorted([subh.id_map[nid].label
+            for kinst in kinst_sorted for nid in subh.kinst2nodes[kinst]])))
     else:
         r = subh.analyze_recordable(input_kinst_list)
         print("%d recordable instructions" % len(r))

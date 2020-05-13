@@ -800,13 +800,13 @@ class PyGraph(object):
                 child_nidset = set()
                 for e in self.edges.get(wnid, set()):
                     child_nidset |= self.mustconcretize_cache[e.target.id]
-                child_nidset_dedup = set([nid for nid in child_nidset if
-                    len(self.nodePostDom[nid]) == 0 or
-                    not self.nodePostDom[nid].issubset(child_nidset)])
+                child_nidset_dedup = set([cnid for cnid in child_nidset if
+                    len(self.nodePostDom[cnid]) == 0 or
+                    not self.nodePostDom[cnid].issubset(child_nidset)])
                 #if child_nidset_dedup != child_nidset:
                 #    print("Dedup, removed %s" %
                 #            ', '.join(child_nidset - child_nidset_dedup))
-                child_kinstset = set([self.id_map[nid].kinst for nid in
+                child_kinstset = set([self.id_map[cnid].kinst for cnid in
                     child_nidset_dedup])
                 # if any child is non-recordable, then we use an empty
                 # child_kinstset, which leads to zero bytes to record.

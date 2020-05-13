@@ -11,7 +11,6 @@ void GraphvizDOTDrawer::declareExpr(const Expr *e, const char *category) {
   os << (size_t)e << "[ label=\"" << label << "\", "
      << "Kind=" << e->getKind() << ","
      << "Width=" << e->getWidth() << ","
-     << "IDep=" << IDCalc.query(e) << ","
      << "Category=" << category << ","
      << "KInst=\"" << e->getKInstUniqueID() << "\""
      << ","
@@ -34,7 +33,6 @@ void GraphvizDOTDrawer::declareLastLevelRead(const ReadExpr *RE,
   os << (size_t)RE << "[ label=\"" << label << "\", "
      << "Kind=" << RE->getKind() << ","
      << "Width=" << RE->getWidth() << ","
-     << "IDep=" << IDCalc.query(RE) << ","
      << "Category=" << category << ","
      << "KInst=\"" << RE->getKInstUniqueID() << "\""
      << ","
@@ -52,7 +50,6 @@ void GraphvizDOTDrawer::declareUpdateNode(const UpdateNode *un,
      << "Category=" << category << ","
      << "Width=8,"
      << "Root=\"" << getArrWithSize(root) << "\","
-     << "IDep=" << IDCalc.query(un) << ","
      << "KInst=\"" << un->getKInstUniqueID() << "\""
      << ","
      << "DbgInfo=\"" << un->getKInstDbgInfo() << "\""
@@ -67,8 +64,8 @@ void GraphvizDOTDrawer::declareArray(const Array *arr) {
   os << (size_t)arr << "[ label=\"" << arr->name << "\", "
      << "Kind=Array,"
      << "Size=" << arr->getSize() << ","
-     << "Category=Array,"
-     << "IDep=" << IDCalc.getMax() + 1 << "];\n";
+     << "Category=Array"
+     << "];\n";
 }
 
 void GraphvizDOTDrawer::drawEdge(const void *from, const void *to,

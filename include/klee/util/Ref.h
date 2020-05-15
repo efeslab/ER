@@ -220,8 +220,12 @@ public:
 
   // assumes non-null arguments
   int compare(const ref &rhs) const {
-    assert(!isNull() && !rhs.isNull() && "Invalid call to compare()");
-    return get()->compare(*rhs.get());
+    if (get() == rhs.get())
+      return 0;
+    else {
+      assert(!isNull() && !rhs.isNull() && "Invalid call to compare()");
+      return get()->compare(*rhs.get());
+    }
   }
 
   // assumes non-null arguments

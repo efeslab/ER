@@ -7,7 +7,7 @@ void Drawer::ensureExprDeclared(const Expr *e, const char *category) {
     // handle last level read specially
     if (const ReadExpr *RE = dyn_cast<ReadExpr>(e)) {
       if (!RE->index.isNull() && isa<ConstantExpr>(RE->index) &&
-          (RE->updates.head == nullptr)) {
+          RE->updates.head.isNull()) {
         declareLastLevelRead(RE, category);
         visited_expr.insert(RE);
         return;
@@ -56,7 +56,7 @@ void Drawer::draw() {
       // Here we handle updatelists.
       const UpdateList &ul = RE->updates;
       const Array *root = ul.root;
-      const UpdateNode *head = ul.head;
+      const UpdateNode *head = ul.head.get();
 
       if (head) {
         // if this read has update list
@@ -67,7 +67,7 @@ void Drawer::draw() {
 
           // sentinel is the latest update node on the update list of this Array
           //   if known, null otherwise.
-          const UpdateNode *sentinel = NULL;
+          const UpdateNode *sentinel = nullptr;
           auto latest_un_it = arr2latest_un.find(root);
           if (latest_un_it != arr2latest_un.end()) {
             sentinel = latest_un_it->second;
@@ -97,11 +97,11 @@ void Drawer::draw() {
               ensureExprDeclared(value);
               drawEdge(it, value, 1.0);
             }
-            if (it->next != sentinel) {
+            if (it->next.get() != sentinel) {
               // I am not the last pointer to be processed
-              declareUpdateNode(it->next, root);
-              drawEdge(it, it->next, 1.0);
-              it = it->next;
+              declareUpdateNode(it->next.get(), root);
+              drawEdge(it, it->next.get(), 1.0);
+              it = it->next.get();
             } else {
               // no matter we are processing an entire update list or only some
               //   new updates, sentinel is guaranteed to be declared here.

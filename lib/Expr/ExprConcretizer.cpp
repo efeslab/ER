@@ -32,7 +32,7 @@ ExprVisitor::Action ExprConcretizer::visitRead
                             (const ReadExpr &re) {
   std::vector<const UpdateNode *> updateNodeArray;
   const UpdateNode *originHead = nullptr;
-  for (const UpdateNode *un = re.updates.head; un; un = un->next) {
+  for (const UpdateNode *un = re.updates.head.get(); un; un = un->next.get()) {
     auto it = old2new.find(un);
     if (it == old2new.end()) {
       updateNodeArray.push_back(un);
@@ -57,7 +57,7 @@ ExprVisitor::Action ExprConcretizer::visitRead
     // So either:
     //   1. originHead is the farthest and we are extending the farthest (updateNodeArray non-empty)
     //   2. originHead is not the farthest. we meet a ReadExpr referencing a shorter updateList (an older version of memory state of the root array)
-    if (ul->head != originHead && !updateNodeArray.empty()) {
+    if (ul->head.get() != originHead && !updateNodeArray.empty()) {
       klee_warning("farthest != originHead but updateNodeArray is not empty. violating case 2");
     }
   }
@@ -81,7 +81,7 @@ ExprVisitor::Action ExprConcretizer::visitRead
             << ":{" << format("%#lx", (uint64_t)ul->head->index.get())
             << ", " << format("%#lx", (uint64_t)ul->head->value.get()) << "}\n";
 #endif
-    old2new.insert({un, ul->head});
+    old2new.insert({un, ul->head.get()});
   }
 
   ref<Expr> idx = visit(re.index);
@@ -91,7 +91,7 @@ ExprVisitor::Action ExprConcretizer::visitRead
 
     /* Iterate on the update list and search for a match,
      * if there's no match we return a read instead */
-    for (const UpdateNode *un = ul->head; un; un=un->next) {
+    for (UpdateNode *un = ul->head.get(); un; un=un->next.get()) {
       if (ConstantExpr *ci = dyn_cast<ConstantExpr>(un->index)) {
         if (ci->getZExtValue() == index)
           return Action::changeTo(un->value);
@@ -243,7 +243,7 @@ int IndirectReadDepthCalculator::assignDepth(const ref<Expr> &e, int readLevel) 
   int m = readLevel;
   if (ReadExpr *RE = dyn_cast<ReadExpr>(e)) {
     updateMaxLevelfromKid(RE->index, readLevel + 1, m);
-    const UpdateNode *un = RE->updates.head;
+    const UpdateNode *un = RE->updates.head.get();
     std::vector<const UpdateNode *> un_vec;
     while (un) {
       un_vec.push_back(un);
@@ -264,11 +264,11 @@ int IndirectReadDepthCalculator::assignDepth(const ref<Expr> &e, int readLevel) 
           existed->second = readLevel;
         }
       }
-      un = un->next;
+      un = un->next.get();
     }
 
     if (!RE->index.isNull() && (RE->index->getKind() == Expr::Constant) &&
-        RE->updates.head == nullptr) {
+        RE->updates.head.isNull()) {
       lastLevelReads.insert(RE);
     }
   }

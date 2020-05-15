@@ -102,22 +102,13 @@ ExecutionState::ExecutionState(const std::vector<ref<Expr> > &assumptions)
     : wlistCounter(1), constraints(assumptions), replayPosition(0), replayDataRecEntriesPosition(0), nbranches_rec(0), ptreeNode(0) {}
 
 ExecutionState::~ExecutionState() {
+  for (auto cur_mergehandler: openMergeStack){
+    cur_mergehandler->removeOpenState(this);
+  }
+
   for (threads_ty::value_type &tit: threads) {
     Thread &t = tit.second;
     while (!t.stack.empty()) popFrame(t);
-  }
-
-  for (unsigned int i=0; i<symbolics.size(); i++)
-  {
-    const MemoryObject *mo = symbolics[i].first;
-    assert(mo->refCount > 0);
-    mo->refCount--;
-    if (mo->refCount == 0)
-      delete mo;
-  }
-
-  for (auto cur_mergehandler: openMergeStack){
-    cur_mergehandler->removeOpenState(this);
   }
 }
 
@@ -152,11 +143,7 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     symbolics(state.symbolics),
     arrayNames(state.arrayNames),
     openMergeStack(state.openMergeStack),
-    steppedInstructions(state.steppedInstructions)
-{
-  for (unsigned int i=0; i<symbolics.size(); i++)
-    symbolics[i].first->refCount++;
-
+    steppedInstructions(state.steppedInstructions) {
   for (auto cur_mergehandler: openMergeStack)
     cur_mergehandler->addOpenState(this);
   crtThreadIt = threads.find(state.crtThreadIt->first);
@@ -189,9 +176,8 @@ ExecutionState *ExecutionState::branch() {
   return falseState;
 }
 
-void ExecutionState::addSymbolic(const MemoryObject *mo, const Array *array) { 
-  mo->refCount++;
-  symbolics.push_back(std::make_pair(mo, array));
+void ExecutionState::addSymbolic(const MemoryObject *mo, const Array *array) {
+  symbolics.emplace_back(std::make_pair(ref<const MemoryObject>(mo), array));
 }
 
 /**/
@@ -201,9 +187,9 @@ llvm::raw_ostream &klee::operator<<(llvm::raw_ostream &os, const MemoryMap &mm) 
   MemoryMap::iterator it = mm.begin();
   MemoryMap::iterator ie = mm.end();
   if (it!=ie) {
-    os << "MO" << it->first->id << ":" << it->second;
+    os << "MO" << it->first->id << ":" << it->second.get();
     for (++it; it!=ie; ++it)
-      os << ", MO" << it->first->id << ":" << it->second;
+      os << ", MO" << it->first->id << ":" << it->second.get();
   }
   os << "}";
   return os;
@@ -219,7 +205,8 @@ bool ExecutionState::merge(const ExecutionState &b) {
 
   // XXX is it even possible for these to differ? does it matter? probably
   // implies difference in object states?
-  if (symbolics!=b.symbolics)
+
+  if (symbolics != b.symbolics)
     return false;
 
   {
@@ -301,7 +288,7 @@ bool ExecutionState::merge(const ExecutionState &b) {
       }
       return false;
     }
-    if (ai->second != bi->second) {
+    if (ai->second.get() != bi->second.get()) {
       if (DebugLogStateMerge)
         llvm::errs() << "\t\tmutated: " << ai->first->id << "\n";
       mutated.insert(ai->first);

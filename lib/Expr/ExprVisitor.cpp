@@ -24,6 +24,8 @@ llvm::cl::opt<bool> UseVisitorHash(
 using namespace klee;
 
 ref<Expr> ExprVisitor::visit(const ref<Expr> &e) {
+  // TODO: In recursive mode, should I repeatedly search visited Exprs, so that
+  // chains of replacement can resolved quicker.
   if (!UseVisitorHash || isa<ConstantExpr>(e)) {
     return visitActual(e);
   } else {
@@ -98,25 +100,45 @@ ref<Expr> ExprVisitor::visitActual(const ref<Expr> &e) {
       assert(0 && "invalid kind");
     case Action::DoChildren: {  
       bool rebuild = false;
-      ref<Expr> e(&ep), kids[8];
-      unsigned count = ep.getNumKids();
-      for (unsigned i=0; i<count; i++) {
-        ref<Expr> kid = ep.getKid(i);
-        kids[i] = visit(kid);
-        if (kids[i] != kid)
+      ref<Expr> e_ret(e);
+      if (ReadExpr *RE = dyn_cast<ReadExpr>(e)) {
+        ref<Expr> index;
+        index = visit(RE->index);
+        if (index != RE->index)
           rebuild = true;
+        UpdateList ul(RE->updates);
+        if (!ul.head.isNull()) {
+          ul.head = visitUpdateNode(ul.head);
+        }
+        if (ul.head.get() != RE->updates.head.get())
+          rebuild = true;
+        if (rebuild) {
+          e_ret = RE->rebuild(ul, index);
+          if (recursive)
+            e_ret = visit(e_ret);
+        }
       }
-      if (rebuild) {
-        e = ep.rebuild(kids);
-        if (recursive)
-          e = visit(e);
+      else {
+        ref<Expr> kids[8];
+        unsigned count = ep.getNumKids();
+        for (unsigned i=0; i<count; i++) {
+          ref<Expr> kid = ep.getKid(i);
+          kids[i] = visit(kid);
+          if (kids[i] != kid)
+            rebuild = true;
+        }
+        if (rebuild) {
+          e_ret = ep.rebuild(kids);
+          if (recursive)
+            e_ret = visit(e_ret);
+        }
       }
-      if (!isa<ConstantExpr>(e)) {
-        res = visitExprPost(*e.get());
+      if (!isa<ConstantExpr>(e_ret)) {
+        res = visitExprPost(*e_ret.get());
         if (res.kind==Action::ChangeTo)
-          e = res.argument;
+          e_ret = res.argument;
       }
-      return e;
+      return e_ret;
     }
     case Action::SkipChildren:
       return e;
@@ -124,6 +146,10 @@ ref<Expr> ExprVisitor::visitActual(const ref<Expr> &e) {
       return res.argument;
     }
   }
+}
+
+ref<UpdateNode> ExprVisitor::visitUpdateNode(const ref<UpdateNode> &un) {
+  return un;
 }
 
 ExprVisitor::Action ExprVisitor::visitExpr(const Expr&) {

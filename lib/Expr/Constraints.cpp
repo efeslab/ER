@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "klee/Expr/ExprHashMap.h"
+#include "klee/util/RefHashMap.h"
 
 using namespace klee;
 
@@ -37,12 +38,59 @@ llvm::cl::opt<bool> RewriteEqualities(
 /**
  * ExprReplaceVisitor can find and replace occurrence of a single expression.
  */
-class ExprReplaceVisitor : public ExprVisitor {
+class ExprReplaceVisitorBase : public ExprVisitor {
+
+protected:
+  typedef ConstraintManager::UNMap_ty UNMap_ty;
+  // This is for replacement deduplication in a ConstraintManager level
+  // All optimized UpdateNodes are mapped to a unique UpdateNode according to
+  // their **content** (including the following chain of UpdateNodes)
+  UNMap_ty &replacedUN;
+  // This is a replacement cache only lives inside this ExprVisitor
+  UNMap_ty visitedUN;
+
+public:
+  ExprReplaceVisitorBase(UNMap_ty &_replacedUN)
+      : ExprVisitor(true), replacedUN(_replacedUN) {}
+  ref<UpdateNode> visitUpdateNode(const ref<UpdateNode> &un) override {
+    // TODO: In recursive mode, should I repeatedly search visited Exprs, so
+    // that chains of replacement can resolved quicker.
+    auto find_it = visitedUN.find(un);
+    if (find_it != visitedUN.end()) {
+      return find_it->second;
+    }
+    ref<UpdateNode> next;
+    if (!un->next.isNull()) {
+      next = visitUpdateNode(un->next);
+    }
+    const ref<Expr> index = visit(un->index);
+    const ref<Expr> value = visit(un->value);
+    if (index != un->index || value != un->value ||
+        next.get() != un->next.get()) {
+      ref<UpdateNode> newUN =
+          new UpdateNode(next, index, value, un->flags, un->kinst);
+      UNMap_ty::iterator replacedUN_it;
+      bool unseen;
+      std::tie(replacedUN_it, unseen) =
+          replacedUN.insert(std::make_pair(newUN, newUN));
+      if (!unseen) {
+        newUN = replacedUN_it->second;
+      }
+      visitedUN[un] = newUN;
+      return newUN;
+    }
+    visitedUN[un] = un;
+    return un;
+  }
+};
+
+class ExprReplaceVisitor : public ExprReplaceVisitorBase {
 private:
   ref<Expr> src, dst;
 
 public:
-  ExprReplaceVisitor(ref<Expr> _src, ref<Expr> _dst) : src(_src), dst(_dst) {}
+  ExprReplaceVisitor(UNMap_ty &_replaceUN, ref<Expr> _src, ref<Expr> _dst)
+      : ExprReplaceVisitorBase(_replaceUN), src(_src), dst(_dst) {}
 
   Action visitExpr(const Expr &e) {
     if (e == *src.get()) {
@@ -65,14 +113,14 @@ public:
  * ExprReplaceVisitor2 can find and replace multiple expressions.
  * The replacement mapping is passed in as a std::map
  */
-class ExprReplaceVisitor2 : public ExprVisitor {
+class ExprReplaceVisitor2 : public ExprReplaceVisitorBase {
 private:
   const std::map< ref<Expr>, ref<Expr> > &replacements;
 
 public:
-  ExprReplaceVisitor2(const std::map< ref<Expr>, ref<Expr> > &_replacements) 
-    : ExprVisitor(true),
-      replacements(_replacements) {}
+  ExprReplaceVisitor2(UNMap_ty &_replaceUN,
+                      const std::map<ref<Expr>, ref<Expr>> &_replacements)
+      : ExprReplaceVisitorBase(_replaceUN), replacements(_replacements) {}
 
   Action visitExprPost(const Expr &e) {
     std::map< ref<Expr>, ref<Expr> >::const_iterator it =
@@ -129,7 +177,7 @@ void ConstraintManager::simplifyForValidConstraint(ref<Expr> e) {
 ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
   if (isa<ConstantExpr>(e))
     return e;
-  return ExprReplaceVisitor2(equalities).visit(e);
+  return ExprReplaceVisitor2(replacedUN, equalities).visit(e);
 }
 
 bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
@@ -162,7 +210,7 @@ bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
       // (byte-constant comparison).
       BinaryExpr *be = cast<BinaryExpr>(e);
       if (isa<ConstantExpr>(be->left) && !isa<EqExpr>(be->right)) {
-        ExprReplaceVisitor visitor(be->right, be->left);
+        ExprReplaceVisitor visitor(replacedUN, be->right, be->left);
         changed |= rewriteConstraints(visitor);
       }
     }

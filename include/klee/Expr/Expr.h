@@ -662,6 +662,11 @@ public:
     result->kinst = kinst;
     return result;
   }
+  ref<Expr> rebuild(UpdateList &ul, ref<Expr> &_index) const {
+    ref<Expr> result = create(ul, _index);
+    result->kinst = kinst;
+    return result;
+  }
   virtual void rebuildInPlace(ref<Expr> kids[]) {
     index = kids[0];
   }

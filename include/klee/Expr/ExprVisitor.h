@@ -45,9 +45,19 @@ namespace klee {
     ExprVisitor(bool _recursive=false) : recursive(_recursive) {}
     virtual ~ExprVisitor() {}
 
+    // visitExpr is called before you visit the underlying dervied Expr type and
+    // before you visit (visitExpr or visit derived Expr type) any of its
+    // children
     virtual Action visitExpr(const Expr&);
+    // visitExprPost is called
+    // 1) after you visit an Expr, visit and visitExprPost all of its children
+    // 2) after you rebuilt an Expr, perhaps rebuilt multiple times in recursive
+    // mode
     virtual Action visitExprPost(const Expr&);
+    virtual ref<UpdateNode> visitUpdateNode(const ref<UpdateNode> &un);
 
+    // visit derived Expr type is called after visitExpr but before
+    // visitExprPost
     virtual Action visitNotOptimized(const NotOptimizedExpr&);
     virtual Action visitRead(const ReadExpr&);
     virtual Action visitSelect(const SelectExpr&);
@@ -83,6 +93,11 @@ namespace klee {
   private:
     typedef ExprHashMap< ref<Expr> > visited_ty;
     visited_ty visited;
+    // you need a recursive visitor if you want to keep visit each node until
+    // you did not make any change in one pass
+    // E.g. ExprReplaceVisitor2, which can find and replace multiple expressions,
+    // has to be recursive because one replacement may create opportunities for
+    // other replacement.
     bool recursive;
 
     ref<Expr> visitActual(const ref<Expr> &e);

@@ -4137,14 +4137,6 @@ void Executor::executeMemoryOperation(ExecutionState &state, bool isWrite,
         if (interpreterOpts.MakeConcreteSymbolic)
           result = replaceReadWithSymbolic(state, result);
 
-        // if (!isa<ConstantExpr>(result) &&
-        //     getKInstUniqueID(target) == "zend_inline_hash_func.13044:B9:B9I6") {
-        //   klee_message("Catch weird frequency instruction");
-        //   assert(0);
-        // }
-        if (getKInstUniqueID(target) == "sqlite3_stmt_status:B1:B1I4") {
-          assert(0);
-        }
         bindLocal(target, state, result);
       }
 

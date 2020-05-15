@@ -1139,8 +1139,9 @@ if __name__ == "__main__":
         kinst_sorted = sorted(list(OptimizedUNKinstset))
         print("OptimizedUNKinstset: %s" % ','.join(kinst_sorted))
         if len(args.recordUN_out) > 0:
-            with open(args.recordUN_out, "w") as f:
-                f.write("%s\n" % '\n'.join(kinst_sorted))
+            f = open(args.recordUN_out, "w")
+            f.write("%s\n" % '\n'.join(kinst_sorted))
+            f.close()
         sys.exit(0)
     graph = json.load(open(args.graph_json))
     h = PyGraph.buildFromPyDict(graph)
@@ -1217,8 +1218,9 @@ if __name__ == "__main__":
         datarecCFG= "%s\n" % '\n'.join(kinst_sorted)
         print(datarecCFG)
         if len(args.recordUN_out) > 0:
-            with open(args.recordUN_out, "w") as f:
-                f.write(datarecCFG)
+            f = open(args.recordUN_out, "w")
+            f.write(datarecCFG)
+            f.close()
         print("All Label:")
         print("%s" % ', '.join(sorted([subh.id_map[nid].label
             for kinst in kinst_sorted for nid in subh.kinst2nodes[kinst]])))

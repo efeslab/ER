@@ -1291,6 +1291,7 @@ bool Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(res)) {
       if (!CE->isTrue()) {
         klee_warning("Oracle KTest: Adding False Constaint");
+        abort();
         return false;
       }
     }

@@ -529,7 +529,7 @@ public:
 
   unsigned getSize() const { return size; }
 
-  int compare(const UpdateNode &b) const;  
+  int compare(const UpdateNode &b) const;
   unsigned hash() const { return hashValue; }
   std::string getKInstUniqueID() const { return klee::getKInstUniqueID(kinst); }
   std::string getKInstDbgInfo() const { return klee::getKInstDbgInfo(kinst); }

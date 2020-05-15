@@ -39,9 +39,17 @@ UpdateNode::UpdateNode(const ref<UpdateNode> &_next, const ref<Expr> &_index,
 extern "C" void vc_DeleteExpr(void*);
 
 int UpdateNode::compare(const UpdateNode &b) const {
-  if (int i = index.compare(b.index)) 
-    return i;
-  return value.compare(b.value);
+  if (this == &b) return 0;
+  if (int cmp = index.compare(b.index))
+    return cmp;
+  if (int cmp = value.compare(b.value))
+    return cmp;
+  if (getSize() < b.getSize())
+    return -1;
+  else if (getSize() > b.getSize())
+    return 1;
+  else
+    return next.compare(b.next);
 }
 
 unsigned UpdateNode::computeHash() {
@@ -82,21 +90,14 @@ int UpdateList::compare(const UpdateList &b) const {
   if (root != b.root)
     return root < b.root ? -1 : 1;
 
-  if (getSize() < b.getSize()) return -1;
-  else if (getSize() > b.getSize()) return 1;    
-
-  // XXX build comparison into update, make fast
-  const auto *an = head.get(), *bn = b.head.get();
-  for (; an && bn; an = an->next.get(), bn = bn->next.get()) {
-    if (an==bn) { // exploit shared list structure
-      return 0;
-    } else {
-      if (int res = an->compare(*bn))
-        return res;
-    }
-  }
-  assert(!an && !bn);  
-  return 0;
+  if (getSize() < b.getSize())
+    return -1;
+  else if (getSize() > b.getSize())
+    return 1;
+  else if (head == b.head)
+    return 0;
+  else
+    return head.compare(b.head);
 }
 
 unsigned UpdateList::hash() const {

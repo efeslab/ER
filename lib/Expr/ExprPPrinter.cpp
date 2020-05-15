@@ -163,22 +163,22 @@ private:
     bool openedList = false, nextShouldBreak = false;
     unsigned outerIndent = PC.pos;
     unsigned middleIndent = 0;
-    for (auto un = head; !un.isNull(); un = un->next) {
+    for (const UpdateNode *un = head.get(); un; un = un->next.get()) {
       // We are done if we hit the cache.
       std::map<const UpdateNode *, unsigned>::iterator it =
-          updateBindings.find(un.get());
+          updateBindings.find(un);
       if (it!=updateBindings.end()) {
         if (openedList)
           PC << "] @ ";
         PC << "U" << it->second;
         return;
-      } else if (!hasScan || shouldPrintUpdates.count(un.get())) {
+      } else if (!hasScan || shouldPrintUpdates.count(un)) {
         if (openedList)
           PC << "] @";
-        if (un != head)
+        if (un != head.get())
           PC.breakLine(outerIndent);
         PC << "U" << updateCounter << ":";
-        updateBindings.insert(std::make_pair(un.get(), updateCounter++));
+        updateBindings.insert(std::make_pair(un, updateCounter++));
         openedList = nextShouldBreak = false;
      }
     

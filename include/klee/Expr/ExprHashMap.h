@@ -11,31 +11,11 @@
 #define KLEE_EXPRHASHMAP_H
 
 #include "klee/Expr/Expr.h"
-
-#include <unordered_map>
-#include <unordered_set>
+#include "klee/util/RefHashMap.h"
 
 namespace klee {
-
-  namespace util {
-    struct ExprHash  {
-      unsigned operator()(const ref<Expr> &e) const { return e->hash(); }
-    };
-    
-    struct ExprCmp {
-      bool operator()(const ref<Expr> &a, const ref<Expr> &b) const {
-        return a==b;
-      }
-    };
-  }
-
-  template <typename T> using ExprHashMap = std::unordered_map<ref<Expr>, T,
-                       klee::util::ExprHash,
-                       klee::util::ExprCmp>;
-
-  typedef std::unordered_set<ref<Expr>, klee::util::ExprHash,
-                             klee::util::ExprCmp>
-      ExprHashSet;
+  template <typename T> using ExprHashMap = RefHashMap<Expr, T>;
+  typedef RefHashSet<Expr> ExprHashSet;
 } // namespace klee
 
 #endif /* KLEE_EXPRHASHMAP_H */

@@ -96,6 +96,7 @@ Important properties:
     freq (int): how many times this instruction got executed in the entire trace
 """
 class RecordableInst(object):
+    SUBGRAPH = True
     def __init__(self, pygraph, gynode, rec_nodes, hidden_nodes,
             concretized_nodes):
         self.pygraph = pygraph
@@ -116,10 +117,14 @@ class RecordableInst(object):
                                         # because of ptwrite limitation
         self.recordSizeNONPT = self.freq * self.width / 8
         self.coverageScoreFreq = self.coverageScore / self.recordSize
-        subgraph = pygraph.buildFromPyGraph(self.pygraph, concretized_nodes)
-        self.max_idep = subgraph.max_idep()
-        self.remainScore = sum([float(n.width) / 8 * (1+subgraph.idep_map[n.id])
-            for n in subgraph.gynodes])
+        if RecordableInst.SUBGRAPH:
+            subgraph = pygraph.buildFromPyGraph(self.pygraph, concretized_nodes)
+            self.max_idep = subgraph.max_idep()
+            self.remainScore = sum([float(n.width) / 8 * (1+subgraph.idep_map[n.id])
+                for n in subgraph.gynodes])
+        else:
+            self.max_idep = 0
+            self.remainScore = 0
         # sanity check
         if not isinstance(rec_nodes, set):
             raise RuntimeError("rec_nodes is not a set ")
@@ -1114,6 +1119,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     PyGraph.PTWRITE = not args.noptwrite
     if args.UN_constraints is not None and args.recordUNCFG is not None:
+        # Require recursive optimization. disable idep calculation
+        RecordableInst.SUBGRAPH = False
         # recursively optimize all kinst selected by previous iterations
         PreOptimizedUNKinstset = set(open(args.recordUNCFG).read().splitlines())
         UN_constraints = open(args.UN_constraints).read().splitlines()
@@ -1218,6 +1225,8 @@ if __name__ == "__main__":
             else:
                 print("Already Concretized!")
     elif len(array_to_concretize) > 0:
+        # Require recursive optimization. disable idep calculation
+        RecordableInst.SUBGRAPH = False
         recinsts = subh.UpdateListConcretize(array_to_concretize)
         kinst_sorted = sorted([r.kinst for r in recinsts])
         print("To concretize UN upon %s" % ','.join(array_to_concretize))

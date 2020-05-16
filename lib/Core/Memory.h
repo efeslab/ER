@@ -187,9 +187,12 @@ private:
   KInstruction **kinstStore;
 
   // XXX cleanup name of flushMask (its backwards or something)
+  // if an offset is concrete, corresponding bit will be set
+  // otherwise will be unset
   BitArray *concreteMask;
 
   // mutable because may need flushed during read of const
+  // if an offset needs flush, corresponding bit will be set
   mutable BitArray *flushMask;
 
   ref<Expr> *knownSymbolics;

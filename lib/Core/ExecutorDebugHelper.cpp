@@ -41,7 +41,11 @@ void debugDumpConstraintsEval(ExecutionState &state, ConstraintManager &cm, cons
   const Array *const *evalArraysBegin = nullptr;
   const Array *const *evalArraysEnd = nullptr;
   std::vector<const Array*> symbolic_objs;
-  if (expr_vec.empty()) { // no query expr, dumping for initial assigment
+  std::vector<ref<Expr>> simplified_expr_vec;
+  for (const ref<Expr> &e: expr_vec) {
+    simplified_expr_vec.push_back(cm.simplifyExpr(e));
+  }
+  if (simplified_expr_vec.empty()) { // no query expr, dumping for initial assigment
     for (auto s: state.symbolics) {
       symbolic_objs.push_back(s.second);
     }
@@ -51,8 +55,8 @@ void debugDumpConstraintsEval(ExecutionState &state, ConstraintManager &cm, cons
     }
   }
   else { // has query expr, dumping for evaluation
-    evalExprsBegin = &expr_vec[0];
-    evalExprsEnd = evalExprsBegin + expr_vec.size();
+    evalExprsBegin = &simplified_expr_vec[0];
+    evalExprsEnd = evalExprsBegin + simplified_expr_vec.size();
   }
   ExprPPrinter::printQuery(os, cm.getAllConstraints(), ConstantExpr::alloc(false, Expr::Bool),
       evalExprsBegin, evalExprsEnd,

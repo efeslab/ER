@@ -1176,6 +1176,7 @@ if __name__ == "__main__":
     if args.getUN:
         # @type: Dict(arrayname -> list of UN len)
         arr2UNlen = {}
+        # @type: Dict(arrayname -> list of [Indirect Read CNT, Direct Read CNT])
         arr2ReadRef = {}
         for n in subh.all_nodes_topo_order:
             if str(n.kind) == "UN":
@@ -1187,16 +1188,19 @@ if __name__ == "__main__":
                     # a new chain of UN appears
                     arr2UNlen[n.root].append(0)
                     IndirectReads = list(filter(lambda n: any([\
-                            e.weight == 1.5 for e in subh.edges[n.id]]),
+                            e.weight == 1.5 and str(e.target.kind) != "0" \
+                            for e in subh.edges[n.id]]),
                             readNodes))
                     arr2ReadRef.setdefault(n.root, []).append(
-                        (len(IndirectReads),
-                         len(readNodes)-len(IndirectReads)))
+                        [len(IndirectReads),
+                         len(readNodes)-len(IndirectReads)])
             if str(n.kind) == "3" and (n.id in subh.edges) and \
-               all([str(e.source.kind) != "UN" for e in subh.edges[n.id]]):
+               all([str(e.target.kind) != "UN" for e in subh.edges[n.id]]) and \
+               any([e.weight == 1.5 for e in subh.edges[n.id]]):
                 # this is a Read Node not depending on any UN
                 # Should keep tracking of its root
                 arr2UNlen.setdefault(n.root, [0])
+                arr2ReadRef.setdefault(n.root, [[0,0]])[-1][0] += 1
 
         bigarray_name = []
         for arr, UNL in arr2UNlen.items():
@@ -1208,7 +1212,7 @@ if __name__ == "__main__":
                 accumulate_len.append(accu_l)
             print("\t%s" % ', '.join(["%d(%d,%d)@[%d]" % (l, IR, R, accu_l) \
                 for l, (IR, R) , accu_l in \
-                zip(UNL, arr2ReadRef.get(arr, [(0,0)]), accumulate_len)]))
+                zip(UNL, arr2ReadRef.get(arr, [[0,0]]), accumulate_len)]))
             if accumulate_len[-1] > 4096:
                 bigarray_name.append(arr[0:arr.find('[')])
         print("bigarray: %s" % ','.join(bigarray_name))

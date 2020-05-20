@@ -129,7 +129,7 @@ bool PTWritePass::runOnModule(Module &M) {
           // need special pointer to int cast
           llvm::errs() << "Warning: pointer recording at " << iname <<
             " may not work due to undeterministic malloc\n";
-          Twine castname = Twine("ptwriteptrcast") + Twine(ptwrite_cnt++);
+          Twine castname = castPrefix + Twine(ptwrite_cnt++);
           CastInst *castI = CastInst::CreatePointerCast(&I, TyInt64, castname);
           castI->insertAfter(&I);
           args.push_back(castI);

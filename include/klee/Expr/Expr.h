@@ -195,8 +195,14 @@ public:
   };
   uint64_t flags = 0;
 
-  /// kinst keeps tracking of which IR instruction creates current expression.
-  /// it is maintained in "Executor::bindLocal" and "Expr::rebuild"
+  /// 1) kinst keeps tracking which IR instruction creates current expression.
+  /// It is maintained in "Executor::bindLocal" and "Expr::rebuild"
+  /// 2) With the presence of ExprReplaceVisitor (rewrite expressions based on
+  /// equalities), kinst is generalized to represent: by recording which
+  /// instruction, current expression can be concretized.
+  /// For example, N0:(Read x [1 2 3 y]) can be optimized to y given (x==3).
+  /// If N0 is bound to a kinst but y does not have a kinst, then after this
+  /// optimization we should bind y to the kinst of N0.
   KInstruction *kinst = nullptr;
 
 protected:  

@@ -138,11 +138,18 @@ ref<Expr> ExprVisitor::visitActual(const ref<Expr> &e) {
         if (res.kind==Action::ChangeTo)
           e_ret = res.argument;
       }
+      // current expression e is going to be replaced by e_ret.
+      // Transfer e's kinst to e_ret if e_ret is not bound to any kinst
+      // TODO: This is still not ideal, should this obeys the binding policy?
+      if (e_ret->kinst == nullptr)
+        e_ret->kinst = e->kinst;
       return e_ret;
     }
     case Action::SkipChildren:
       return e;
     case Action::ChangeTo:
+      if (res.argument->kinst == nullptr)
+        res.argument->kinst = e->kinst;
       return res.argument;
     }
   }

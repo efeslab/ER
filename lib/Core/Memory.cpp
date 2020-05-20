@@ -417,8 +417,9 @@ ref<Expr> ObjectState::read8(ref<Expr> offset) const {
   if (size>4096) {
     std::string allocInfo;
     object->getAllocInfo(allocInfo);
-    klee_warning("flushing %d bytes on read, may be slow and/or crash: %s",
-                 size, allocInfo.c_str());
+    klee_warning_once(0, "flushing %d bytes on read, may be slow and/or crash: %s", 
+                      size,
+                      allocInfo.c_str());
   }
   
   return ReadExpr::create(getUpdates(), ZExtExpr::create(offset, Expr::Int32));
@@ -472,8 +473,9 @@ void ObjectState::write8(ref<Expr> offset, ref<Expr> value,
   if (size>4096) {
     std::string allocInfo;
     object->getAllocInfo(allocInfo);
-    klee_warning("flushing %d bytes on read, may be slow and/or crash: %s",
-                 size, allocInfo.c_str());
+    klee_warning_once(0, "flushing %d bytes on read, may be slow and/or crash: %s", 
+                      size,
+                      allocInfo.c_str());
   }
   
   updates.extend(ZExtExpr::create(offset, Expr::Int32), value, flags, kinst);

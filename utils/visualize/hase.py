@@ -215,7 +215,7 @@ class PyGraph(object):
                 deleted_nodes])
             subgyedges = set([e for e in pygraph.gyedges if e.source.id not in
                 deleted_nodes and e.target.id not in deleted_nodes])
-            return PyGraph(subgynodes, subgyedges)
+            return PyGraph(subgynodes, subgyedges, pygraph.nodePostDom)
         else:
             return None
 
@@ -262,7 +262,7 @@ class PyGraph(object):
     @type GyEdgeSet: set(GyEdge)
     @param GyEdgeSet: set of GyEdges you want to build graph from
     """
-    def __init__(self, GyNodeSet, GyEdgeSet):
+    def __init__(self, GyNodeSet, GyEdgeSet, nodePostDom = None):
         self.gynodes = GyNodeSet
         self.gyedges = GyEdgeSet
 
@@ -289,7 +289,7 @@ class PyGraph(object):
         self.kinst2nodes = None
         # @type: Dict(nid->set(nid))
         # The post dominator of every kinst
-        self.nodePostDom = None
+        self.nodePostDom = nodePostDom
         # @type: Dict(node_id->int)
         # map a node_id to indirect depth
         self.idep_map = None
@@ -309,7 +309,8 @@ class PyGraph(object):
                 self.outnodes.add(n.id)
         self.topological_sort()
         self.build_kinst2nodes()
-        self.build_nodePostDom()
+        if self.nodePostDom is None:
+            self.build_nodePostDom()
         self.all_nodes_topo_order = sorted(self.gynodes,
                 key=lambda n: self.topological_map[n.id])
         self.calculate_idep()

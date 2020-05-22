@@ -82,6 +82,9 @@ PTWritePass::PTWritePass(std::string &cfg) : ModulePass(ID) {
 }
 
 bool PTWritePass::runOnModule(Module &M) {
+  unsigned int actual_bytes = 0;
+  unsigned int ptwrite_freq = 0;
+  const llvm::DataLayout &DL = M.getDataLayout();
   for (Module::iterator f = M.begin(), fe = M.end(); f != fe; ++f) {
     if (dataRecFuncSet.find(f->getName().str()) == dataRecFuncSet.end()) {
       continue;
@@ -108,7 +111,20 @@ bool PTWritePass::runOnModule(Module &M) {
           continue;
         }
 
-        llvm::errs() << "Instruction " << iname << " matched\n";
+        unsigned int type_width = DL.getTypeSizeInBits(itype);
+        llvm::errs() << "Instruction " << iname << " (w" << type_width
+                     << ")matched\n";
+        MDNode *MD = i->getMetadata("klee.freq");
+        if (MD) {
+          if (ConstantAsMetadata *CMD =
+                  dyn_cast<ConstantAsMetadata>(MD->getOperand(0).get())) {
+            if (ConstantInt *CI = dyn_cast<ConstantInt>(CMD->getValue())) {
+              unsigned int freq = CI->getZExtValue();
+              ptwrite_freq += freq;
+              actual_bytes += freq * type_width / 8;
+            }
+          }
+        }
         // to assign each additional CastInst a unique ID
         static unsigned int ptwrite_cnt = 0;
 
@@ -151,6 +167,9 @@ bool PTWritePass::runOnModule(Module &M) {
       }
     }
   }
-
+  llvm::errs() << "Actual Bytes to record: " << actual_bytes << '\n';
+  llvm::errs() << "PTWrite executed: " << ptwrite_freq << '\n';
+  llvm::errs() << "PTWrite Recorded: "
+               << ptwrite_freq * DL.getPointerSizeInBits() / 8 << '\n';
   return true;
 }

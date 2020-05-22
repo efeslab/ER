@@ -1505,6 +1505,15 @@ void Executor::stepInstruction(ExecutionState &state) {
     statsTracker->stepInstruction(state);
 
   ++stats::instructions;
+  if (!state.isInUserMain) {
+    ++stats::instInit;
+  } else if (state.isInPOSIX()) {
+    ++stats::instPosix;
+  } else if (state.isInLIBC()) {
+    ++stats::instLibc;
+  } else {
+    ++stats::instMain;
+  }
   ++state.steppedInstructions;
   state.prevPC() = state.pc();
   ++state.pc();
@@ -2358,17 +2367,22 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         break;
       }
       else if (AI->getAsmString() == "tag") {
-        uint64_t icnt = *theStatisticManager->getStatisticByName("Instructions");
+        uint64_t mcnt = stats::instMain;
+        uint64_t lcnt = stats::instLibc;
+        uint64_t pcnt = stats::instPosix;
+        uint64_t icnt = stats::instInit;
         const DebugLoc &loc = i->getDebugLoc();
         if (loc) {
           auto *Scope = cast<llvm::DIScope>(loc.getScope());
           std::string filename = Scope->getFilename();
           int line = loc.getLine();
           llvm::errs() << "Tag @ " << filename << ":" << line
-                      << ", " << "Instructions: " << icnt << "\n";
+                      << ", " << "Instructions: " << mcnt << "," << lcnt << ","
+                      << pcnt << "," << icnt << "\n";
         }
         else {
-          llvm::errs() << "Tag @ " << "Instructions: " << icnt << "\n";
+          llvm::errs() << "Tag @ " << "Instructions: " << mcnt << "," << lcnt << ","
+                      << pcnt << "," << icnt << "\n";
         }
         break;
       }

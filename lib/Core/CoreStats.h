@@ -59,6 +59,11 @@ namespace stats {
   extern Statistic dummy3;
   extern Statistic dataRecLoadedEffective;
 
+  extern Statistic instMain;
+  extern Statistic instLibc;
+  extern Statistic instPosix;
+  extern Statistic instInit;
+
   /// The number of process forks.
   extern Statistic forks;
 

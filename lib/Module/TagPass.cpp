@@ -165,6 +165,9 @@ bool TagPass::runOnModuleByLoc(Module &M) {
     for (Function::iterator b = f->begin(), be = f->end(); b != be; ++b) {
       bool prevMatched = false;
       for (BasicBlock::iterator i = b->begin(), ie = b->end(); i != ie; ++i) {
+        if (isa<llvm::PHINode>(i))
+          continue;
+
         const DebugLoc &loc = i->getDebugLoc();
         if (!loc)
           continue;

@@ -183,6 +183,19 @@ public:
     CmpKindLast=Sge
   };
 
+  enum class KInstBindingPolicy {
+    // The following policy will always update bindings if the instruction is
+    // from the application itself (i.e. avoiding recording POSIX and LIBC
+    // instructions)
+    FirstOccur, // do not overwrite existing bindings
+    LastOccur,  // always overwrite existing bindings
+    LessFreq,   // only overwrite existing bindings if new binding has less
+                // frequency
+    CallStackTopFirstOccur, // only overwrite existing bindings if new binding
+                            // is
+                            // from a different function
+  };
+
   /// @brief Required by klee::ref-managed objects
   class ReferenceCounter _refCount;
   int indirectReadRefCount = 0;
@@ -193,6 +206,8 @@ public:
     FLAG_INTERNAL = 1<<2,
     FLAG_INITIALIZATION = 1<<3
   };
+
+protected:
   uint64_t flags = 0;
 
   /// 1) kinst keeps tracking which IR instruction creates current expression.
@@ -203,9 +218,8 @@ public:
   /// For example, N0:(Read x [1 2 3 y]) can be optimized to y given (x==3).
   /// If N0 is bound to a kinst but y does not have a kinst, then after this
   /// optimization we should bind y to the kinst of N0.
-  KInstruction *kinst = nullptr;
+  const KInstruction *kinst = nullptr;
 
-protected:  
   unsigned hashValue;
 
   /// Compares `b` to `this` Expr and determines how they are ordered
@@ -332,11 +346,13 @@ public:
     else
       return 0;
   }
+  const KInstruction *getKInst() const { return kinst; }
+  void updateKInst(const KInstruction *newkinst);
 
 private:
   typedef llvm::DenseSet<std::pair<const Expr *, const Expr *> > ExprEquivSet;
   int compare(const Expr &b, ExprEquivSet &equivs) const;
-};
+}; // Expr
 
 struct Expr::CreateArg {
   ref<Expr> expr;
@@ -482,7 +498,7 @@ public:
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
     ref<Expr> result = create(kids[0]);
-    result->kinst = kinst;
+    result->updateKInst(kinst);
     return result;
   }
   virtual void rebuildInPlace(ref<Expr> kids[]) { src = kids[0]; }
@@ -665,12 +681,12 @@ public:
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
     ref<Expr> result = create(updates, kids[0]);
-    result->kinst = kinst;
+    result->updateKInst(kinst);
     return result;
   }
   ref<Expr> rebuild(UpdateList &ul, ref<Expr> &_index) const {
     ref<Expr> result = create(ul, _index);
-    result->kinst = kinst;
+    result->updateKInst(kinst);
     return result;
   }
   virtual void rebuildInPlace(ref<Expr> kids[]) {
@@ -735,7 +751,7 @@ public:
     
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
     ref<Expr> result = create(kids[0], kids[1], kids[2]);
-    result->kinst = kinst;
+    result->updateKInst(kinst);
     return result;
   }
   virtual void rebuildInPlace(ref<Expr> kids[]) {
@@ -806,7 +822,7 @@ public:
   
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const {
     ref<Expr> result = create(kids[0], kids[1]);
-    result->kinst = kinst;
+    result->updateKInst(kinst);
     return result;
   }
   virtual void rebuildInPlace(ref<Expr> kids[]) { left = kids[0]; right = kids[1]; }
@@ -871,7 +887,7 @@ public:
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
     ref<Expr> result = create(kids[0], offset, width);
-    result->kinst = kinst;
+    result->updateKInst(kinst);
     return result;
   }
   virtual void rebuildInPlace(ref<Expr> kids[]) {
@@ -919,7 +935,7 @@ public:
 
   virtual ref<Expr> rebuild(ref<Expr> kids[]) const { 
     ref<Expr> result = create(kids[0]);
-    result->kinst = kinst;
+    result->updateKInst(kinst);
     return result;
   }
   virtual void rebuildInPlace(ref<Expr> kids[]) {
@@ -998,7 +1014,7 @@ public:                                                          \
     Kind getKind() const { return _class_kind; }                 \
     virtual ref<Expr> rebuild(ref<Expr> kids[]) const {          \
       ref<Expr> result = create(kids[0], width);                 \
-      result->kinst = kinst;                                     \
+      result->updateKInst(kinst);                                \
       return result;                                             \
     }                                                            \
                                                                  \
@@ -1031,12 +1047,12 @@ CAST_EXPR_CLASS(ZExt)
     }                                                                          \
     static ref<Expr> create(const ref<Expr> &l, const ref<Expr> &r);           \
     Width getWidth() const {                                                   \
-		return left.isNull()?right->getWidth():left->getWidth();               \
-	}                                                                          \
+      return left.isNull() ? right->getWidth() : left->getWidth();             \
+    }                                                                          \
     Kind getKind() const { return _class_kind; }                               \
     virtual ref<Expr> rebuild(ref<Expr> kids[]) const {                        \
       ref<Expr> result = create(kids[0], kids[1]);                             \
-      result->kinst = kinst;                                                   \
+      result->updateKInst(kinst);                                              \
       return result;                                                           \
     }                                                                          \
                                                                                \
@@ -1086,7 +1102,7 @@ ARITHMETIC_EXPR_CLASS(AShr)
     Kind getKind() const { return _class_kind; }                               \
     virtual ref<Expr> rebuild(ref<Expr> kids[]) const {                        \
       ref<Expr> result = create(kids[0], kids[1]);                             \
-      result->kinst = kinst;                                                   \
+      result->updateKInst(kinst);                                              \
       return result;                                                           \
     }                                                                          \
                                                                                \

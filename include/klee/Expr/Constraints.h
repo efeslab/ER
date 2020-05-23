@@ -89,6 +89,7 @@ private:
   // want UpdateList diverge in multiple paths when I am following a single path
   // in replay.
   mutable UNMap_ty replacedUN;
+  mutable UNMap_ty visitedUN;
 
   // returns true iff the constraints were modified
   bool rewriteConstraints(ExprVisitor &visitor);

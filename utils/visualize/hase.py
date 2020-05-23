@@ -182,6 +182,7 @@ l[0] in g.nodes
 class PyGraph(object):
     # If we assume PTWRITE limitation (minimum record 8B)
     PTWRITE = True
+    ALLOWPTR = False
 
     """
     @type gygraph: GyGraph
@@ -215,7 +216,7 @@ class PyGraph(object):
                 deleted_nodes])
             subgyedges = set([e for e in pygraph.gyedges if e.source.id not in
                 deleted_nodes and e.target.id not in deleted_nodes])
-            return PyGraph(subgynodes, subgyedges)
+            return PyGraph(subgynodes, subgyedges, pygraph.nodePostDom)
         else:
             return None
 
@@ -262,7 +263,7 @@ class PyGraph(object):
     @type GyEdgeSet: set(GyEdge)
     @param GyEdgeSet: set of GyEdges you want to build graph from
     """
-    def __init__(self, GyNodeSet, GyEdgeSet):
+    def __init__(self, GyNodeSet, GyEdgeSet, nodePostDom = None):
         self.gynodes = GyNodeSet
         self.gyedges = GyEdgeSet
 
@@ -289,7 +290,7 @@ class PyGraph(object):
         self.kinst2nodes = None
         # @type: Dict(nid->set(nid))
         # The post dominator of every kinst
-        self.nodePostDom = None
+        self.nodePostDom = nodePostDom
         # @type: Dict(node_id->int)
         # map a node_id to indirect depth
         self.idep_map = None
@@ -309,7 +310,8 @@ class PyGraph(object):
                 self.outnodes.add(n.id)
         self.topological_sort()
         self.build_kinst2nodes()
-        self.build_nodePostDom()
+        if self.nodePostDom is None:
+            self.build_nodePostDom()
         self.all_nodes_topo_order = sorted(self.gynodes,
                 key=lambda n: self.topological_map[n.id])
         self.calculate_idep()
@@ -807,7 +809,7 @@ class PyGraph(object):
                 worklist.pop()
                 # collect and compare with children
                 n = self.id_map[wnid]
-                if isKInstValid(n): # and n.ispointer == "false":
+                if isKInstValid(n) and (self.ALLOWPTR or n.ispointer == "false"):
                     self_bytes = self.GetNodeRecordingSize(n)
                 else:
                     self_bytes = maxint
@@ -870,9 +872,15 @@ class PyGraph(object):
                             re.target.id not in visited_nids:
                         visited_nids.add(re.target.id)
                         initial_strategy |= self.MustConcretize(re.target.id)
-        newRIlist, subh = self.recursiveOptimizeRecNids(initial_strategy)
+        self.ALLOWPTR = True
+        noptr_strategy = self.recursiveOptimizeRecNids(initial_strategy)
+        self.ALLOWPTR = True
+        # we now allow ptr, need to flush all previous results
+        subh.mustconcretize_cache.clear()
+        ptr_strategy = subh.recursiveOptimizeRecNids(noptr_strategy)
+        self.ALLOWPTR = False
         # newRIlist, subh = self.recursiveOptimizeRecKInstL(kinstset)
-        return newRIlist
+        return ptr_strategy
 
     """
     @type kinsts: List of str
@@ -913,24 +921,27 @@ class PyGraph(object):
             start = kinsts[0]
             while True:
                 k = kinsts.pop(0)
-                #if k == "sqlite3GetToken:B105:B105I11":
-                #    import pdb
-                #    pdb.set_trace()
-                print("Reasoning %s based on %s" % (k, ', '.join(kinsts)))
+                #print("Reasoning %s based on %s" % (k, ', '.join(kinsts)))
                 kl, subh = self.buildRecKInstL(kinsts)
                 target_nids = kinst2nids[k]
                 RecNids = set()
                 for nid in target_nids:
                     SingleNodeNewRecNids = subh.MustConcretize(nid)
+                    #print("nid:%s, newRecNids: %s" % (nid,
+                    #    ','.join(SingleNodeNewRecNids)))
                     RecNids |= SingleNodeNewRecNids
                 newKInstSet = self.GetKInstSetFromNids(RecNids)
                 newRecCost = self.GetKInstSetRecordingSize(newKInstSet)
                 oldRecCost = self.GetKInstSetRecordingSize([k])
-                if newRecCost < oldRecCost:
+                #print("newRecCost %d, oldRecCost %d, newKInstSet %s" % (
+                #    newRecCost, oldRecCost, ','.join(newKInstSet)))
+                if newRecCost < oldRecCost or \
+                   (newRecCost == oldRecCost and \
+                    len(newKInstSet) == 1 and k not in newKInstSet):
                     changed = True
                     # replace old kinst with the new ones
                     del kinst2nids[k]
-                    print("Replace %s with %s" % (k, ','.join(newKInstSet)))
+                    #print("Replace %s with %s" % (k, ','.join(newKInstSet)))
                     for nid in RecNids:
                         kinst2nids.setdefault(self.id_map[nid].kinst,
                                 set()).add(nid)
@@ -940,11 +951,12 @@ class PyGraph(object):
                     kinsts.append(k)
                 if kinsts[0] == start:
                     break
-                else:
-                    print("%s != %s (start)" % (kinsts[0], start))
             if not changed:
                 break
-        return self.buildRecKInstL(kinsts)
+        finalNids = set()
+        for key, value in kinst2nids.items():
+            finalNids |= value
+        return finalNids
 
 
 class HaseUtils(object):
@@ -1193,7 +1205,8 @@ if __name__ == "__main__":
         evalnid = set(args.evalnid.split(','))
         query_nodes |= set(filter(lambda n: n.id in evalnid, h.gynodes))
     if args.recordUN is not None:
-        array_to_concretize |= set(args.recordUN.split(','))
+        array_to_concretize |= \
+            set([s for s in args.recordUN.split(',') if len(s) > 0])
 
     input_kinst_list, subh = h.buildRecKInstL(args.selected_kinst)
 
@@ -1256,11 +1269,16 @@ if __name__ == "__main__":
                 print(subh.getRecInstsInfo(RI))
             else:
                 print("Already Concretized!")
-    elif len(array_to_concretize) > 0:
+    elif args.recordUN is not None:
+        if len(array_to_concretize) == 0:
+            print("Empty array list")
+            sys.exit(0)
         # Require recursive optimization. disable idep calculation
         RecordableInst.SUBGRAPH = False
-        recinsts = subh.UpdateListConcretize(array_to_concretize)
-        kinst_sorted = sorted([r.kinst for r in recinsts])
+        recnids = subh.UpdateListConcretize(array_to_concretize)
+        kinsts = subh.GetKInstSetFromNids(recnids)
+        recinsts, graph_withrecinsts = subh.buildRecKInstL(kinsts)
+        kinst_sorted = sorted(kinsts)
         print("To concretize UN upon %s" % ','.join(array_to_concretize))
         print(subh.getRecInstsInfo(recinsts))
         print("Python kinst list:")

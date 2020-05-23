@@ -47,11 +47,11 @@ protected:
   // their **content** (including the following chain of UpdateNodes)
   UNMap_ty &replacedUN;
   // This is a replacement cache only lives inside this ExprVisitor
-  UNMap_ty visitedUN;
+  UNMap_ty &visitedUN;
 
 public:
-  ExprReplaceVisitorBase(UNMap_ty &_replacedUN)
-      : ExprVisitor(true), replacedUN(_replacedUN) {}
+  ExprReplaceVisitorBase(UNMap_ty &_replacedUN, UNMap_ty &_visitedUN)
+      : ExprVisitor(true), replacedUN(_replacedUN), visitedUN(_visitedUN) {}
   ref<UpdateNode> visitUpdateNode(const ref<UpdateNode> &un) override {
     // TODO: In recursive mode, should I repeatedly search visited Exprs, so
     // that chains of replacement can resolved quicker.
@@ -89,8 +89,8 @@ private:
   ref<Expr> src, dst;
 
 public:
-  ExprReplaceVisitor(UNMap_ty &_replaceUN, ref<Expr> _src, ref<Expr> _dst)
-      : ExprReplaceVisitorBase(_replaceUN), src(_src), dst(_dst) {}
+  ExprReplaceVisitor(UNMap_ty &_replaceUN, UNMap_ty &_visitedUN, ref<Expr> _src, ref<Expr> _dst)
+      : ExprReplaceVisitorBase(_replaceUN, _visitedUN), src(_src), dst(_dst) {}
 
   Action visitExpr(const Expr &e) {
     if (e == *src.get()) {
@@ -118,9 +118,9 @@ private:
   const std::map< ref<Expr>, ref<Expr> > &replacements;
 
 public:
-  ExprReplaceVisitor2(UNMap_ty &_replaceUN,
+  ExprReplaceVisitor2(UNMap_ty &_replaceUN, UNMap_ty &_visitedUN,
                       const std::map<ref<Expr>, ref<Expr>> &_replacements)
-      : ExprReplaceVisitorBase(_replaceUN), replacements(_replacements) {}
+      : ExprReplaceVisitorBase(_replaceUN, _visitedUN), replacements(_replacements) {}
 
   Action visitExprPost(const Expr &e) {
     std::map< ref<Expr>, ref<Expr> >::const_iterator it =
@@ -177,7 +177,7 @@ void ConstraintManager::simplifyForValidConstraint(ref<Expr> e) {
 ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
   if (isa<ConstantExpr>(e))
     return e;
-  return ExprReplaceVisitor2(replacedUN, equalities).visit(e);
+  return ExprReplaceVisitor2(replacedUN, visitedUN, equalities).visit(e);
 }
 
 bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
@@ -210,7 +210,8 @@ bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
       // (byte-constant comparison).
       BinaryExpr *be = cast<BinaryExpr>(e);
       if (isa<ConstantExpr>(be->left) && !isa<EqExpr>(be->right)) {
-        ExprReplaceVisitor visitor(replacedUN, be->right, be->left);
+        ExprReplaceVisitor visitor(replacedUN, visitedUN, be->right, be->left);
+        visitedUN.clear();
         changed |= rewriteConstraints(visitor);
       }
     }

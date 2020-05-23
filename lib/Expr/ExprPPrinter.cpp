@@ -10,6 +10,7 @@
 #include "klee/Expr/ExprPPrinter.h"
 
 #include "klee/Expr/Constraints.h"
+#include "klee/Expr/ExprHashMap.h"
 #include "klee/OptionCategories.h"
 #include "klee/util/PrintContext.h"
 
@@ -63,10 +64,10 @@ class PPrinter : public ExprPPrinter {
 public:
   std::set<const Array*> usedArrays;
 private:
-  std::map<ref<Expr>, unsigned> bindings;
+  ExprHashMap<unsigned> bindings;
   std::map<unsigned, ref<Expr> > debugInfoPrintList;
   std::map<const UpdateNode*, unsigned> updateBindings;
-  std::set< ref<Expr> > couldPrint, shouldPrint, shouldPrintInst;
+  ExprHashSet couldPrint, shouldPrint, shouldPrintInst;
   std::set<const UpdateNode*> couldPrintUpdates, shouldPrintUpdates;
   llvm::raw_ostream &os;
   unsigned counter;
@@ -142,7 +143,7 @@ private:
         shouldPrint.insert(e);
       }
 
-      if (e->kinst) {
+      if (e->getKInst()) {
         shouldPrintInst.insert(e);
       }
     }
@@ -390,14 +391,27 @@ public:
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(e))
       printConst(CE, PC, printConstWidth);
     else {
-      std::map<ref<Expr>, unsigned>::iterator it = bindings.find(e);
+      ExprHashMap<unsigned>::iterator it = bindings.find(e);
       if (it!=bindings.end()) {
         PC << 'N' << it->second;
+        if (e->getKInst()) {
+          std::map<unsigned, ref<Expr>>::iterator debugInfo_it;
+          bool inserted;
+          std::tie(debugInfo_it, inserted) =
+              debugInfoPrintList.insert(std::make_pair(it->second, e));
+          if (!inserted) {
+            if (e->getKInst()->frequency <
+                debugInfo_it->second->getKInst()->frequency) {
+              debugInfo_it->second = e;
+            }
+          }
+        }
       } else {
         if (!hasScan || shouldPrint.count(e) || shouldPrintInst.count(e)) {
           PC << 'N' << counter << ':';
-          if (e->kinst)
+          if (e->getKInst()) {
             debugInfoPrintList.insert(std::make_pair(counter, e));
+          }
           bindings.insert(std::make_pair(e, counter++));
         }
 

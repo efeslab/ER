@@ -457,8 +457,8 @@ void ParserImpl::ParseUniqID(Token &Tok) {
 
     auto it = ExprSymTab.find(id);
     if (it != ExprSymTab.end()) {
-      assert(it->second->kinst == nullptr);
-      it->second->kinst = ki;
+      assert(it->second->getKInst() == nullptr);
+      it->second->updateKInst(ki);
     }
   }
 }

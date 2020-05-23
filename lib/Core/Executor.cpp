@@ -445,39 +445,6 @@ cl::opt<bool>
                     cl::desc("Print debug info related to scheduling, context "
                              "switch, etc. (default=false)"),
                     cl::cat(HASECat));
-enum class KInstBindingPolicy {
-  // The following policy will always update bindings if the instruction is from
-  // the application itself (i.e. avoiding recording POSIX and LIBC
-  // instructions)
-  FirstOccur, // do not overwrite existing bindings
-  LastOccur,  // always overwrite existing bindings
-  LessFreq,   // only overwrite existing bindings if new binding has less
-              // frequency
-  CallStackTopFirstOccur, // only overwrite existing bindings if new binding is
-                          // from a different function
-};
-cl::opt<KInstBindingPolicy> KInstBinding(
-    "kinst-binding", cl::desc("Specify the KInst binding policy"),
-    cl::values(
-        clEnumValN(KInstBindingPolicy::FirstOccur, "firstoccur",
-                   "Bind a symbolic expression to the instruction during its "
-                   "first occurence. i.e., do not overwrite existing bindings"),
-        clEnumValN(
-            KInstBindingPolicy::LastOccur, "lastoccur",
-            "(default) Bind a symbolic expression to the latest instruction "
-            "associating to it. i.e., always overwrite existing bindings"),
-        clEnumValN(
-            KInstBindingPolicy::CallStackTopFirstOccur, "callstacktopfirst",
-            "Bind a symbolic expression to the instruction, that is from "
-            "the callstack top function, but the first occurance in "
-            "that function."),
-        clEnumValN(
-            KInstBindingPolicy::LessFreq, "lessfreq",
-            "Bind a symbolic expression to the instruction associating to it "
-            "which has less frequency than existing bindings. i.e. only "
-            "overwrite existing bindings if new bindings has less frequency.")
-            KLEE_LLVM_CL_VAL_END),
-    cl::init(KInstBindingPolicy::CallStackTopFirstOccur), cl::cat(HASECat));
 } // namespace
 
 
@@ -1329,35 +1296,9 @@ void Executor::bindLocal(KInstruction *target, ExecutionState &state,
   // I mark LLVM functions from POSIX and LIBC with special function
   // attributes.
   // I should only bind a kinst to a symbolic expression if the kinst does not
-  // belong to POSIX nor LIBC. Besides, whether I should overwrite an existing
-  // binding depends on "KInstBindingPolicy" (see --help)
-  //
-  // NOTE: Since kinst tracked with "lastoccur" or "lessfreq" policy is no
-  // longer guaranteed to be the latest instruction bind this symbolic value to
-  // a llvm register, I should never use Expr.kinst to locate a llvm register.
-
-  bool should_update = state.isInTargetProgram();
-  switch (KInstBinding) {
-  case KInstBindingPolicy::FirstOccur:
-    should_update &= !value->kinst;
-    break;
-  case KInstBindingPolicy::LessFreq:
-    should_update &=
-        (!value->kinst || (value->kinst->frequency > target->frequency));
-    break;
-  case KInstBindingPolicy::CallStackTopFirstOccur:
-    should_update &=
-        (!value->kinst || (value->kinst->inst->getParent()->getParent() !=
-                           target->inst->getParent()->getParent()));
-  default /*(KInstBindingPolicy::LastOccur)*/:
-    break;
-  }
-  if (should_update) {
-    /*if (target->inst->getParent()->getParent()->getName() == "memset") {
-      klee_message("Bind to memset?");
-    }*/
-    value->kinst = target;
-    value->flags |= Expr::Expr::FLAG_INSTRUCTION_ROOT;
+  // belong to POSIX nor LIBC.
+  if (state.isInTargetProgram()) {
+    value->updateKInst(target);
   }
 }
 

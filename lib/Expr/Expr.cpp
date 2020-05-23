@@ -41,6 +41,28 @@ cl::opt<bool> ConstArrayOpt(
     cl::desc(
         "Enable an optimization involving all-constant arrays (default=false)"),
     cl::cat(klee::ExprCat));
+cl::opt<Expr::KInstBindingPolicy> KInstBinding(
+    "kinst-binding", cl::desc("Specify the KInst binding policy"),
+    cl::values(
+        clEnumValN(Expr::KInstBindingPolicy::FirstOccur, "firstoccur",
+                   "Bind a symbolic expression to the instruction during its "
+                   "first occurence. i.e., do not overwrite existing bindings"),
+        clEnumValN(
+            Expr::KInstBindingPolicy::LastOccur, "lastoccur",
+            "(default) Bind a symbolic expression to the latest instruction "
+            "associating to it. i.e., always overwrite existing bindings"),
+        clEnumValN(
+            Expr::KInstBindingPolicy::CallStackTopFirstOccur, "callstacktopfirst",
+            "Bind a symbolic expression to the instruction, that is from "
+            "the callstack top function, but the first occurance in "
+            "that function."),
+        clEnumValN(
+            Expr::KInstBindingPolicy::LessFreq, "lessfreq",
+            "Bind a symbolic expression to the instruction associating to it "
+            "which has less frequency than existing bindings. i.e. only "
+            "overwrite existing bindings if new bindings has less frequency.")
+            KLEE_LLVM_CL_VAL_END),
+    cl::init(Expr::KInstBindingPolicy::CallStackTopFirstOccur), cl::cat(ExprCat));
 }
 
 /***/
@@ -84,6 +106,38 @@ const char *Expr::getKindStr(enum Expr::Kind k) {
   }
   return "Unknown Expr";
 };
+
+void Expr::updateKInst(const KInstruction *newkinst) {
+  // Whether I should overwrite an existing binding depends on
+  // "KInstBindingPolicy" (see --help)
+  //
+  // NOTE: Since kinst tracked with "lastoccur" or "lessfreq" policy is no
+  // longer guaranteed to be the latest instruction bind this symbolic value to
+  // a llvm register, I should never use Expr::kinst to locate a llvm register.
+  if (!newkinst) return;
+  bool should_update = false;
+  switch (KInstBinding) {
+  case KInstBindingPolicy::FirstOccur:
+    should_update = !kinst;
+    break;
+  case KInstBindingPolicy::LessFreq:
+    should_update =
+        (!kinst || (kinst->frequency > newkinst->frequency));
+    break;
+  case KInstBindingPolicy::CallStackTopFirstOccur:
+    should_update =
+        (!kinst || (kinst->inst->getParent()->getParent() !=
+                           newkinst->inst->getParent()->getParent()));
+    break;
+  default:
+    // Unknown binding policy
+    abort();
+  }
+  if (should_update) {
+    kinst = newkinst;
+    flags |= Expr::FLAG_INSTRUCTION_ROOT;
+  }
+}
 
 std::string klee::getKInstUniqueID(const KInstruction *ki) {
   if (ki) {
@@ -854,10 +908,10 @@ static ref<Expr> AddExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
     return r;
   } else {
     Expr::Kind rk = r->getKind();
-    if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0)) && !r->kinst) { // A + (B+c) == (A+B) + c
+    if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // A + (B+c) == (A+B) + c
       return AddExpr::create(AddExpr::create(cl, r->getKid(0)),
                              r->getKid(1));
-    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0)) && !r->kinst) { // A + (B-c) == (A+B) - c
+    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // A + (B-c) == (A+B) - c
       return SubExpr::create(AddExpr::create(cl, r->getKid(0)),
                              r->getKid(1));
     } else {
@@ -875,16 +929,16 @@ static ref<Expr> AddExpr_create(Expr *l, Expr *r) {
     return XorExpr_create(l, r);
   } else {
     Expr::Kind lk = l->getKind(), rk = r->getKind();
-    if (lk==Expr::Add && isa<ConstantExpr>(l->getKid(0)) && !l->kinst) { // (k+a)+b = k+(a+b)
+    if (lk==Expr::Add && isa<ConstantExpr>(l->getKid(0)) && !l->getKInst()) { // (k+a)+b = k+(a+b)
       return AddExpr::create(l->getKid(0),
                              AddExpr::create(l->getKid(1), r));
-    } else if (lk==Expr::Sub && isa<ConstantExpr>(l->getKid(0)) && !l->kinst) { // (k-a)+b = k+(b-a)
+    } else if (lk==Expr::Sub && isa<ConstantExpr>(l->getKid(0)) && !l->getKInst()) { // (k-a)+b = k+(b-a)
       return AddExpr::create(l->getKid(0),
                              SubExpr::create(r, l->getKid(1)));
-    } else if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0)) && !r->kinst) { // a + (k+b) = k+(a+b)
+    } else if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // a + (k+b) = k+(a+b)
       return AddExpr::create(r->getKid(0),
                              AddExpr::create(l, r->getKid(1)));
-    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0)) && !r->kinst) { // a + (k-b) = k+(a-b)
+    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // a + (k-b) = k+(a-b)
       return AddExpr::create(r->getKid(0),
                              SubExpr::create(l, r->getKid(1)));
     } else {
@@ -900,10 +954,10 @@ static ref<Expr> SubExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
     return XorExpr_createPartialR(cl, r);
   } else {
     Expr::Kind rk = r->getKind();
-    if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0)) && !r->kinst) { // A - (B+c) == (A-B) - c
+    if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // A - (B+c) == (A-B) - c
       return SubExpr::create(SubExpr::create(cl, r->getKid(0)),
                              r->getKid(1));
-    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0)) && !r->kinst) { // A - (B-c) == (A-B) + c
+    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // A - (B-c) == (A-B) + c
       return AddExpr::create(SubExpr::create(cl, r->getKid(0)),
                              r->getKid(1));
     } else {
@@ -925,16 +979,16 @@ static ref<Expr> SubExpr_create(Expr *l, Expr *r) {
     return ConstantExpr::alloc(0, type);
   } else {
     Expr::Kind lk = l->getKind(), rk = r->getKind();
-    if (lk==Expr::Add && isa<ConstantExpr>(l->getKid(0)) && !l->kinst) { // (k+a)-b = k+(a-b)
+    if (lk==Expr::Add && isa<ConstantExpr>(l->getKid(0)) && !l->getKInst()) { // (k+a)-b = k+(a-b)
       return AddExpr::create(l->getKid(0),
                              SubExpr::create(l->getKid(1), r));
-    } else if (lk==Expr::Sub && isa<ConstantExpr>(l->getKid(0)) && !l->kinst) { // (k-a)-b = k-(a+b)
+    } else if (lk==Expr::Sub && isa<ConstantExpr>(l->getKid(0)) && !l->getKInst()) { // (k-a)-b = k-(a+b)
       return SubExpr::create(l->getKid(0),
                              AddExpr::create(l->getKid(1), r));
-    } else if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0)) && !r->kinst) { // a - (k+b) = (a-c) - k
+    } else if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // a - (k+b) = (a-c) - k
       return SubExpr::create(SubExpr::create(l, r->getKid(1)),
                              r->getKid(0));
-    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0)) && !r->kinst) { // a - (k-b) = (a+b) - k
+    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // a - (k-b) = (a+b) - k
       return SubExpr::create(AddExpr::create(l, r->getKid(1)),
                              r->getKid(0));
     } else {
@@ -1173,11 +1227,6 @@ static ref<Expr> TryConstArrayOpt(const ref<ConstantExpr> &cl,
 
   return res;
 }
-static inline void kinstTransition(Expr *from, Expr *to) {
-  if (!to->kinst) {
-    to->kinst = from->kinst;
-  }
-}
 static ref<Expr> EqExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {  
   Expr::Width width = cl->getWidth();
 
@@ -1196,7 +1245,7 @@ static ref<Expr> EqExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
           // 0 == (0 == A) => A
           if (CE->getWidth() == Expr::Bool &&
               CE->isFalse()) {
-            kinstTransition(r, ree->right.get());
+            ree->right->updateKInst(r->getKInst());
             return ree->right;
           }
         }

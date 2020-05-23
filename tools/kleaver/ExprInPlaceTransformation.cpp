@@ -102,7 +102,7 @@ void ExprInPlaceTransformer::visitExpr(Expr *e) {
         // can be omitted to null
         replaced_expr = nullptr;
       }
-      else if ((nonnull_kids.size() == 1) && (e->kinst == nullptr)) {
+      else if ((nonnull_kids.size() == 1) && (e->getKInst() == nullptr)) {
         // can be omitted to its only dependence
         replaced_expr = *(nonnull_kids.begin());
       }

@@ -106,7 +106,7 @@ std::string klee::getKInstDbgInfo(const KInstruction *ki) {
     if (info) {
       return info->file + ":" +
         std::to_string(info->line) + "," + std::to_string(info->column) +
-        " [asm " + std::to_string(info->assemblyLine) + " ]";
+        " [asm " + std::to_string(info->assemblyLine) + "]";
     }
     else {
       return "N/A";
@@ -620,10 +620,9 @@ ref<Expr> ReadExpr::create(const UpdateList &ul, ref<Expr> index) {
   // least recent to find a potential written value for a concrete index;
   // stop if an update with symbolic has been found as we don't know which
   // array element has been updated
-  const UpdateNode *un = ul.head;
+  auto un = ul.head.get();
   bool updateListHasSymbolicWrites = false;
-  for (; un; un=un->next) {
-    // Check if we have an equivalent concrete index
+  for (; un; un = un->next.get()) {
     ref<Expr> cond = EqExpr::create(index, un->index);
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(cond)) {
       if (CE->isTrue())
@@ -1172,7 +1171,11 @@ static ref<Expr> TryConstArrayOpt(const ref<ConstantExpr> &cl,
 
   return res;
 }
-
+static inline void kinstTransition(Expr *from, Expr *to) {
+  if (!to->kinst) {
+    to->kinst = from->kinst;
+  }
+}
 static ref<Expr> EqExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {  
   Expr::Width width = cl->getWidth();
 
@@ -1184,14 +1187,16 @@ static ref<Expr> EqExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
       // 0 == ...
       
       if (rk == Expr::Eq) {
-        const EqExpr *ree = cast<EqExpr>(r);
+        EqExpr *ree = cast<EqExpr>(r);
 
         // eliminate double negation
         if (ConstantExpr *CE = dyn_cast<ConstantExpr>(ree->left)) {
           // 0 == (0 == A) => A
           if (CE->getWidth() == Expr::Bool &&
-              CE->isFalse())
+              CE->isFalse()) {
+            kinstTransition(r, ree->right.get());
             return ree->right;
+          }
         }
       } else if (rk == Expr::Or) {
         const OrExpr *roe = cast<OrExpr>(r);

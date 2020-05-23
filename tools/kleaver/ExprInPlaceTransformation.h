@@ -22,19 +22,19 @@ class ExprInPlaceTransformer {
     EntryType t;
     union {
       Expr *e;
-      const UpdateNode *un;
+      UpdateNode *un;
     };
     WorkListEntry(Expr *_e): t(EExpr), e(_e) {}
-    WorkListEntry(const UpdateNode *_un): t(EUNode), un(_un) {}
+    WorkListEntry(UpdateNode *_un): t(EUNode), un(_un) {}
     ~WorkListEntry() {}
     bool isExpr() const { return t == EExpr; }
     bool isUNode() const { return t == EUNode; }
   };
 
   // track visited Expr * and cache the transformation result
-  std::unordered_map<const Expr *, Expr *> visited_expr;
+  std::unordered_map<Expr*, Expr*> visited_expr;
   // same as above, but for update nodes
-  std::unordered_map<const UpdateNode *, const UpdateNode *> visited_un;
+  std::unordered_map<UpdateNode* , UpdateNode*> visited_un;
 
   // Each entry in this list may have two status: visited or unvisisted
   // For visited entry, it should be poped up from this worklist, then use
@@ -70,10 +70,10 @@ class ExprInPlaceTransformer {
     expr_kidstack.pop_back();
     return e;
   }
-  inline const UpdateNode *popKidUNode() {
+  inline UpdateNode *popKidUNode() {
     WorkListEntry &we = expr_kidstack.back();
     assert(we.isUNode());
-    const UpdateNode *un = we.un;
+    UpdateNode *un = we.un;
     expr_kidstack.pop_back();
     return un;
   }
@@ -89,7 +89,7 @@ class ExprInPlaceTransformer {
     // this is actually a post-order traversal
     void visitDFS(Expr *e);
     // Historically, UpdateList.head is const. So we need to allocate new UpdateNode
-    void visitUNode(const UpdateNode *un);
+    void visitUNode(UpdateNode *un);
     const klee::expr::QueryCommand *getNewQCptr() const { return new_QCp; }
 };
 #endif // KLEE_EXPRTRANSFORMATION_H

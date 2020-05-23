@@ -96,6 +96,7 @@ Important properties:
     freq (int): how many times this instruction got executed in the entire trace
 """
 class RecordableInst(object):
+    SUBGRAPH = True
     def __init__(self, pygraph, gynode, rec_nodes, hidden_nodes,
             concretized_nodes):
         self.pygraph = pygraph
@@ -116,10 +117,14 @@ class RecordableInst(object):
                                         # because of ptwrite limitation
         self.recordSizeNONPT = self.freq * self.width / 8
         self.coverageScoreFreq = self.coverageScore / self.recordSize
-        subgraph = pygraph.buildFromPyGraph(self.pygraph, concretized_nodes)
-        self.max_idep = subgraph.max_idep()
-        self.remainScore = sum([float(n.width) / 8 * (1+subgraph.idep_map[n.id])
-            for n in subgraph.gynodes])
+        if RecordableInst.SUBGRAPH:
+            subgraph = pygraph.buildFromPyGraph(self.pygraph, concretized_nodes)
+            self.max_idep = subgraph.max_idep()
+            self.remainScore = sum([float(n.width) / 8 * (1+subgraph.idep_map[n.id])
+                for n in subgraph.gynodes])
+        else:
+            self.max_idep = 0
+            self.remainScore = 0
         # sanity check
         if not isinstance(rec_nodes, set):
             raise RuntimeError("rec_nodes is not a set ")
@@ -769,14 +774,23 @@ class PyGraph(object):
         else:
             return int(n.freq)*int(n.width) / 8
 
-
+    """
+    @type nids: List(nid)
+    @param nids: nodes you want to record
+    @rtype: set(str)
+    @return: a set of kinst identifiers
+    """
+    def GetKInstSetFromNids(self, nids):
+        return set([self.id_map[nid].kinst for nid in nids])
     """
     @type nid: str
     @param nid: The string id of the node you must concretize
     @type minbytes: int
-    @rtype Set(str)
-    @return A set of instruction identifiers representing the minimum
-    number of bytes you need to record the recover data of the nid node.
+    @rtype Set(nid)
+    @return A set of nids representing the nodes costing the least amount of
+    data to record, if you want to concretize a single given node nid.
+    Note: To get a set of instruction identifiers instead, you should call
+    GetKInstSetFromNids.
     """
     def MustConcretize(self, nid):
         # nid is not in the constraint graph
@@ -793,21 +807,20 @@ class PyGraph(object):
                 worklist.pop()
                 # collect and compare with children
                 n = self.id_map[wnid]
-                if isKInstValid(n) and n.ispointer == "false":
+                if isKInstValid(n): # and n.ispointer == "false":
                     self_bytes = self.GetNodeRecordingSize(n)
                 else:
                     self_bytes = maxint
                 child_nidset = set()
                 for e in self.edges.get(wnid, set()):
                     child_nidset |= self.mustconcretize_cache[e.target.id]
-                child_nidset_dedup = set([nid for nid in child_nidset if
-                    len(self.nodePostDom[nid]) == 0 or
-                    not self.nodePostDom[nid].issubset(child_nidset)])
+                child_nidset_dedup = set([cnid for cnid in child_nidset if
+                    len(self.nodePostDom[cnid]) == 0 or
+                    not self.nodePostDom[cnid].issubset(child_nidset)])
                 #if child_nidset_dedup != child_nidset:
                 #    print("Dedup, removed %s" %
                 #            ', '.join(child_nidset - child_nidset_dedup))
-                child_kinstset = set([self.id_map[nid].kinst for nid in
-                    child_nidset_dedup])
+                child_kinstset = self.GetKInstSetFromNids(child_nidset_dedup)
                 # if any child is non-recordable, then we use an empty
                 # child_kinstset, which leads to zero bytes to record.
                 # zero bytes to record is identified to be non-recordable
@@ -829,8 +842,7 @@ class PyGraph(object):
                 for e in self.edges.get(wnid, set()):
                     if e.target.id not in self.mustconcretize_cache:
                         worklist.append(e.target.id)
-        return set([self.id_map[cnid].kinst for cnid in
-            self.mustconcretize_cache[nid]])
+        return self.mustconcretize_cache[nid]
 
     """
     @type arraynames: set of string
@@ -841,22 +853,25 @@ class PyGraph(object):
         access (Read and Write/UN)
     """
     def UpdateListConcretize(self, arraynames):
-        kinstset = set()
+        # initial_strategy is the union of the best strategy of concretize
+        # nodes individually
+        initial_strategy = set()
         visited_nids = set()
         for n in self.all_nodes_topo_order:
-            if str(n.kind) == "UN" and n.root in arraynames:
+            if str(n.kind) == "UN" and n.root.split("[")[0] in arraynames:
                 for e in self.edges[n.id]:
                     if e.weight == 1.5 and e.target.id not in visited_nids:
                         visited_nids.add(e.target.id)
-                        kinstset |= self.MustConcretize(e.target.id)
-            if str(n.kind) == "3" and n.root in arraynames: # ReadExpr
+                        initial_strategy |= self.MustConcretize(e.target.id)
+            if str(n.kind) == "3" and n.root.split("[")[0] in arraynames: # ReadExpr
                 readnode = n
                 for re in self.edges[readnode.id]:
                     if re.weight == 1.5 and \
                             re.target.id not in visited_nids:
                         visited_nids.add(re.target.id)
-                        kinstset |= self.MustConcretize(re.target.id)
-        newRIlist, subh = self.recursiveOptimizeRecKInstL(kinstset)
+                        initial_strategy |= self.MustConcretize(re.target.id)
+        newRIlist, subh = self.recursiveOptimizeRecNids(initial_strategy)
+        # newRIlist, subh = self.recursiveOptimizeRecKInstL(kinstset)
         return newRIlist
 
     """
@@ -878,37 +893,55 @@ class PyGraph(object):
                 kinst_list.append(newRI)
         return (kinst_list, subh)
 
-    def recursiveOptimizeRecKInstL(self, _kinsts):
-        print("############################################")
-        print("Start Recursive with %s" % ', '.join(_kinsts))
-        print("############################################")
-
-        kinsts = list(set(_kinsts))
-        if len(kinsts) == 0:
+    def recursiveOptimizeRecNids(self, _nids):
+        if len(_nids) == 0:
             return ([], self)
+        # since multiple nodes can be mapped to the same kinst,
+        # we have to make sure when we want to replace one kinst with other
+        # kinsts, the cost of concretizing all nodes we are interested in
+        # should be reduced
+
+        # kinst2nids tracks when we select a kinst to record, which nodes are we
+        # really care about.
+        # Dict(kinst -> set(nid))
+        kinst2nids = {}
+        for nid in _nids:
+            kinst2nids.setdefault(self.id_map[nid].kinst, set()).add(nid)
+        kinsts = list(kinst2nids.keys())
         while True:
             changed = False
             start = kinsts[0]
-            #print("Iteration: %s" % ', '.join(kinsts))
             while True:
                 k = kinsts.pop(0)
-                #print("Reasoning %s based on %s" % (k, ', '.join(kinsts)))
+                #if k == "sqlite3GetToken:B105:B105I11":
+                #    import pdb
+                #    pdb.set_trace()
+                print("Reasoning %s based on %s" % (k, ', '.join(kinsts)))
                 kl, subh = self.buildRecKInstL(kinsts)
-                knodes = set(filter(lambda n: n.kinst == k, self.gynodes))
-                kset = set()
-                for kn in knodes:
-                    newkset = subh.MustConcretize(kn.id)
-                    #print("nid: %s, newkset %s" % (kn.id, ', '.join(newkset)))
-                    kset |= newkset
-                if k not in kset:
-                    #print("Replace %s with %s" % (k, ', '.join(kset)))
+                target_nids = kinst2nids[k]
+                RecNids = set()
+                for nid in target_nids:
+                    SingleNodeNewRecNids = subh.MustConcretize(nid)
+                    RecNids |= SingleNodeNewRecNids
+                newKInstSet = self.GetKInstSetFromNids(RecNids)
+                newRecCost = self.GetKInstSetRecordingSize(newKInstSet)
+                oldRecCost = self.GetKInstSetRecordingSize([k])
+                if newRecCost < oldRecCost:
                     changed = True
-                    kinsts.extend(kset)
-                    break;
+                    # replace old kinst with the new ones
+                    del kinst2nids[k]
+                    print("Replace %s with %s" % (k, ','.join(newKInstSet)))
+                    for nid in RecNids:
+                        kinst2nids.setdefault(self.id_map[nid].kinst,
+                                set()).add(nid)
+                    kinsts.extend(newKInstSet)
+                    break
                 else:
                     kinsts.append(k)
                 if kinsts[0] == start:
                     break
+                else:
+                    print("%s != %s (start)" % (kinsts[0], start))
             if not changed:
                 break
         return self.buildRecKInstL(kinsts)
@@ -1096,6 +1129,15 @@ if __name__ == "__main__":
     parser.add_argument("--recordUN", action="store", type=str, default=None,
             help="a list of array name, whose update lists should be "
                  "concretized, separated by comma")
+    parser.add_argument("--recordUN-out", action="store", type=str,
+            default="", help="A file to output datarec.cfg")
+    parser.add_argument("--UN-constraints", type=str, default=None,
+            help="A file each line giving a path of a (simplified) "
+                 "constraint graph json file.")
+    parser.add_argument("--recordUNCFG", type=str, default=None,
+            help="A datarec.cfg, containing all selected kinsts")
+    parser.add_argument("--getUN", action="store_true",
+            help="Analyze all UN and print the length of each UN")
     parser.add_argument("--noptwrite", action="store_true",
             help="Do not assume the minimum data entry to record is 8B")
     parser.add_argument("graph_json", type=str, action="store",
@@ -1103,8 +1145,40 @@ if __name__ == "__main__":
     parser.add_argument("selected_kinst", nargs='*', type=str,
             help="kinst already chosen to be recorded")
     args = parser.parse_args()
-    graph = json.load(open(args.graph_json))
     PyGraph.PTWRITE = not args.noptwrite
+    if args.UN_constraints is not None and args.recordUNCFG is not None:
+        # Require recursive optimization. disable idep calculation
+        RecordableInst.SUBGRAPH = False
+        # recursively optimize all kinst selected by previous iterations
+        PreOptimizedUNKinstset = set(open(args.recordUNCFG).read().splitlines())
+        UN_constraints = open(args.UN_constraints).read().splitlines()
+        changed = True
+        OptimizedUNKinstset = set()
+        while changed:
+            changed = False
+            for graph_path in UN_constraints:
+                print("Optimizing on %s" % (graph_path))
+                constraint_graph = json.load(open(graph_path))
+                PyG = PyGraph.buildFromPyDict(constraint_graph)
+                new_recinsts, new_PyG = PyG.recursiveOptimizeRecKInstL(\
+                        PreOptimizedUNKinstset)
+                for recinst in new_recinsts:
+                    OptimizedUNKinstset.add(recinst.kinst)
+            if OptimizedUNKinstset != PreOptimizedUNKinstset:
+                print("Optimized from: %s" %
+                        ','.join(PreOptimizedUNKinstset))
+                print("To :%s" % ','.join(OptimizedUNKinstset))
+                PreOptimizedUNKinstset = OptimizedUNKinstset
+                OptimizedUNKinstset = set()
+                Changed = True
+        kinst_sorted = sorted(list(OptimizedUNKinstset))
+        print("OptimizedUNKinstset: %s" % ','.join(kinst_sorted))
+        if len(args.recordUN_out) > 0:
+            f = open(args.recordUN_out, "w")
+            f.write("%s\n" % '\n'.join(kinst_sorted))
+            f.close()
+        sys.exit(0)
+    graph = json.load(open(args.graph_json))
     h = PyGraph.buildFromPyDict(graph)
     print("%d nodes, %d edges, max idep %d" % (len(h.gynodes),
         len(h.gyedges), h.max_idep()))
@@ -1127,27 +1201,80 @@ if __name__ == "__main__":
         print("Assuming record:")
         print(h.getRecInstsInfo(input_kinst_list))
 
-    if len(query_nodes) > 0:
+    if args.getUN:
+        # @type: Dict(arrayname -> list of UN len)
+        arr2UNlen = {}
+        # @type: Dict(arrayname -> list of [Indirect Read CNT, Direct Read CNT])
+        arr2ReadRef = {}
+        for n in subh.all_nodes_topo_order:
+            if str(n.kind) == "UN":
+                arr2UNlen.setdefault(n.root, [0])[-1] += 1
+                readNodes = [e.source for e in subh.redges[n.id] \
+                        if str(e.source.kind) == "3"]
+                if len(readNodes) > 0:
+                    # this UpdateNode is pointed to by some ReadExpr
+                    # a new chain of UN appears
+                    arr2UNlen[n.root].append(0)
+                    IndirectReads = list(filter(lambda n: any([\
+                            e.weight == 1.5 and str(e.target.kind) != "0" \
+                            for e in subh.edges[n.id]]),
+                            readNodes))
+                    arr2ReadRef.setdefault(n.root, []).append(
+                        [len(IndirectReads),
+                         len(readNodes)-len(IndirectReads)])
+            if str(n.kind) == "3" and (n.id in subh.edges) and \
+               all([str(e.target.kind) != "UN" for e in subh.edges[n.id]]) and \
+               any([e.weight == 1.5 for e in subh.edges[n.id]]):
+                # this is a Read Node not depending on any UN
+                # Should keep tracking of its root
+                arr2UNlen.setdefault(n.root, [0])
+                arr2ReadRef.setdefault(n.root, [[0,0]])[-1][0] += 1
+
+        bigarray_name = []
+        for arr, UNL in arr2UNlen.items():
+            print("Array: %s" % arr)
+            accu_l = int(arr[arr.find('[')+1:-1])
+            accumulate_len = []
+            for l in UNL:
+                accu_l += l
+                accumulate_len.append(accu_l)
+            print("\t%s" % ', '.join(["%d(%d,%d)@[%d]" % (l, IR, R, accu_l) \
+                for l, (IR, R) , accu_l in \
+                zip(UNL, arr2ReadRef.get(arr, [[0,0]]), accumulate_len)]))
+            if accumulate_len[-1] > 4096:
+                bigarray_name.append(arr[0:arr.find('[')])
+        print("bigarray: %s" % ','.join(bigarray_name))
+    elif len(query_nodes) > 0:
         for n in query_nodes:
-            kinstset = subh.MustConcretize(n.id)
+            kinstset = subh.GetKInstSetFromNids(subh.MustConcretize(n.id))
             record_bytes = h.GetKInstSetRecordingSize(kinstset)
             print("Query Expression with kinst \"%s\" can be "
                   "covered by recording %d bytes from %d instructions:" %
                   (n.kinst, record_bytes, len(kinstset)))
             RI, subhh = subh.buildRecKInstL(kinstset)
-            print(subh.getRecInstsInfo(RI))
+            if len(RI) > 0:
+                print(subh.getRecInstsInfo(RI))
+            else:
+                print("Already Concretized!")
     elif len(array_to_concretize) > 0:
+        # Require recursive optimization. disable idep calculation
+        RecordableInst.SUBGRAPH = False
         recinsts = subh.UpdateListConcretize(array_to_concretize)
+        kinst_sorted = sorted([r.kinst for r in recinsts])
         print("To concretize UN upon %s" % ','.join(array_to_concretize))
         print(subh.getRecInstsInfo(recinsts))
         print("Python kinst list:")
-        print("\"%s\"" % '\", \"'.join([r.kinst for r in recinsts]))
+        print("\"%s\"" % '\",\"'.join(kinst_sorted))
         print("Datarec.cfg:")
-        print("%s" % '\n'.join([r.kinst for r in recinsts]))
+        datarecCFG= "%s\n" % '\n'.join(kinst_sorted)
+        print(datarecCFG)
+        if len(args.recordUN_out) > 0:
+            f = open(args.recordUN_out, "w")
+            f.write(datarecCFG)
+            f.close()
         print("All Label:")
-        print("%s" % ', '.join(sorted([subh.id_map[nid].label for r in recinsts
-            for nid in subh.kinst2nodes[r.kinst]])))
-
+        print("%s" % ', '.join(sorted([subh.id_map[nid].label
+            for kinst in kinst_sorted for nid in subh.kinst2nodes[kinst]])))
     else:
         r = subh.analyze_recordable(input_kinst_list)
         print("%d recordable instructions" % len(r))

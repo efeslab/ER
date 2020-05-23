@@ -28,6 +28,7 @@ public:
   using constraints_ty = std::vector<ref<Expr>>;
   using iterator = constraints_ty::iterator;
   using const_iterator = constraints_ty::const_iterator;
+  typedef RefHashMap<UpdateNode, ref<UpdateNode>> UNMap_ty;
 
   ConstraintManager() = default;
   //ConstraintManager &operator=(const ConstraintManager &cs) = default;
@@ -83,6 +84,11 @@ private:
   // For each item <key,value> in this map, ExprReplaceVisitor2 can find 
   // occurrences of "key" in an expression and replace it with "value"
   std::map<ref<Expr>, ref<Expr>> equalities;
+  // If we RewriteEqualities, replacedUN maps update lists content to a unique
+  // allocate. This is mainly for optimization results deduplication. I do not
+  // want UpdateList diverge in multiple paths when I am following a single path
+  // in replay.
+  mutable UNMap_ty replacedUN;
 
   // returns true iff the constraints were modified
   bool rewriteConstraints(ExprVisitor &visitor);

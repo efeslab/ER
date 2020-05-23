@@ -183,7 +183,8 @@ public:
     CmpKindLast=Sge
   };
 
-  unsigned refCount;
+  /// @brief Required by klee::ref-managed objects
+  class ReferenceCounter _refCount;
   int indirectReadRefCount = 0;
 
   enum {
@@ -194,8 +195,14 @@ public:
   };
   uint64_t flags = 0;
 
-  /// kinst keeps tracking of which IR instruction creates current expression.
-  /// it is maintained in "Executor::bindLocal" and "Expr::rebuild"
+  /// 1) kinst keeps tracking which IR instruction creates current expression.
+  /// It is maintained in "Executor::bindLocal" and "Expr::rebuild"
+  /// 2) With the presence of ExprReplaceVisitor (rewrite expressions based on
+  /// equalities), kinst is generalized to represent: by recording which
+  /// instruction, current expression can be concretized.
+  /// For example, N0:(Read x [1 2 3 y]) can be optimized to y given (x==3).
+  /// If N0 is bound to a kinst but y does not have a kinst, then after this
+  /// optimization we should bind y to the kinst of N0.
   KInstruction *kinst = nullptr;
 
 protected:  
@@ -226,7 +233,7 @@ protected:
   virtual int compareContents(const Expr &b) const = 0;
 
 public:
-  Expr() : refCount(0) { Expr::count++; }
+  Expr() { Expr::count++; }
   virtual ~Expr() { Expr::count--; } 
 
   virtual Kind getKind() const = 0;
@@ -504,39 +511,32 @@ class UpdateNode {
 #ifdef EXPRINPLACE_MEMLEAK_DEBUG
 public:
 #endif
-  mutable unsigned refCount;
   // cache instead of recalc
   unsigned hashValue;
 
 public:
-  const UpdateNode *next;
+  const ref<UpdateNode> next;
   ref<Expr> index, value;
+
+  /// @brief Required by klee::ref-managed objects
+  mutable class ReferenceCounter _refCount;
 
   uint64_t flags;
   KInstruction *kinst;
-  
+
 private:
   /// size of this update sequence, including this update
   unsigned size;
   
 public:
-  UpdateNode(const UpdateNode *_next, 
-             const ref<Expr> &_index, 
-             const ref<Expr> &_value,
-             uint64_t _flags = 0,
+  UpdateNode(const ref<UpdateNode> &_next, const ref<Expr> &_index,
+             const ref<Expr> &_value, uint64_t _flags = 0,
              KInstruction *_kinst = nullptr);
 
   unsigned getSize() const { return size; }
 
-  int compare(const UpdateNode &b) const;  
+  int compare(const UpdateNode &b) const;
   unsigned hash() const { return hashValue; }
-  // this refCount helper is added to ease mem mangement in ExprInPlaceTransformer
-  void inc() const { ++refCount; }
-  void dec() const {
-    if (--refCount == 0) {
-      delete this;
-    }
-  }
   std::string getKInstUniqueID() const { return klee::getKInstUniqueID(kinst); }
   std::string getKInstDbgInfo() const { return klee::getKInstDbgInfo(kinst); }
   unsigned int getKInstLoadedFreq() const {
@@ -546,9 +546,8 @@ public:
       return 0;
   }
 
-private:
-  UpdateNode() : refCount(0) {}
-  ~UpdateNode();
+  UpdateNode() = delete;
+  ~UpdateNode() = default;
 
   unsigned computeHash();
 };
@@ -616,25 +615,25 @@ public:
   const Array *root;
   
   /// pointer to the most recent update node
-  const UpdateNode *head;
-  
+  ref<UpdateNode> head;
+
 public:
-  UpdateList(const Array *_root, const UpdateNode *_head);
-  UpdateList(const UpdateList &b);
-  ~UpdateList();
-  
-  UpdateList &operator=(const UpdateList &b);
+  UpdateList(const Array *_root, const ref<UpdateNode> &_head);
+  UpdateList(const UpdateList &b) = default;
+  ~UpdateList() = default;
+
+  UpdateList &operator=(const UpdateList &b) = default;
 
   /// size of this update list
-  unsigned getSize() const { return (head ? head->getSize() : 0); }
-  
+  unsigned getSize() const {
+    return (head.get() != nullptr ? head->getSize() : 0);
+  }
+
   void extend(const ref<Expr> &index, const ref<Expr> &value,
-                uint64_t flags = 0, KInstruction *kinst = nullptr);
+              uint64_t flags = 0, KInstruction *kinst = nullptr);
 
   int compare(const UpdateList &b) const;
   unsigned hash() const;
-private:
-  void tryFreeNodes();
 };
 
 /// Class representing a one byte read from an array. 
@@ -669,10 +668,15 @@ public:
     result->kinst = kinst;
     return result;
   }
+  ref<Expr> rebuild(UpdateList &ul, ref<Expr> &_index) const {
+    ref<Expr> result = create(ul, _index);
+    result->kinst = kinst;
+    return result;
+  }
   virtual void rebuildInPlace(ref<Expr> kids[]) {
     index = kids[0];
   }
-  void resetUpdateNode(const UpdateNode *un) { updates.head = un; }
+  void resetUpdateNode(const ref<UpdateNode> &un) { updates.head = un; }
 
   virtual unsigned computeHash();
 

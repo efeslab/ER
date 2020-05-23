@@ -71,7 +71,7 @@ namespace {
   cl::opt<bool>
   OutputSource("output-source",
                cl::desc("Write the assembly for the final transformed source (default=true)"),
-               cl::init(true),
+               cl::init(false),
 	       cl::cat(ModuleCat));
 
   cl::opt<bool>

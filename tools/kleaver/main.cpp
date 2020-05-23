@@ -84,13 +84,6 @@ llvm::cl::opt<unsigned> AdditionalConcreteValuesRandomRatio(
     llvm::cl::init(5),
     llvm::cl::cat(klee::HASECat));
 
-llvm::cl::opt<bool> SimplifyDrawing(
-    "simplify-drawing",
-    llvm::cl::desc("Simplify dependency graphs by omitting constant nodes and "
-      "transforming \"A->B->C\" to \"A->C\""),
-    llvm::cl::init(false),
-    llvm::cl::cat(klee::HASECat));
-
 enum class DrawFormats {
   GraphVizDOT = 0x1 << 0,
   JSON = 0x1 << 1,
@@ -508,24 +501,31 @@ static bool DrawInputAST(const char *Filename,
   std::string output_prefix(Filename);
   for (Decl *D: Decls) {
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
-      ExprInPlaceTransformer *EIPT = nullptr;
-      const QueryCommand *QC_to_draw = QC;
-      if (SimplifyDrawing) {
-        EIPT = new ExprInPlaceTransformer(*QC);
-        QC_to_draw = EIPT->getNewQCptr();
-      }
       if (DrawFormat.getValue() & DrawFormats::JSON) {
         std::ofstream of(output_prefix + ".json");
-        JsonDrawer drawer(of, *QC_to_draw);
+        JsonDrawer drawer(of, *QC);
         drawer.draw();
       }
       if (DrawFormat.getValue() & DrawFormats::GraphVizDOT) {
         std::ofstream of(output_prefix + ".dot");
-        GraphvizDOTDrawer drawer(of, *QC_to_draw);
+        GraphvizDOTDrawer drawer(of, *QC);
         drawer.draw();
       }
-      if (EIPT)
-        delete EIPT;
+      // Simplify dependency graphs by omitting constant nodes and transforming
+      // "A->B->C" to "A->C"
+      // Note that this ExprInPlaceTransformer is destructive
+      ExprInPlaceTransformer simplified_QC(*QC);
+      if (DrawFormat.getValue() & DrawFormats::JSON) {
+        std::ofstream of_simplify(output_prefix + ".simplify.json");
+        JsonDrawer drawer_simplify(of_simplify, *simplified_QC.getNewQCptr());
+        drawer_simplify.draw();
+      }
+      if (DrawFormat.getValue() & DrawFormats::GraphVizDOT) {
+        std::ofstream of_simplify(output_prefix + ".simplify.dot");
+        GraphvizDOTDrawer drawer_simplify(of_simplify,
+                                          *simplified_QC.getNewQCptr());
+        drawer_simplify.draw();
+      }
       // Assuming there will only be one QueryComamnd
       break;
     }

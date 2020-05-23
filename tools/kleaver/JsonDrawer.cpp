@@ -12,7 +12,6 @@ void JsonDrawer::declareExpr(const Expr *e, const char *category) {
       {"label", label},
       {"Kind", e->getKind()},
       {"Width", e->getWidth()},
-      {"IDep", IDCalc.query(e)},
       {"Category", category},
       {"KInst", e->getKInstUniqueID()},
       {"DbgInfo", e->getKInstDbgInfo()},
@@ -20,7 +19,7 @@ void JsonDrawer::declareExpr(const Expr *e, const char *category) {
       {"Freq", e->getKInstLoadedFreq()},
   };
   if (const ReadExpr *RE = dyn_cast<ReadExpr>(e)) {
-   nodes[std::to_string((size_t)e)]["Root"] = RE->updates.root->name;
+   nodes[std::to_string((size_t)e)]["Root"] = getArrWithSize(RE->updates.root);
   }
 };
 
@@ -34,13 +33,12 @@ void JsonDrawer::declareLastLevelRead(const ReadExpr *RE,
       {"label", label},
       {"Kind", RE->getKind()},
       {"Width", RE->getWidth()},
-      {"IDep", IDCalc.query(RE)},
       {"Category", category},
       {"KInst", RE->getKInstUniqueID()},
       {"DbgInfo", RE->getKInstDbgInfo()},
       {"IsPointer", RE->getKInstIsPtrType()},
       {"Freq", RE->getKInstLoadedFreq()},
-      {"Root", RE->updates.root->name},
+      {"Root", getArrWithSize(RE->updates.root)},
   };
 }
 
@@ -50,8 +48,7 @@ void JsonDrawer::declareUpdateNode(const UpdateNode *un, const Array *root,
       {"label", "UN"},
       {"Kind", "UN"},
       {"Width", 8},
-      {"Root", root->name},
-      {"IDep", IDCalc.query(un)},
+      {"Root", getArrWithSize(root)},
       {"Category", category},
       {"KInst", un->getKInstUniqueID()},
       {"DbgInfo", un->getKInstDbgInfo()},
@@ -64,7 +61,6 @@ void JsonDrawer::declareArray(const Array *arr) {
   nodes[std::to_string((size_t)arr)] = {{"label", arr->name},
                                         {"Kind", "Array"},
                                         {"Size", arr->getSize()},
-                                        {"IDep", IDCalc.getMax() + 1},
                                         {"Category", "Array"}};
 }
 

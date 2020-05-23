@@ -4167,14 +4167,6 @@ void Executor::executeMemoryOperation(ExecutionState &state, bool isWrite,
         if (interpreterOpts.MakeConcreteSymbolic)
           result = replaceReadWithSymbolic(state, result);
 
-        // if (!isa<ConstantExpr>(result) &&
-        //     getKInstUniqueID(target) == "zend_inline_hash_func.13044:B9:B9I6") {
-        //   klee_message("Catch weird frequency instruction");
-        //   assert(0);
-        // }
-        if (getKInstUniqueID(target) == "sqlite3_stmt_status:B1:B1I4") {
-          assert(0);
-        }
         bindLocal(target, state, result);
       }
 
@@ -4558,7 +4550,7 @@ bool Executor::getSymbolicSolution(const ExecutionState &state,
   // an example) While this process can be very expensive, it can
   // also make understanding individual test cases much easier.
   for (unsigned i = 0; i != state.symbolics.size(); ++i) {
-    const MemoryObject *mo = state.symbolics[i].first;
+    const auto &mo = state.symbolics[i].first;
     std::vector< ref<Expr> >::const_iterator pi =
       mo->cexPreferences.begin(), pie = mo->cexPreferences.end();
     for (; pi != pie; ++pi) {

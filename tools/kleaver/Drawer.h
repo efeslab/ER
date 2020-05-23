@@ -6,6 +6,7 @@
 #include "klee/util/ExprConcretizer.h"
 
 #include <iostream>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -30,7 +31,6 @@ protected:
   std::unordered_set<const Array *> visited_array;
 
   const klee::expr::QueryCommand &QC;
-  IndirectReadDepthCalculator IDCalc;
 
   virtual void printHeader() {}
   virtual void printFooter() {}
@@ -54,9 +54,11 @@ protected:
   void ensureExprDeclared(const Expr *e, const char *category = "N");
   void ensureArrayDeclared(const Array *root);
 
+  static std::string getArrWithSize(const Array *root);
+
 public:
   Drawer(const klee::expr::QueryCommand &_QC)
-      : QC(_QC), IDCalc(_QC) {}
+      : QC(_QC) {}
   ~Drawer() {}
   // Actually start drawing, which is a pre-order traversal
   // This is designed to be called just once.

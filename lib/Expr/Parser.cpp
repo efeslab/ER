@@ -29,6 +29,7 @@
 #include <cassert>
 #include <map>
 #include <cstring>
+#include <memory>
 
 using llvm::MemoryBuffer;
 using llvm::StringRef;
@@ -123,8 +124,8 @@ namespace {
     unsigned MaxErrors;
     unsigned NumErrors;
 
-    std::vector<std::unique_ptr<llvm::Module>> loadedModules;
     llvm::LLVMContext ctx;
+    std::unique_ptr<KModule> kmodule;
 
     // FIXME: Use LLVM symbol tables?
     IdentifierTabTy IdentifierTab;
@@ -343,6 +344,7 @@ namespace {
           ClearArrayAfterQuery(_ClearArrayAfterQuery), TheLexer(MB),
           MaxErrors(~0u), NumErrors(0) {
       if (_BitcodePath != "") {
+        std::vector<std::unique_ptr<llvm::Module>> loadedModules;
         klee_message("loading from %s\n", _BitcodePath.c_str());
 
         std::string errorMsg;
@@ -351,6 +353,10 @@ namespace {
               errorMsg.c_str());
         }
         assert(loadedModules.size() == 1);
+        kmodule = std::make_unique<KModule>();
+        kmodule->module = std::move(loadedModules[0]);
+        kmodule->manifest(/*InterpreterHandler*/ nullptr,
+                          /*forceSourceOutput*/ false);
       }
     }
 
@@ -407,8 +413,7 @@ const Identifier *ParserImpl::GetOrCreateIdentifier(const std::string &Name) {
 
 llvm::Instruction *ParserImpl::GetLLVMIR(
       StringRef &_func, StringRef &_bb, StringRef &_inst) {
-  llvm::Module *M = loadedModules[0].get();
-  for (llvm::Function &F : *M) {
+  for (llvm::Function &F : *(kmodule->module)) {
     if (F.getName() != _func)
       continue;
     for (llvm::BasicBlock &BB : F) {
@@ -444,14 +449,11 @@ void ParserImpl::ParseUniqID(Token &Tok) {
   start = p + 1;
   for (p = start, i = 0; *p != '\n'; p++, i++) {}
   StringRef inst(start, i);
-  if (loadedModules.size() != 0) {
+  if (kmodule != nullptr) {
     const Identifier *id = GetOrCreateIdentifier(sym);
-    KInstruction *ki = new KInstruction();
-    ki->inst = GetLLVMIR(func, bb, inst);
+    llvm::Instruction *I = GetLLVMIR(func, bb, inst);
+    KInstruction *ki = kmodule->getKInstruction(I);
     assert(ki->inst != nullptr);
-    ki->info = nullptr;
-    ki->operands = nullptr;
-    ki->dest = 0;
 
     auto it = ExprSymTab.find(id);
     if (it != ExprSymTab.end()) {
@@ -1671,8 +1673,6 @@ void ParserImpl::Error(const char *Message, const Token &At) {
 }
 
 ParserImpl::~ParserImpl() {
-  loadedModules.clear();
-
   // Free identifiers
   //
   // Note the Identifiers are not disjoint across the symbol

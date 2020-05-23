@@ -11,7 +11,6 @@ void GraphvizDOTDrawer::declareExpr(const Expr *e, const char *category) {
   os << (size_t)e << "[ label=\"" << label << "\", "
      << "Kind=" << e->getKind() << ","
      << "Width=" << e->getWidth() << ","
-     << "IDep=" << IDCalc.query(e) << ","
      << "Category=" << category << ","
      << "KInst=\"" << e->getKInstUniqueID() << "\""
      << ","
@@ -20,7 +19,7 @@ void GraphvizDOTDrawer::declareExpr(const Expr *e, const char *category) {
      << "IsPointer=" << e->getKInstIsPtrType() << ","
      << "Freq=" << e->getKInstLoadedFreq();
   if (const ReadExpr *RE = dyn_cast<ReadExpr>(e)) {
-    os << ", Root=" << RE->updates.root->name;
+    os << ", Root=\"" << getArrWithSize(RE->updates.root) << "\"";
   }
    os << "];\n";
 }
@@ -34,14 +33,13 @@ void GraphvizDOTDrawer::declareLastLevelRead(const ReadExpr *RE,
   os << (size_t)RE << "[ label=\"" << label << "\", "
      << "Kind=" << RE->getKind() << ","
      << "Width=" << RE->getWidth() << ","
-     << "IDep=" << IDCalc.query(RE) << ","
      << "Category=" << category << ","
      << "KInst=\"" << RE->getKInstUniqueID() << "\""
      << ","
      << "DbgInfo=\"" << RE->getKInstDbgInfo() << "\""
      << ","
      << "IsPointer=" << RE->getKInstIsPtrType() << ","
-     << "Root=" << RE->updates.root->name << ","
+     << "Root=\"" << getArrWithSize(RE->updates.root) << "\","
      << "Freq=" << RE->getKInstLoadedFreq() << "];\n";
 }
 
@@ -51,8 +49,7 @@ void GraphvizDOTDrawer::declareUpdateNode(const UpdateNode *un,
   os << (size_t)un << "[ label=\"UN\", Kind=UN , "
      << "Category=" << category << ","
      << "Width=8,"
-     << "Root=" << root->name << ","
-     << "IDep=" << IDCalc.query(un) << ","
+     << "Root=\"" << getArrWithSize(root) << "\","
      << "KInst=\"" << un->getKInstUniqueID() << "\""
      << ","
      << "DbgInfo=\"" << un->getKInstDbgInfo() << "\""
@@ -67,8 +64,8 @@ void GraphvizDOTDrawer::declareArray(const Array *arr) {
   os << (size_t)arr << "[ label=\"" << arr->name << "\", "
      << "Kind=Array,"
      << "Size=" << arr->getSize() << ","
-     << "Category=Array,"
-     << "IDep=" << IDCalc.getMax() + 1 << "];\n";
+     << "Category=Array"
+     << "];\n";
 }
 
 void GraphvizDOTDrawer::drawEdge(const void *from, const void *to,

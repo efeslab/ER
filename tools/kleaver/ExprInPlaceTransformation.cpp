@@ -1,8 +1,8 @@
 #include "ExprInPlaceTransformation.h"
 using namespace klee;
 using namespace klee::expr;
-static Expr *under_processing_expr = (Expr*)(0x1);
-static const UpdateNode *under_processing_un = (const UpdateNode*)(0x1);
+static Expr *under_processing_expr = reinterpret_cast<Expr*>(0x1);
+static UpdateNode *under_processing_un = reinterpret_cast<UpdateNode*>(0x1);
 
 ExprInPlaceTransformer::ExprInPlaceTransformer(const QueryCommand &_QC)
     : QC(_QC) {
@@ -51,7 +51,7 @@ void ExprInPlaceTransformer::visitExpr(Expr *e) {
     }
     // need to handle updatelist in ReadExpr separately
     if (ReadExpr *RE = dyn_cast<ReadExpr>(e)) {
-      expr_worklist.push_back(RE->updates.head);
+      expr_worklist.push_back(RE->updates.head.get());
     }
   }
   else if (expr_find->second == under_processing_expr) {
@@ -79,7 +79,7 @@ void ExprInPlaceTransformer::visitExpr(Expr *e) {
     if (ReadExpr *RE = dyn_cast<ReadExpr>(e)) {
       // in-place generate the replacement of a ReadExpr
       // note: ReadExpr should never be omitted
-      const UpdateNode *new_un = popKidUNode();
+      UpdateNode *new_un = popKidUNode();
       RE->resetUpdateNode(new_un);
       if (new_un != 0 || nonnull_kids.size() != 0) {
         // Do not omit the index of last-level-read.
@@ -122,88 +122,43 @@ void ExprInPlaceTransformer::visitExpr(Expr *e) {
   }
 }
 
-void ExprInPlaceTransformer::visitUNode(const UpdateNode *un) {
+void ExprInPlaceTransformer::visitUNode(UpdateNode *un) {
   if (!un) {
     // null UNode should be shortcutted here.
-    expr_kidstack.push_back((const UpdateNode*)nullptr);
+    expr_kidstack.push_back(static_cast<UpdateNode*>(nullptr));
     expr_worklist.pop_back();
     return;
   }
   auto un_find = visited_un.find(un);
   if (un_find == visited_un.end()) {
-#ifdef EXPRINPLACE_MEMLEAK_DEBUG
-    fprintf(stderr, "first time visit %p(%u)->%p\n", un, un->refCount, un->next);
-#endif
     visited_un[un] = under_processing_un;
     expr_worklist.push_back(un->index.get());
     expr_worklist.push_back(un->value.get());
-    expr_worklist.push_back(un->next);
+    expr_worklist.push_back(un->next.get());
   }
   else if (un_find->second == under_processing_un) {
     // kidstack from back to front: index, value, next
-#ifdef EXPRINPLACE_MEMLEAK_DEBUG
-    fprintf(stderr, "working on %p(%u)->%p\n", un, un->refCount, un->next);
-#endif
     Expr *index = popKidExpr();
     Expr *value = popKidExpr();
-    const UpdateNode *next = popKidUNode();
+    UpdateNode *next = popKidUNode();
     if (index != un->index.get() ||
         value != un->value.get() ||
-        next != un->next) {
+        next != un->next.get()) {
       // this UNode need to be changed.
       if (index == nullptr && value == nullptr) {
-#ifdef EXPRINPLACE_MEMLEAK_DEBUG
-        fprintf(stderr, "omitted %p(%u)->%p, next %p(%u)->%p\n", un, un->refCount, un->next, next, next->refCount, next->next);
-#endif
         // concrete UNode, need to be omitted
         visited_un[un] = next;
-        if (next) {
-          next->inc();
-        }
-        //un->dec();
         expr_kidstack.push_back(next);
       }
       else {
-#ifdef EXPRINPLACE_MEMLEAK_DEBUG
-        fprintf(stderr, "replaced %p(%u)->%p\n", un, un->refCount, un->next);
-#endif
         // symbolic UNode, need new replacement
         UpdateNode *new_un =
           new UpdateNode(next, index, value, un->flags, un->kinst);
         visited_un[un] = new_un;
         expr_kidstack.push_back(new_un);
-        // UpdateNode lifecycle management is complex. Don't touch it now.
-        // FIXME: avoid UpdateNode memory leak
-        // I tried and currently there is no good way to fix this.
-        // I hate the way UpdateList and UpdateNode currently manage memory.
-        // The problem is:
-        // ExprInPlaceTransformation needs to omit and replace a single
-        // UpdateNode if necessary. However, there is no way to manage a single
-        // UpdateNode's allocate/free in current implementation.
-        //
-        // Current implementation manages memory at the UpdateList level.
-        // To make things worse, not every UpdateList is in the Constraints_ty
-        // passed in to ExprInPlaceTransformation.
-        // There are a few UpdateList instance locate in the
-        // VersionSymTabTy(std::map)
-        //
-        // For example, even if I know a omitted UpdateNode will never be
-        // referenced again in the given constraints, I still do not know if I
-        // should free it because UpdateList elsewhere may still points to it.
-        //
-        // Note that all commented out un->dec() is the place I should decrease
-        // refCount of an UpdateNode. But I cannot do that now (otherwise there
-        // will be use-after-free) due to above complaints.
-        if (new_un) {
-          new_un->inc();
-        }
-        //un->dec();
       }
     }
     else {
-#ifdef EXPRINPLACE_MEMLEAK_DEBUG
-      fprintf(stderr, "skipped %p(%u)->%p\n", un, un->refCount, un->next);
-#endif
       // nothing changed, just return current UpdateNode itself
       // but also consider current UpdateNode visited, do not process its
       // childs again next time
@@ -213,14 +168,7 @@ void ExprInPlaceTransformer::visitUNode(const UpdateNode *un) {
     expr_worklist.pop_back();
   }
   else {
-    const UpdateNode *new_un = un_find->second;
-#ifdef EXPRINPLACE_MEMLEAK_DEBUG
-    fprintf(stderr, "processed %p(%u) dec, new is %p(%u) inc\n", un, un->refCount, new_un, new_un->refCount);
-#endif
-    if (new_un) {
-      new_un->inc();
-    }
-    //un->dec();
+    UpdateNode *new_un = un_find->second;
     expr_kidstack.push_back(new_un);
     expr_worklist.pop_back();
   }

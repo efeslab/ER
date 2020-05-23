@@ -171,7 +171,7 @@ int main(int argc, char **argv) {
     }
 
     /* We need to have this pass because the ID will hurt the performance of the compiled binary */
-    if (RemoveID || InsertPTWrite) {
+    if (RemoveID) {
       KModule::removeID(M);
     }
 

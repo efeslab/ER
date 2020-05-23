@@ -173,6 +173,8 @@ ref<Expr> Expr::createTempRead(const Array *array, Expr::Width w) {
 }
 
 int Expr::compare(const Expr &b) const {
+  // equivs has to be cleared everytime because Expr maybe freed so the pointer
+  // may be reallocated to something else.
   static ExprEquivSet equivs;
   int r = compare(b, equivs);
   equivs.clear();

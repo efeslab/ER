@@ -187,8 +187,13 @@ int main(int argc, char **argv) {
       KModule::removeID(M);
     }
 
+
     if (AssignDebugIR) {
-      KModule::assignDebugIR(M);
+      SmallString<128> tempdir;
+      llvm::sys::path::system_temp_directory(true, tempdir);
+      std::string directory = tempdir.str().str();
+      std::string filename = M->getName().str();
+      KModule::assignDebugIR(M, directory, filename);
     }
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(7, 0)

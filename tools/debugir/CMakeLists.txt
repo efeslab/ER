@@ -1,4 +1,0 @@
-find_package(LLVM 6.0 REQUIRED CONFIG)
-add_definitions(${LLVM_DEFINITIONS})
-include_directories(${LLVM_INCLUDE_DIRS})
-add_subdirectory(src)

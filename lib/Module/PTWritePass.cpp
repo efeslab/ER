@@ -106,7 +106,7 @@ bool PTWritePass::runOnModule(Module &M) {
         if (dataRecInstSet.find(iname) == dataRecInstSet.end()) {
           continue;
         }
-        if (!itype->isIntOrPtrTy()) {
+        if (!itype->isIntegerTy() && !itype->isPointerTy()) {
           llvm::errs() << "recorded instruction not integer\n";
           continue;
         }

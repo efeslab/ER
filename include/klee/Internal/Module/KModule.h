@@ -174,6 +174,9 @@ namespace klee {
     /// Add Tag fake instruction after sepecified instructions
     static void addTag(llvm::Module *M, std::string &cfg, bool useDbgInfo);
 
+    /// Use IR to replace debug info
+    static void assignDebugIR(llvm::Module *M);
+
     /// Remove the human readable ID from each instruction.
     static void removeID(llvm::Module *M);
 

@@ -397,6 +397,12 @@ void KModule::removeID(llvm::Module *M) {
   pm.run(*M);
 }
 
+void KModule::assignDebugIR(llvm::Module *M) {
+  legacy::PassManager pm;
+  pm.add(new DebugIR(false, false, "/home/jcma", "debug.ll"));
+  pm.run(*M);
+}
+
 void KModule::addPTWrite(llvm::Module *M, std::string &cfg) {
   legacy::PassManager pm;
   pm.add(new PTWritePass(cfg));

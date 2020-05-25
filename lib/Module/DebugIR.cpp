@@ -1,3 +1,6 @@
+#include "klee/Internal/Module/Passes.h"
+#include "klee/Internal/Support/Debug.h"
+
 #include "llvm/Pass.h"
 #include "llvm/IR/AssemblyAnnotationWriter.h"
 #include "llvm/IR/DIBuilder.h"
@@ -22,8 +25,11 @@
 #define DEBUG_TYPE "debug-ir"
 
 using namespace llvm;
+using namespace klee;
 
 static raw_ostream &llvm_errs = llvm::errs();
+
+char DebugIR::ID;
 
 /// Builds a map of Value* to line numbers on which the Value appears in a
 /// textual representation of the IR by plugging into the AssemblyWriter by
@@ -146,7 +152,7 @@ public:
     // find line of function declaration
     unsigned Line = 0;
     if (!findLine(&F, Line)) {
-      DEBUG(dbgs() << "WARNING: No line for Function " << F.getName().str()
+      KLEE_DEBUG(dbgs() << "WARNING: No line for Function " << F.getName().str()
                    << "\n");
       return;
     }
@@ -154,7 +160,7 @@ public:
     Instruction *FirstInst = &*F.begin()->begin();
     unsigned ScopeLine = 0;
     if (!findLine(FirstInst, ScopeLine)) {
-      DEBUG(dbgs() << "WARNING: No line for 1st Instruction in Function "
+      KLEE_DEBUG(dbgs() << "WARNING: No line for 1st Instruction in Function "
                    << F.getName().str() << "\n");
       return;
     }
@@ -164,14 +170,19 @@ public:
     bool IsOptimized = false;
 
     DINode::DIFlags FuncFlags = llvm::DINode::FlagPrototyped;
-#if 1
+#if LLVM_VERSION_CODE >= LLVM_VERSION(7, 0)
+    DISubprogram::DISPFlags SPFlags = DISubprogram::toSPFlags(Local, IsDefinition, IsOptimized);
     DISubprogram *Sub = Builder.createFunction(
         /*LexicalBlockFileNode*/ FileNode, F.getName(), MangledName, FileNode,
-        Line, Sig, /*InternalLinkage=*/Local, /*definition */ IsDefinition,
+        Line, Sig, ScopeLine, FuncFlags, SPFlags);
+#else
+    DISubprogram *Sub = Builder.createFunction(
+        /*LexicalBlockFileNode*/ FileNode, F.getName(), MangledName, FileNode,
+        Line, Sig, Local, IsDefinition,
         ScopeLine, FuncFlags, IsOptimized);
-    F.setSubprogram(Sub);
 #endif
-    DEBUG(dbgs() << "create subprogram mdnode " << *Sub << ": "
+    F.setSubprogram(Sub);
+    KLEE_DEBUG(dbgs() << "create subprogram mdnode " << *Sub << ": "
                  << "\n");
 
     SubprogramDescriptors.insert(std::make_pair(&F, Sub));
@@ -195,9 +206,9 @@ public:
     if (!LineTable.getLine(RealInst, Line)) {
       // Instruction has no line, it may have been removed (in the module that
       // will be passed to the debugger) so there is nothing to do here.
-      DEBUG(dbgs() << "WARNING: no LineTable entry for instruction " << RealInst
+      KLEE_DEBUG(dbgs() << "WARNING: no LineTable entry for instruction " << RealInst
                    << "\n");
-      DEBUG(RealInst->dump());
+      KLEE_DEBUG(RealInst->print(llvm::errs()));
       return;
     }
 
@@ -212,7 +223,7 @@ public:
     } else if (DINode *scope = findScope(&I)) {
       NewLoc = DebugLoc::get(Line, Col, scope, nullptr);
     } else {
-      DEBUG(dbgs() << "WARNING: no valid scope for instruction " << &I
+      KLEE_DEBUG(dbgs() << "WARNING: no valid scope for instruction " << &I
                    << ". no DebugLoc will be present."
                    << "\n");
       return;
@@ -267,7 +278,7 @@ private:
     if (DISubprogram *ret = findDISubprogram(F))
       return ret;
 
-    DEBUG(dbgs() << "WARNING: Using fallback lexical block file scope "
+    KLEE_DEBUG(dbgs() << "WARNING: Using fallback lexical block file scope "
                  << LexicalBlockFileNode << " as scope for instruction " << I
                  << "\n");
     return LexicalBlockFileNode;
@@ -281,7 +292,7 @@ private:
     if (i != SubprogramDescriptors.end())
       return i->second;
 
-    DEBUG(dbgs() << "searching for DI scope node for Function " << F
+    KLEE_DEBUG(dbgs() << "searching for DI scope node for Function " << F
                  << " in a list of " << Finder.subprogram_count()
                  << " subprogram nodes"
                  << "\n");
@@ -290,12 +301,12 @@ private:
     for (DISubprogram *S : Finder.subprograms()) {
       // TODO: Is describes correct?
       if (S->describes(F)) {
-        DEBUG(dbgs() << "Found DISubprogram " << S << " for function "
+        KLEE_DEBUG(dbgs() << "Found DISubprogram " << S << " for function "
                      << F->getName() << "\n");
         return S;
       }
     }
-    DEBUG(dbgs() << "unable to find DISubprogram node for function "
+    KLEE_DEBUG(dbgs() << "unable to find DISubprogram node for function "
                  << F->getName().str() << "\n");
     return nullptr;
   }
@@ -462,79 +473,6 @@ bool getSourceInfoFromDI(const Module &M, std::string &Directory,
   return true;
 }
 
-class DebugIR : public llvm::ModulePass {
-  /// If true, write a source file to disk.
-  bool WriteSourceToDisk;
-
-  /// Hide certain (non-essential) debug information (only relevant if
-  /// createSource is true.
-  bool HideDebugIntrinsics;
-  bool HideDebugMetadata;
-
-  /// The location of the source file.
-  std::string Directory;
-  std::string Filename;
-
-  /// True if a temporary file name was generated.
-  bool GeneratedPath;
-
-  /// True if the file name was read from the Module.
-  bool ParsedPath;
-
-public:
-  static char ID;
-
-  StringRef getPassName() const override { return "DebugIR"; }
-
-  /// Generate a file on disk to be displayed in a debugger. If Filename and
-  /// Directory are empty, a temporary path will be generated.
-  DebugIR(bool HideDebugIntrinsics, bool HideDebugMetadata,
-          llvm::StringRef Directory, llvm::StringRef Filename);
-//      : ModulePass(ID), WriteSourceToDisk(true),
-//        HideDebugIntrinsics(HideDebugIntrinsics),
-//        HideDebugMetadata(HideDebugMetadata), Directory(Directory),
-//        Filename(Filename), GeneratedPath(false), ParsedPath(false) {}
-
-  /// Modify input in-place; do not generate additional files, and do not hide
-  /// any debug intrinsics/metadata that might be present.
-  DebugIR();
-      //: ModulePass(ID), WriteSourceToDisk(false), HideDebugIntrinsics(false),
-      //  HideDebugMetadata(false), GeneratedPath(false), ParsedPath(false) {}
-
-  /// Run pass on M and set Path to the source file path in the output module.
-  bool runOnModule(llvm::Module &M, std::string &Path);
-  bool runOnModule(llvm::Module &M) override;
-
-private:
-
-  /// Returns the concatenated Directory + Filename, without error checking
-  std::string getPath();
-
-  /// Attempts to read source information from debug information in M, and if
-  /// that fails, from M's identifier. Returns true on success, false otherwise.
-  bool getSourceInfo(const llvm::Module &M);
-
-  /// Replace the extension of Filename with NewExtension, and return true if
-  /// successful. Return false if extension could not be found or Filename is
-  /// empty.
-  bool updateExtension(llvm::StringRef NewExtension);
-
-  /// Generate a temporary filename and open an fd
-  void generateFilename(std::unique_ptr<int> &fd);
-
-  /// Creates DWARF CU/Subroutine metadata
-  void createDebugInfo(llvm::Module &M,
-                       std::unique_ptr<llvm::Module> &DisplayM);
-
-  /// Returns true if either Directory or Filename is missing, false otherwise.
-  bool isMissingPath();
-
-  /// Write M to disk, optionally passing in an fd to an open file which is
-  /// closed by this function after writing. If no fd is specified, a new file
-  /// is opened, written, and closed.
-  void writeDebugBitcode(const llvm::Module *M, int *fd = nullptr);
-};
-
 DebugIR::DebugIR(bool HideDebugIntrinsics, bool HideDebugMetadata,
                  llvm::StringRef Directory, llvm::StringRef Filename)
     : ModulePass(ID), WriteSourceToDisk(true),
@@ -592,10 +530,10 @@ void DebugIR::writeDebugBitcode(const Module *M, int *fd) {
   if (!fd) {
     std::string Path = getPath();
     Out.reset(new raw_fd_ostream(Path, EC, sys::fs::F_Text));
-    DEBUG(dbgs() << "WRITING debug bitcode from Module " << M << " to file "
+    KLEE_DEBUG(dbgs() << "WRITING debug bitcode from Module " << M << " to file "
                  << Path << "\n");
   } else {
-    DEBUG(dbgs() << "WRITING debug bitcode from Module " << M << " to fd "
+    KLEE_DEBUG(dbgs() << "WRITING debug bitcode from Module " << M << " to fd "
                  << *fd << "\n");
     Out.reset(new raw_fd_ostream(*fd, true));
   }
@@ -613,7 +551,11 @@ void DebugIR::createDebugInfo(Module &M, std::unique_ptr<Module> &DisplayM) {
 
   if (WriteSourceToDisk && (HideDebugIntrinsics || HideDebugMetadata)) {
     VMap.reset(new ValueToValueMapTy);
+#if LLVM_VERSION_CODE >= LLVM_VERSION(7, 0)
+    DisplayM = CloneModule(M, *VMap);
+#else
     DisplayM = CloneModule(&M, *VMap);
+#endif
   }
 
   DIUpdater R(M, Filename, Directory, DisplayM.get(), VMap.get());
@@ -638,12 +580,13 @@ bool DebugIR::runOnModule(Module &M) {
   }
 
   assert(Filename != "");
-  assert(Directory != "");
+  //assert(Directory != "");
+
 
   if (!GeneratedPath && WriteSourceToDisk)
     updateExtension(".debug-ll");
 
-  DEBUG(dbgs() << "- Filename: " << Filename << " | Directory: " << Directory
+  KLEE_DEBUG(dbgs() << "- Filename: " << Filename << " | Directory: " << Directory
                << "\n");
 
   // Clear line numbers.
@@ -665,6 +608,3 @@ bool DebugIR::runOnModule(Module &M, std::string &Path) {
   return result;
 }
 
-char DebugIR::ID = 0;
-
-static RegisterPass<DebugIR> X("DebugIR", "DebugIR Pass", false, false);

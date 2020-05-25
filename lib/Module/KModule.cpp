@@ -397,9 +397,9 @@ void KModule::removeID(llvm::Module *M) {
   pm.run(*M);
 }
 
-void KModule::assignDebugIR(llvm::Module *M) {
+void KModule::assignDebugIR(llvm::Module *M, std::string &directory, std::string &filename) {
   legacy::PassManager pm;
-  pm.add(new DebugIR(false, false, "/home/jcma", "debug.ll"));
+  pm.add(new DebugIR(false, false, directory, filename));
   pm.run(*M);
 }
 

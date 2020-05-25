@@ -132,7 +132,7 @@ bool TagPass::runOnModuleByInst(Module &M) {
         if (tagInstSet.find(iname) == tagInstSet.end()) {
           continue;
         }
-        if (!itype->isIntOrPtrTy()) {
+        if (!itype->isIntegerTy() && !itype->isPointerTy()) {
           llvm::errs() << "recorded instruction not integer\n";
           continue;
         }

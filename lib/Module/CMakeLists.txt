@@ -25,6 +25,7 @@ set(KLEE_MODULE_COMPONENT_SRCS
   PTWritePass.cpp
   TagPass.cpp
   RmFabsPass.cpp
+  DebugIR.cpp
 )
 
 if (USE_WORKAROUND_LLVM_PR39177)

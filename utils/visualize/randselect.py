@@ -11,20 +11,22 @@ def read_nodes(graph_json):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--target", type=int, action="store",
+    parser.add_argument("target", type=int, action="store",
                       help="target")
     parser.add_argument("graph_json", action="store", type=str,
                       help="the json file describing the constraint graph")
+    parser.add_argument("cfg", action="store", type=str,
+                      help="destination of configuration file")
     args = parser.parse_args()
 
     nodes = read_nodes(args.graph_json)
 
-    nodes = sorted(nodes, key=lambda node: node.freq)
+    nodes = sorted(nodes, key=lambda node: node.freq * node.width)
     target = args.target
 
     i = 0
     for n in nodes:
-        if n.freq < target:
+        if n.freq * n.width < target:
             i += 1
 
     selected = {}
@@ -41,12 +43,17 @@ if __name__ == "__main__":
         if n.kinst == "N/A":
             continue
         selected[n.id] = n.kinst
-        cnt += n.freq
+        cnt += n.freq * n.width
 
     print("total: {}".format(cnt))
 
     for key in selected:
         print(selected[key])
+
+    with open(args.cfg, 'w') as f:
+        for key in selected:
+            f.write("{}\n".format(selected[key]))
+
 
         
 

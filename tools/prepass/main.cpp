@@ -115,6 +115,12 @@ llvm::cl::opt<std::string> TagCFG(
     llvm::cl::init(""),
     llvm::cl::cat(klee::HASEPrePassCat));
 
+llvm::cl::opt<bool> AssignDebugIR(
+    "debugir",
+    llvm::cl::desc("Assign DebugIR"),
+    llvm::cl::init(false),
+    llvm::cl::cat(klee::HASEPrePassCat));
+
 static void HideOptions() {
     StringMap<cl::Option *> &map = cl::getRegisteredOptions();
     for (auto &elem : map) {
@@ -173,6 +179,10 @@ int main(int argc, char **argv) {
     /* We need to have this pass because the ID will hurt the performance of the compiled binary */
     if (RemoveID) {
       KModule::removeID(M);
+    }
+
+    if (AssignDebugIR) {
+      KModule::assignDebugIR(M);
     }
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(7, 0)

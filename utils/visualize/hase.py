@@ -872,13 +872,13 @@ class PyGraph(object):
                             re.target.id not in visited_nids:
                         visited_nids.add(re.target.id)
                         initial_strategy |= self.MustConcretize(re.target.id)
-        self.ALLOWPTR = True
+        PyGraph.ALLOWPTR = False
         noptr_strategy = self.recursiveOptimizeRecNids(initial_strategy)
-        self.ALLOWPTR = True
+        PyGraph.ALLOWPTR = True
         # we now allow ptr, need to flush all previous results
-        subh.mustconcretize_cache.clear()
-        ptr_strategy = subh.recursiveOptimizeRecNids(noptr_strategy)
-        self.ALLOWPTR = False
+        self.mustconcretize_cache.clear()
+        ptr_strategy = self.recursiveOptimizeRecNids(noptr_strategy)
+        PyGraph.ALLOWPTR = False
         # newRIlist, subh = self.recursiveOptimizeRecKInstL(kinstset)
         return ptr_strategy
 

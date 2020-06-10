@@ -108,3 +108,15 @@ unsigned UpdateList::hash() const {
     res ^= head->hash();
   return res;
 }
+
+void debugDumpUpdateNodes(const UpdateNode *un) {
+  llvm::errs() << '[';
+  while (un) {
+    un->index->print(llvm::errs());
+    llvm::errs() << '=';
+    un->value->print(llvm::errs());
+    llvm::errs() << ", ";
+    un = un->next.get();
+  }
+  llvm::errs() << "]\n";
+}

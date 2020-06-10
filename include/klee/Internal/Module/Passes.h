@@ -21,6 +21,7 @@
 
 #include <unordered_set>
 #include <string>
+#include <map>
 
 namespace llvm {
 class Function;
@@ -240,6 +241,18 @@ public:
   PTWritePass(std::string &cfg);
   bool runOnModule(llvm::Module &M) override;
 };
+class SelectRandomPass : public llvm::ModulePass {
+private:
+  std::map<std::string, unsigned int> inst2freq;
+  std::vector<std::string> insts;
+  unsigned int target;
+
+public:
+  static char ID;
+  SelectRandomPass(unsigned target);
+  bool runOnModule(llvm::Module &M) override;
+};
+
 } // namespace klee
 
 #endif /* KLEE_PASSES_H */

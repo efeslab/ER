@@ -61,7 +61,7 @@ static cl::opt<std::string> InputFile(
 static cl::opt<std::string> OutputFile(
     cl::desc("output_bitcode"),
     cl::Positional,
-    cl::Required);
+    cl::Optional);
 
 llvm::cl::opt<bool> AssignID(
     "assign-id",
@@ -69,6 +69,12 @@ llvm::cl::opt<bool> AssignID(
                    " (default=true)"),
     llvm::cl::init(true),
     llvm::cl::cat(klee::HASEPrePassCat));
+
+llvm::cl::opt<int> SelectRandom("select-random",
+                                llvm::cl::desc("target for select-random"),
+                                llvm::cl::init(0),
+                                llvm::cl::cat(klee::HASEPrePassCat));
+
 llvm::cl::opt<bool> InsertPTWrite(
     "insert-ptwrite",
     llvm::cl::desc("Insert PTWrite instructions to specific places."
@@ -107,6 +113,11 @@ int main(int argc, char **argv) {
     }
     assert(loadedModules.size() == 1);
     Module *M = loadedModules[0].get();
+
+    if (SelectRandom > 0) {
+      KModule::selectRandInst(M, SelectRandom);
+      return 0;
+    }
 
     std::error_code EC;
     raw_fd_ostream fs(OutputFile, EC, llvm::sys::fs::F_None);

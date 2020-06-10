@@ -161,6 +161,10 @@ namespace klee {
     /// be used in recording.
     static void assignID(llvm::Module *M, std::string &prefix);
 
+    /// randomely select instructions
+    static void selectRandInst(llvm::Module *M, unsigned int target);
+
+
     /// Add PTWrite instruction after specified instructions
     static void addPTWrite(llvm::Module *M, std::string &cfg);
 

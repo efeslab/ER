@@ -391,6 +391,12 @@ void KModule::addPTWrite(llvm::Module *M, std::string &cfg) {
   pm.run(*M);
 }
 
+void KModule::selectRandInst(llvm::Module *M, unsigned int target) {
+  legacy::PassManager pm;
+  pm.add(new SelectRandomPass(target));
+  pm.run(*M);
+}
+
 KInstruction* KModule::getKInstruction(llvm::Instruction *I) {
   auto it = instructionMapCache.find(I);
   if (it != instructionMapCache.end())

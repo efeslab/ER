@@ -86,7 +86,8 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
     struct pthread_attr_internal *iattr = (struct pthread_attr_internal *)attr;
     tdata->joinable = iattr->joinable;
   } else {
-    tdata->joinable = 0;
+    // default is joinable in the POSIX manual
+    tdata->joinable = 1;
   }
 
   klee_thread_create(newIdx, start_routine, arg);

@@ -11,10 +11,13 @@ ExprInPlaceTransformer::ExprInPlaceTransformer(const QueryCommand &_QC)
   for (const ref<Expr> &e : QC.Constraints) {
     visitDFS(e.get());
     out_Constraints.push_back(popKidExpr());
+    assert(!out_Constraints.back().isNull());
   }
   for (const ref<Expr> &e : QC.Values) {
+    if (isa<ConstantExpr>(e)) continue;
     visitDFS(e.get());
     out_Values.push_back(popKidExpr());
+    assert(!out_Values.back().isNull());
   }
   new_QCp =
       new QueryCommand(out_Constraints, QC.Query, out_Values, QC.Objects);

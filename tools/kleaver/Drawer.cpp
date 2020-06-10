@@ -65,16 +65,6 @@ void Drawer::draw() {
         if (insert_res.second) {
           // haven't visited this updateNode
 
-          // sentinel is the latest update node on the update list of this Array
-          //   if known, null otherwise.
-          const UpdateNode *sentinel = nullptr;
-          auto latest_un_it = arr2latest_un.find(root);
-          if (latest_un_it != arr2latest_un.end()) {
-            sentinel = latest_un_it->second;
-            assert(head->getSize() > sentinel->getSize() &&
-                   "sentinel found is shorter than current update list, "
-                   "update lists are possbily diverged");
-          }
           // the start pointer here is guaranteed to be different from sentinel
           // update node is guaranteed to be declared before visit
           const UpdateNode *it = head;
@@ -97,7 +87,10 @@ void Drawer::draw() {
               ensureExprDeclared(value);
               drawEdge(it, value, 1.0);
             }
-            if (it->next.get() != sentinel) {
+            const UpdateNode *next = it->next.get();
+            bool nextVisited =
+                (visited_updatenodes.find(next) != visited_updatenodes.end());
+            if (next && !nextVisited) {
               // I am not the last pointer to be processed
               declareUpdateNode(it->next.get(), root);
               drawEdge(it, it->next.get(), 1.0);
@@ -105,24 +98,19 @@ void Drawer::draw() {
             } else {
               // no matter we are processing an entire update list or only some
               //   new updates, sentinel is guaranteed to be declared here.
-              if (sentinel) {
-                drawEdge(it, sentinel, 1.0);
-              } else {
+              if (next == nullptr) {
                 // only establish edges with non-const array
                 // (constant array is not a concretization dependency)
                 if (root->isSymbolicArray()) {
                   ensureArrayDeclared(root);
                   drawEdge(it, root, 1.0);
                 }
+              } else {
+                drawEdge(it, next, 1.0);
               }
               break;
             }
           }
-          // this unvisited update node will be the latest one anyway.
-          arr2latest_un[root] = head;
-        } else {
-          // do nothing, only sanity check
-          assert(arr2latest_un.find(root) != arr2latest_un.end());
         }
         drawEdge(e, head, 1.0);
       } else {

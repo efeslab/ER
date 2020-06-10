@@ -24,9 +24,7 @@ protected:
   // update nodes are considered visisted if edges from current node to the
   //   earliest node on this update list have been established.
   std::unordered_set<const UpdateNode *> visited_updatenodes;
-  // bookkeeping the latest update node (on the longest update list) of each
-  // Array
-  std::unordered_map<const Array *, const UpdateNode *> arr2latest_un;
+  //std::unordered_map<const Array *, const UpdateNode *> arr2latest_un;
   // Arrays are considered visited if declared.
   std::unordered_set<const Array *> visited_array;
 

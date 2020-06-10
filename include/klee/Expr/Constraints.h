@@ -11,6 +11,7 @@
 #define KLEE_CONSTRAINTS_H
 
 #include "klee/Expr/Expr.h"
+#include "klee/Expr/ExprReplaceVisitor.h"
 #include "klee/Internal/Support/IndependentElementSet.h"
 #include <unordered_set>
 
@@ -28,7 +29,6 @@ public:
   using constraints_ty = std::vector<ref<Expr>>;
   using iterator = constraints_ty::iterator;
   using const_iterator = constraints_ty::const_iterator;
-  typedef RefHashMap<UpdateNode, ref<UpdateNode>> UNMap_ty;
 
   ConstraintManager() = default;
   //ConstraintManager &operator=(const ConstraintManager &cs) = default;
@@ -83,13 +83,15 @@ private:
   // equalities consists of EqExpr in current constraints.
   // For each item <key,value> in this map, ExprReplaceVisitor2 can find 
   // occurrences of "key" in an expression and replace it with "value"
-  std::map<ref<Expr>, ref<Expr>> equalities;
+  ExprHashMap<ref<Expr>> equalities;
+  // std::map<ref<Expr>, ref<Expr>> equalities;
   // If we RewriteEqualities, replacedUN maps update lists content to a unique
   // allocate. This is mainly for optimization results deduplication. I do not
   // want UpdateList diverge in multiple paths when I am following a single path
   // in replay.
   mutable UNMap_ty replacedUN;
   mutable UNMap_ty visitedUN;
+  mutable ExprReplaceVisitor2 *replaceVisitor = nullptr;
 
   // returns true iff the constraints were modified
   bool rewriteConstraints(ExprVisitor &visitor);

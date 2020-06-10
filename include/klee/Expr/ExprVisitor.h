@@ -106,6 +106,7 @@ namespace klee {
     // apply the visitor to the expression and return a possibly
     // modified new expression.
     ref<Expr> visit(const ref<Expr> &e);
+    void resetVisited() { visited.clear(); }
   };
 
 }

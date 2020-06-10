@@ -10,7 +10,6 @@
 #include "klee/Expr/Constraints.h"
 
 #include "klee/Expr/ExprPPrinter.h"
-#include "klee/Expr/ExprVisitor.h"
 #include "klee/Internal/Module/KModule.h"
 #include "klee/OptionCategories.h"
 #include "klee/Solver/SolverCmdLine.h"
@@ -34,104 +33,6 @@ llvm::cl::opt<bool> RewriteEqualities(
     llvm::cl::init(true),
     llvm::cl::cat(SolvingCat));
 }
-
-/**
- * ExprReplaceVisitor can find and replace occurrence of a single expression.
- */
-class ExprReplaceVisitorBase : public ExprVisitor {
-
-protected:
-  typedef ConstraintManager::UNMap_ty UNMap_ty;
-  // This is for replacement deduplication in a ConstraintManager level
-  // All optimized UpdateNodes are mapped to a unique UpdateNode according to
-  // their **content** (including the following chain of UpdateNodes)
-  UNMap_ty &replacedUN;
-  // This is a replacement cache only lives inside this ExprVisitor
-  UNMap_ty &visitedUN;
-
-public:
-  ExprReplaceVisitorBase(UNMap_ty &_replacedUN, UNMap_ty &_visitedUN)
-      : ExprVisitor(true), replacedUN(_replacedUN), visitedUN(_visitedUN) {}
-  ref<UpdateNode> visitUpdateNode(const ref<UpdateNode> &un) override {
-    // TODO: In recursive mode, should I repeatedly search visited Exprs, so
-    // that chains of replacement can resolved quicker.
-    auto find_it = visitedUN.find(un);
-    if (find_it != visitedUN.end()) {
-      return find_it->second;
-    }
-    ref<UpdateNode> next;
-    if (!un->next.isNull()) {
-      next = visitUpdateNode(un->next);
-    }
-    const ref<Expr> index = visit(un->index);
-    const ref<Expr> value = visit(un->value);
-    if (index != un->index || value != un->value ||
-        next.get() != un->next.get()) {
-      ref<UpdateNode> newUN =
-          new UpdateNode(next, index, value, un->flags, un->kinst);
-      UNMap_ty::iterator replacedUN_it;
-      bool unseen;
-      std::tie(replacedUN_it, unseen) =
-          replacedUN.insert(std::make_pair(newUN, newUN));
-      if (!unseen) {
-        newUN = replacedUN_it->second;
-      }
-      visitedUN[un] = newUN;
-      return newUN;
-    }
-    visitedUN[un] = un;
-    return un;
-  }
-};
-
-class ExprReplaceVisitor : public ExprReplaceVisitorBase {
-private:
-  ref<Expr> src, dst;
-
-public:
-  ExprReplaceVisitor(UNMap_ty &_replaceUN, UNMap_ty &_visitedUN, ref<Expr> _src, ref<Expr> _dst)
-      : ExprReplaceVisitorBase(_replaceUN, _visitedUN), src(_src), dst(_dst) {}
-
-  Action visitExpr(const Expr &e) {
-    if (e == *src.get()) {
-      return Action::changeTo(dst);
-    } else {
-      return Action::doChildren();
-    }
-  }
-
-  Action visitExprPost(const Expr &e) {
-    if (e == *src.get()) {
-      return Action::changeTo(dst);
-    } else {
-      return Action::doChildren();
-    }
-  }
-};
-
-/**
- * ExprReplaceVisitor2 can find and replace multiple expressions.
- * The replacement mapping is passed in as a std::map
- */
-class ExprReplaceVisitor2 : public ExprReplaceVisitorBase {
-private:
-  const std::map< ref<Expr>, ref<Expr> > &replacements;
-
-public:
-  ExprReplaceVisitor2(UNMap_ty &_replaceUN, UNMap_ty &_visitedUN,
-                      const std::map<ref<Expr>, ref<Expr>> &_replacements)
-      : ExprReplaceVisitorBase(_replaceUN, _visitedUN), replacements(_replacements) {}
-
-  Action visitExprPost(const Expr &e) {
-    std::map< ref<Expr>, ref<Expr> >::const_iterator it =
-      replacements.find(ref<Expr>(const_cast<Expr*>(&e)));
-    if (it!=replacements.end()) {
-      return Action::changeTo(it->second);
-    } else {
-      return Action::doChildren();
-    }
-  }
-};
 
 bool ConstraintManager::rewriteConstraints(ExprVisitor &visitor) {
   bool changed = false;
@@ -177,7 +78,11 @@ void ConstraintManager::simplifyForValidConstraint(ref<Expr> e) {
 ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
   if (isa<ConstantExpr>(e))
     return e;
-  return ExprReplaceVisitor2(replacedUN, visitedUN, equalities).visit(e);
+  if (!replaceVisitor) {
+    replaceVisitor = new klee::ExprReplaceVisitor2(replacedUN, visitedUN, equalities);
+  }
+  ref<Expr> res = replaceVisitor->visit(e);
+  return res;
 }
 
 bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
@@ -209,10 +114,15 @@ bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
       // ConstraintSet ADT which efficiently remembers obvious patterns
       // (byte-constant comparison).
       BinaryExpr *be = cast<BinaryExpr>(e);
-      if (isa<ConstantExpr>(be->left) && !isa<EqExpr>(be->right)) {
-        ExprReplaceVisitor visitor(replacedUN, visitedUN, be->right, be->left);
-        visitedUN.clear();
-        changed |= rewriteConstraints(visitor);
+      if (ConstantExpr *CE = dyn_cast<ConstantExpr>(be->left)) {
+        if (!CE->isFalse()) {
+          ExprReplaceVisitor visitor(replacedUN, visitedUN, be->right,
+                                     be->left);
+          visitedUN.clear();
+          if (replaceVisitor)
+            replaceVisitor->resetVisited();
+          changed |= rewriteConstraints(visitor);
+        }
       }
     }
     constraints.push_back(e);
@@ -490,6 +400,9 @@ ConstraintManager::~ConstraintManager() {
   // Here we assume every IndependentElementSet point in representative also exist in factors.
   for (auto it = factors.begin(); it != factors.end(); it++) {
     delete(*it);
+  }
+  if (replaceVisitor) {
+    delete replaceVisitor;
   }
   // TODO Double check your assumption
 }

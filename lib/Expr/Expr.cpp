@@ -908,10 +908,10 @@ static ref<Expr> AddExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
     return r;
   } else {
     Expr::Kind rk = r->getKind();
-    if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // A + (B+c) == (A+B) + c
+    if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0))) { // A + (B+c) == (A+B) + c
       return AddExpr::create(AddExpr::create(cl, r->getKid(0)),
                              r->getKid(1));
-    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // A + (B-c) == (A+B) - c
+    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0))) { // A + (B-c) == (A+B) - c
       return SubExpr::create(AddExpr::create(cl, r->getKid(0)),
                              r->getKid(1));
     } else {
@@ -929,16 +929,16 @@ static ref<Expr> AddExpr_create(Expr *l, Expr *r) {
     return XorExpr_create(l, r);
   } else {
     Expr::Kind lk = l->getKind(), rk = r->getKind();
-    if (lk==Expr::Add && isa<ConstantExpr>(l->getKid(0)) && !l->getKInst()) { // (k+a)+b = k+(a+b)
+    if (lk==Expr::Add && isa<ConstantExpr>(l->getKid(0))) { // (k+a)+b = k+(a+b)
       return AddExpr::create(l->getKid(0),
                              AddExpr::create(l->getKid(1), r));
-    } else if (lk==Expr::Sub && isa<ConstantExpr>(l->getKid(0)) && !l->getKInst()) { // (k-a)+b = k+(b-a)
+    } else if (lk==Expr::Sub && isa<ConstantExpr>(l->getKid(0))) { // (k-a)+b = k+(b-a)
       return AddExpr::create(l->getKid(0),
                              SubExpr::create(r, l->getKid(1)));
-    } else if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // a + (k+b) = k+(a+b)
+    } else if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0))) { // a + (k+b) = k+(a+b)
       return AddExpr::create(r->getKid(0),
                              AddExpr::create(l, r->getKid(1)));
-    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // a + (k-b) = k+(a-b)
+    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0))) { // a + (k-b) = k+(a-b)
       return AddExpr::create(r->getKid(0),
                              SubExpr::create(l, r->getKid(1)));
     } else {
@@ -954,10 +954,10 @@ static ref<Expr> SubExpr_createPartialR(const ref<ConstantExpr> &cl, Expr *r) {
     return XorExpr_createPartialR(cl, r);
   } else {
     Expr::Kind rk = r->getKind();
-    if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // A - (B+c) == (A-B) - c
+    if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0))) { // A - (B+c) == (A-B) - c
       return SubExpr::create(SubExpr::create(cl, r->getKid(0)),
                              r->getKid(1));
-    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // A - (B-c) == (A-B) + c
+    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0))) { // A - (B-c) == (A-B) + c
       return AddExpr::create(SubExpr::create(cl, r->getKid(0)),
                              r->getKid(1));
     } else {
@@ -979,16 +979,16 @@ static ref<Expr> SubExpr_create(Expr *l, Expr *r) {
     return ConstantExpr::alloc(0, type);
   } else {
     Expr::Kind lk = l->getKind(), rk = r->getKind();
-    if (lk==Expr::Add && isa<ConstantExpr>(l->getKid(0)) && !l->getKInst()) { // (k+a)-b = k+(a-b)
+    if (lk==Expr::Add && isa<ConstantExpr>(l->getKid(0))) { // (k+a)-b = k+(a-b)
       return AddExpr::create(l->getKid(0),
                              SubExpr::create(l->getKid(1), r));
-    } else if (lk==Expr::Sub && isa<ConstantExpr>(l->getKid(0)) && !l->getKInst()) { // (k-a)-b = k-(a+b)
+    } else if (lk==Expr::Sub && isa<ConstantExpr>(l->getKid(0))) { // (k-a)-b = k-(a+b)
       return SubExpr::create(l->getKid(0),
                              AddExpr::create(l->getKid(1), r));
-    } else if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // a - (k+b) = (a-c) - k
+    } else if (rk==Expr::Add && isa<ConstantExpr>(r->getKid(0))) { // a - (k+b) = (a-c) - k
       return SubExpr::create(SubExpr::create(l, r->getKid(1)),
                              r->getKid(0));
-    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0)) && !r->getKInst()) { // a - (k-b) = (a+b) - k
+    } else if (rk==Expr::Sub && isa<ConstantExpr>(r->getKid(0))) { // a - (k-b) = (a+b) - k
       return SubExpr::create(AddExpr::create(l, r->getKid(1)),
                              r->getKid(0));
     } else {

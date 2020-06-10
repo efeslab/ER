@@ -40,6 +40,9 @@ extern "C" void vc_DeleteExpr(void*);
 
 int UpdateNode::compare(const UpdateNode &b) const {
   if (this == &b) return 0;
+  if (hashValue != b.hashValue) {
+    return (hashValue < b.hashValue) ? -1 : 1;
+  }
   if (int cmp = index.compare(b.index))
     return cmp;
   if (int cmp = value.compare(b.value))

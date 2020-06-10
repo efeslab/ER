@@ -1341,6 +1341,10 @@ Executor::toConstant(ExecutionState &state,
 
   ref<ConstantExpr> value;
   bool success = solver->getValue(state, e, value);
+  if (!success) {
+    klee_message("toConstant Solver Timeout");
+    printInfo(llvm::errs());
+  }
   assert(success && "FIXME: Unhandled solver failure");
   (void) success;
 
@@ -3440,6 +3444,8 @@ std::string Executor::getAddressInfo(ExecutionState &state,
 
 
 void Executor::terminateState(ExecutionState &state) {
+  printInfo(llvm::errs());
+
   if (replayKTest && state.replayPosition!=replayKTest->numObjects) {
     klee_warning_once(replayKTest,
                       "replay did not consume all objects in test input.");
@@ -3563,8 +3569,6 @@ void Executor::terminateStateOnError(ExecutionState &state,
       msg << "Line: " << ii.line << "\n";
       msg << "assembly.ll line: " << ii.assemblyLine << "\n";
     }
-
-    printInfo(llvm::errs());
 
     std::string info_str = info.str();
     if (info_str != "")

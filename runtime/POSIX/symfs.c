@@ -237,11 +237,17 @@ static void _init_dual_buffer(disk_file_t *dfile, const char *origpath,
   }
 }
 
-// NOTE: the SYMBOLIC file has the same file name as the given file (origname)
+// NOTE: the SYMBOLIC file has the same file name as the given file (origpath)
+// e.g. origpath "a/b/c" -> symname "c"
+// \param[in] make_symbolic: bool, whether should we make the file content
+// symbolic
 static disk_file_t *_create_dual_file(disk_file_t *dfile, const char *origpath,
     int make_symbolic) {
   struct stat64 s;
-  int res = CALL_UNDERLYING(stat, origpath, &s);
+  // Here I do not want to follow symlink, thus using lstat
+  // For now symbolic symlink makes no sense but I feel not following symlink is
+  // the right semantic of creating symbolic files.
+  int res = CALL_UNDERLYING(lstat, origpath, &s);
   assert(res == 0 && "Could not get the stat of the original file.");
   const char *basename = strrchr(origpath, '/');
   const char *symname;
@@ -318,11 +324,11 @@ void klee_init_symfs(fs_init_descriptor_t *fid) {
         break;
       case SYMBOLIC:
         _create_dual_file(dfile, fid->sym_files[i].file_path,
-                          /*make stats symbolic?*/ 1);
+                          /*make content symbolic?*/ 1);
         break;
       case CONCRETE:
         _create_dual_file(dfile, fid->sym_files[i].file_path,
-                          /*make stats symbolic?*/ 0);
+                          /*make content symbolic?*/ 0);
         break;
     }
   }

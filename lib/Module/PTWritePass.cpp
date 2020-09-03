@@ -113,7 +113,7 @@ bool PTWritePass::runOnModule(Module &M) {
 
         unsigned int type_width = DL.getTypeSizeInBits(itype);
         llvm::errs() << "Instruction " << iname << " (w" << type_width
-                     << ")matched\n";
+                     << ") matched\n";
         MDNode *MD = i->getMetadata("klee.freq");
         if (MD) {
           if (ConstantAsMetadata *CMD =

@@ -349,9 +349,22 @@ public:
   const KInstruction *getKInst() const { return kinst; }
   void updateKInst(const KInstruction *newkinst);
 
-private:
+public:
   typedef llvm::DenseSet<std::pair<const Expr *, const Expr *> > ExprEquivSet;
-  int compare(const Expr &b, ExprEquivSet &equivs) const;
+
+  /*
+   * Expr::compare() -> UpdateNode::compare() -> Expr::compare() -> ...
+   * is currently a potential bottleneck during constraint simplification
+   * (ConstraintManager::simplifyExpr -> ExprReplaceVisitor)
+   * Here equivs cache Expr equivalency. We only cache equivalency because the
+   * expensive deep comparison only happens when two Expr have the same
+   * hashValue.  The properties of hashValue indicate most of the case the deep
+   * comparison should return "equal", thus we should cache "equal".
+   * I am not sure if another "non-equiv" set can also be useful.
+   */
+  static ExprEquivSet equivs;
+  friend void CompareCacheSemaphoreDec(); // to clear equivs
+  int compare_internal(const Expr &b) const;
 }; // Expr
 
 struct Expr::CreateArg {
@@ -524,6 +537,10 @@ public:
 /// Class representing a byte update of an array.
 class UpdateNode {
   friend class UpdateList;  
+  friend void CompareCacheSemaphoreDec(); // for UNequivs clear
+  typedef llvm::DenseSet<std::pair<const UpdateNode *, const UpdateNode *> >
+    UNEquivSet;
+  static UNEquivSet UNequivs;
 #ifdef EXPRINPLACE_MEMLEAK_DEBUG
 public:
 #endif
@@ -1306,6 +1323,20 @@ inline bool Expr::isFalse() const {
   if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(this))
     return CE->isFalse();
   return false;
+}
+
+// Here is a semaphore to control when should we clear cache of Expr::compare()
+// and UpdateNode::compare()
+// Note that cached Expr*/UpdateNode* maybe freed thus we should clear cache
+// whenever there are chances that Expr/UpdateNode maybe freed.
+// We will clear all compare cache whenever this semaphore reaches zero
+extern uint64_t CompareCacheSemaphore;
+inline void CompareCacheSemaphoreInc() { ++CompareCacheSemaphore; }
+inline void CompareCacheSemaphoreDec() {
+  if (--CompareCacheSemaphore == 0) {
+    Expr::equivs.clear();
+    UpdateNode::UNequivs.clear();
+  }
 }
 
 } // End klee namespace

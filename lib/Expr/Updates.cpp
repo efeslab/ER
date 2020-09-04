@@ -15,7 +15,7 @@
 using namespace klee;
 
 ///
-
+UpdateNode::UNEquivSet UpdateNode::UNequivs;
 static unsigned kinstMissCounter = 0;
 UpdateNode::UpdateNode(const ref<UpdateNode> &_next, const ref<Expr> &_index,
                        const ref<Expr> &_value, uint64_t _flags,
@@ -40,6 +40,19 @@ extern "C" void vc_DeleteExpr(void*);
 
 int UpdateNode::compare(const UpdateNode &b) const {
   if (this == &b) return 0;
+
+  // prepare ordered key for UN equiv cache query
+  const UpdateNode *ap, *bp;
+  if (this < &b) {
+    ap = this; bp = &b;
+  } else {
+    ap = &b; bp = this;
+  }
+
+  // check cache
+  if (UNequivs.count(std::make_pair(ap, bp)))
+    return 0;
+
   if (hashValue != b.hashValue) {
     return (hashValue < b.hashValue) ? -1 : 1;
   }
@@ -51,8 +64,13 @@ int UpdateNode::compare(const UpdateNode &b) const {
     return -1;
   else if (getSize() > b.getSize())
     return 1;
-  else
-    return next.compare(b.next);
+  else {
+    int res = next.compare(b.next);
+    if (res == 0) {
+      UNequivs.insert(std::make_pair(ap, bp));
+    }
+    return res;
+  }
 }
 
 unsigned UpdateNode::computeHash() {

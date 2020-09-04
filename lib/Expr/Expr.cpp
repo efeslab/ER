@@ -225,18 +225,24 @@ ref<Expr> Expr::createTempRead(const Array *array, Expr::Width w) {
                                                 ConstantExpr::alloc(0,Expr::Int32)));
   }
 }
-
+Expr::ExprEquivSet Expr::equivs;
+uint64_t klee::CompareCacheSemaphore = 0;
 int Expr::compare(const Expr &b) const {
-  // equivs has to be cleared everytime because Expr maybe freed so the pointer
-  // may be reallocated to something else.
-  static ExprEquivSet equivs;
-  int r = compare(b, equivs);
-  equivs.clear();
+  CompareCacheSemaphoreInc();
+  int r = compare_internal(b);
+  // I intentionally choose to clear both cache of Expr::compare and
+  // UpdateNode::compare. The other choice was to clear the cache of
+  // UpdateNode::compare after the toppest UpdateNode::compare exits.
+  // However, the same LONG update list can be referred multiple times in two
+  // top-level Exprs waiting to be compared.
+  // The assumption here is that I should guarantee there is no Expr nor
+  // UpdateNode freed before I clear both cache.
+  CompareCacheSemaphoreDec();
   return r;
 }
 
 // returns 0 if b is structurally equal to *this
-int Expr::compare(const Expr &b, ExprEquivSet &equivs) const {
+int Expr::compare_internal(const Expr &b) const {
   if (this == &b) return 0;
 
   const Expr *ap, *bp;
@@ -261,7 +267,7 @@ int Expr::compare(const Expr &b, ExprEquivSet &equivs) const {
 
   unsigned aN = getNumKids();
   for (unsigned i=0; i<aN; i++)
-    if (int res = getKid(i)->compare(*b.getKid(i), equivs))
+    if (int res = getKid(i)->compare_internal(*b.getKid(i)))
       return res;
 
   equivs.insert(std::make_pair(ap, bp));

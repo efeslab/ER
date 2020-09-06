@@ -50,7 +50,8 @@ int UpdateNode::compare(const UpdateNode &b) const {
   }
 
   // check cache
-  if (UNequivs.count(std::make_pair(ap, bp)))
+  if (UNequivs.count(
+          std::make_pair(ref<const UpdateNode>(ap), ref<const UpdateNode>(bp))))
     return 0;
 
   if (hashValue != b.hashValue) {
@@ -67,7 +68,8 @@ int UpdateNode::compare(const UpdateNode &b) const {
   else {
     int res = next.compare(b.next);
     if (res == 0) {
-      UNequivs.insert(std::make_pair(ap, bp));
+      UNequivs.insert(
+          std::make_pair(ref<const UpdateNode>(ap), ref<const UpdateNode>(bp)));
     }
     return res;
   }

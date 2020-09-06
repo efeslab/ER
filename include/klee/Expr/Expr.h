@@ -23,7 +23,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <sstream>
-#include <set>
+#include <unordered_set>
 #include <vector>
 #include <map>
 
@@ -196,7 +196,7 @@ public:
   };
 
   /// @brief Required by klee::ref-managed objects
-  class ReferenceCounter _refCount;
+  mutable class ReferenceCounter _refCount;
   int indirectReadRefCount = 0;
 
   enum {
@@ -247,7 +247,9 @@ protected:
 
 public:
   Expr() { Expr::count++; }
-  virtual ~Expr() { Expr::count--; } 
+  virtual ~Expr() {
+    Expr::count--;
+  }
 
   virtual Kind getKind() const = 0;
   virtual Width getWidth() const = 0;
@@ -349,7 +351,23 @@ public:
   void updateKInst(const KInstruction *newkinst);
 
 public:
-  typedef llvm::DenseSet<std::pair<const Expr *, const Expr *> > ExprEquivSet;
+  typedef std::pair<ref<const Expr>, ref<const Expr>> ExprEquivSetEntry_t;
+  struct ExprEquivSetEntryHash {
+    std::size_t operator()(const ExprEquivSetEntry_t &e) const noexcept {
+      std::size_t h1 = std::hash<const Expr *>{}(e.first.get());
+      std::size_t h2 = std::hash<const Expr *>{}(e.second.get());
+      return h1 ^ (h2 << 1);
+    }
+  };
+  struct ExprEquivSetEntryEqualTo {
+    bool operator()(const ExprEquivSetEntry_t &LHS, const ExprEquivSetEntry_t &RHS) const {
+      return (LHS.first.get() == RHS.first.get()) &&
+             (LHS.second.get() == RHS.second.get());
+    }
+  };
+  typedef std::unordered_set<ExprEquivSetEntry_t, ExprEquivSetEntryHash,
+                             ExprEquivSetEntryEqualTo>
+      ExprEquivSet;
 
   /*
    * Expr::compare() -> UpdateNode::compare() -> Expr::compare() -> ...
@@ -532,17 +550,28 @@ public:
 };
 
 
-#undef EXPRINPLACE_MEMLEAK_DEBUG
 /// Class representing a byte update of an array.
 class UpdateNode {
   friend class UpdateList;  
   friend void CompareCacheSemaphoreDec(); // for UNequivs clear
-  typedef llvm::DenseSet<std::pair<const UpdateNode *, const UpdateNode *> >
-    UNEquivSet;
+  typedef std::pair<ref<const UpdateNode>, ref<const UpdateNode>> UNEquivSetEntry_t;
+  struct UNEquivSetEntryHash {
+    std::size_t operator()(const UNEquivSetEntry_t &e) const noexcept {
+      std::size_t h1 = std::hash<const UpdateNode *>{}(e.first.get());
+      std::size_t h2 = std::hash<const UpdateNode *>{}(e.second.get());
+      return h1 ^ (h2 << 1);
+    }
+  };
+  struct UNEquivSetEntryEqualTo {
+    bool operator()(const UNEquivSetEntry_t &LHS, const UNEquivSetEntry_t &RHS) const {
+      return (LHS.first.get() == RHS.first.get()) &&
+             (LHS.second.get() == RHS.second.get());
+    }
+  };
+  typedef std::unordered_set<UNEquivSetEntry_t, UNEquivSetEntryHash,
+                             UNEquivSetEntryEqualTo>
+      UNEquivSet;
   static UNEquivSet UNequivs;
-#ifdef EXPRINPLACE_MEMLEAK_DEBUG
-public:
-#endif
   // cache instead of recalc
   unsigned hashValue;
 

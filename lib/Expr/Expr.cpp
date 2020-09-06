@@ -235,8 +235,6 @@ int Expr::compare(const Expr &b) const {
   // UpdateNode::compare after the toppest UpdateNode::compare exits.
   // However, the same LONG update list can be referred multiple times in two
   // top-level Exprs waiting to be compared.
-  // The assumption here is that I should guarantee there is no Expr nor
-  // UpdateNode freed before I clear both cache.
   CompareCacheSemaphoreDec();
   return r;
 }
@@ -262,7 +260,7 @@ int Expr::compare_internal(const Expr &b) const {
   if (ak == bk && ak == Expr::Constant) {
     return ap->compareContents(*bp);
   }
-  if (equivs.count(std::make_pair(ap, bp)))
+  if (equivs.count(std::make_pair(ref<const Expr>(ap), ref<const Expr>(bp))))
     return 0;
 
   if (ak!=bk)
@@ -279,7 +277,7 @@ int Expr::compare_internal(const Expr &b) const {
     if (int res = getKid(i)->compare_internal(*b.getKid(i)))
       return res;
 
-  equivs.insert(std::make_pair(ap, bp));
+  equivs.insert(std::make_pair(ref<const Expr>(ap), ref<const Expr>(bp)));
   return 0;
 }
 

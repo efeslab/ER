@@ -17,21 +17,6 @@ protected:
   UNMap_ty &replacedUN;
   // This is a replacement cache only lives inside this ExprVisitor
   UNMap_ty &visitedUN;
-  // Keep all Exprs to be replaced. This is to delay their memory reclaim for
-  // equivalency cache management.
-  // By delay memory reclaim via controlling this buffer, you can avoid flushing
-  // equivalency cache within a ExprRepalceVisitor2
-  // All derived classed should maintain these two replaced buffers when they
-  // change/replace any Expr.
-  std::vector<ref<Expr>> replacedExprBuffer;
-  // Same as above, but keep all UpdateNodes to be replaced instead
-  std::vector<ref<UpdateNode>> replacedUNBuffer;
-
-  // clear_replaced_buffer should be called after finishing one replacement
-  void clear_replaced_buffer() {
-    replacedExprBuffer.clear();
-    replacedUNBuffer.clear();
-  }
 
 public:
   ExprReplaceVisitorBase(UNMap_ty &_replacedUN, UNMap_ty &_visitedUN)
@@ -50,16 +35,9 @@ public:
   // Expr::equivs and UpdateNode::UNequivs can cache stuff longer.
   // NOTE: you should not directly call visit() anymore
   ref<Expr> replace(const ref<Expr> &e) {
-    // semaphore here may not work
-    // I try to delay all Expr/UpdateNode memory reclaim during this replacement
-    // visit.
-    // After the replacement visit finishes and equivalency caches are cleared, I
-    // should manually make the delayed memory reclaim takes effect
-    // (clear_replaced_buffer)
     CompareCacheSemaphoreInc();
     ref<Expr> e_ret = visit(e);
     CompareCacheSemaphoreDec();
-    clear_replaced_buffer();
     return e_ret;
   }
 };
@@ -75,7 +53,6 @@ public:
   Action visitExpr(const Expr &e) {
     if (e == *src.get()) {
       ref<Expr> e_ref = ref<Expr>(const_cast<Expr*>(&e));
-      replacedExprBuffer.push_back(e_ref);
       return Action::changeTo(dst);
     } else {
       return Action::doChildren();
@@ -85,7 +62,6 @@ public:
   Action visitExprPost(const Expr &e) {
     if (e == *src.get()) {
       ref<Expr> e_ref = ref<Expr>(const_cast<Expr*>(&e));
-      replacedExprBuffer.push_back(e_ref);
       return Action::changeTo(dst);
     } else {
       return Action::doChildren();
@@ -111,7 +87,6 @@ public:
     ExprHashMap< ref<Expr> >::const_iterator it =
       replacements.find(e_ref);
     if (it!=replacements.end()) {
-      replacedExprBuffer.push_back(e_ref);
       return Action::changeTo(it->second);
     } else {
       return Action::doChildren();

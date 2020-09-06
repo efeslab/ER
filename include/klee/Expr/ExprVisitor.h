@@ -90,9 +90,10 @@ namespace klee {
     virtual Action visitSgt(const SgtExpr&);
     virtual Action visitSge(const SgeExpr&);
 
-  private:
+  protected:
     typedef ExprHashMap< ref<Expr> > visited_ty;
     visited_ty visited;
+  private:
     // you need a recursive visitor if you want to keep visit each node until
     // you did not make any change in one pass
     // E.g. ExprReplaceVisitor2, which can find and replace multiple expressions,
@@ -106,7 +107,6 @@ namespace klee {
     // apply the visitor to the expression and return a possibly
     // modified new expression.
     ref<Expr> visit(const ref<Expr> &e);
-    void resetVisited() { visited.clear(); }
   };
 
 }

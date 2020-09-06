@@ -66,6 +66,13 @@ public:
   ExprReplaceVisitorBase(UNMap_ty &_replacedUN, UNMap_ty &_visitedUN)
       : ExprVisitor(true), replacedUN(_replacedUN), visitedUN(_visitedUN) {}
   ref<UpdateNode> visitUpdateNode(const ref<UpdateNode> &un) override;
+  // There is a visited cache in all ExprVisitor, which caches already visited
+  // Exprs and corresponding visit results.
+  // However in the case of ExprReplaceVisitorBase, new replacement rules could
+  // invalidate previous visited results.
+  // As a result, resetVisited is added to flush all visited results when
+  // replacement rules change (new equality statement added).
+  void resetVisited() { visited.clear(); }
 
   // replace() is the entrance of performing a replacement.
   // it will delay the memory deallocation so that "equivalency cache"

@@ -143,3 +143,9 @@ void debugDumpUpdateNodes(const UpdateNode *un) {
   }
   llvm::errs() << "]\n";
 }
+
+#ifdef DEBUG_EQUIV_RELEASE
+// to embed debugging symbols for UpdateNode::UNequivs
+template class llvm::DenseSet<
+  std::pair<const UpdateNode*, const UpdateNode *> >;
+#endif

@@ -10,6 +10,9 @@
 #ifndef KLEE_EXPR_H
 #define KLEE_EXPR_H
 
+// Embed debugging helpers from llvm + STL library functions to a release build
+#define DEBUG_EQUIV_RELEASE
+
 #include "klee/util/Bits.h"
 #include "klee/util/Ref.h"
 #include "klee/Internal/Module/KInstruction.h"

@@ -67,3 +67,9 @@ ExprReplaceVisitorBase::visitUpdateNode(const ref<UpdateNode> &un) {
   }
   return nextUN;
 }
+
+#ifdef DEBUG_EQUIV_RELEASE
+// to embed debugging symbols of UNMap_ty for debugging
+// replacedUN and visitedUN
+template class std::unordered_map<ref<UpdateNode>, ref<UpdateNode>, klee::util::RefHash<UpdateNode>, klee::util::RefCmp<UpdateNode>>;
+#endif

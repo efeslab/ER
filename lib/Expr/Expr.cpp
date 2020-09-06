@@ -1376,3 +1376,8 @@ CMPCREATE(UltExpr, Ult)
 CMPCREATE(UleExpr, Ule)
 CMPCREATE(SltExpr, Slt)
 CMPCREATE(SleExpr, Sle)
+
+#ifdef DEBUG_EQUIV_RELEASE
+// to embed debugging symbols for Expr::equivs
+template class llvm::DenseSet<std::pair<const Expr *, const Expr *> >;
+#endif

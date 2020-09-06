@@ -53,12 +53,12 @@ public:
   ref<UpdateNode> visitUpdateNode(const ref<UpdateNode> &un) override;
 };
 
-class ExprReplaceVisitor : public ExprReplaceVisitorBase {
+class ExprReplaceVisitorSingle : public ExprReplaceVisitorBase {
 private:
   ref<Expr> src, dst;
 
 public:
-  ExprReplaceVisitor(UNMap_ty &_replaceUN, UNMap_ty &_visitedUN, ref<Expr> _src, ref<Expr> _dst)
+  ExprReplaceVisitorSingle(UNMap_ty &_replaceUN, UNMap_ty &_visitedUN, ref<Expr> _src, ref<Expr> _dst)
       : ExprReplaceVisitorBase(_replaceUN, _visitedUN), src(_src), dst(_dst) {}
 
   Action visitExpr(const Expr &e) {
@@ -79,15 +79,15 @@ public:
 };
 
 /**
- * ExprReplaceVisitor2 can find and replace multiple expressions.
+ * ExprReplaceVisitorMulti can find and replace multiple expressions.
  * The replacement mapping is passed in as a std::map
  */
-class ExprReplaceVisitor2 : public ExprReplaceVisitorBase {
+class ExprReplaceVisitorMulti : public ExprReplaceVisitorBase {
 private:
   const ExprHashMap< ref<Expr> > &replacements;
 
 public:
-  ExprReplaceVisitor2(UNMap_ty &_replaceUN, UNMap_ty &_visitedUN,
+  ExprReplaceVisitorMulti(UNMap_ty &_replaceUN, UNMap_ty &_visitedUN,
                       const ExprHashMap<ref<Expr>> &_replacements)
       : ExprReplaceVisitorBase(_replaceUN, _visitedUN), replacements(_replacements) {}
 

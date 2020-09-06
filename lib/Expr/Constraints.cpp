@@ -34,7 +34,7 @@ llvm::cl::opt<bool> RewriteEqualities(
     llvm::cl::cat(SolvingCat));
 }
 
-bool ConstraintManager::rewriteConstraints(ExprVisitor &visitor) {
+bool ConstraintManager::rewriteConstraints(ExprReplaceVisitorBase &visitor) {
   bool changed = false;
   if (old.empty()) {
     constraints.swap(old);
@@ -79,7 +79,7 @@ ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
   if (isa<ConstantExpr>(e))
     return e;
   if (!replaceVisitor) {
-    replaceVisitor = new klee::ExprReplaceVisitor2(replacedUN, visitedUN, equalities);
+    replaceVisitor = new klee::ExprReplaceVisitorMulti(replacedUN, visitedUN, equalities);
   }
   ref<Expr> res = replaceVisitor->visit(e);
   return res;
@@ -116,7 +116,7 @@ bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
       BinaryExpr *be = cast<BinaryExpr>(e);
       if (ConstantExpr *CE = dyn_cast<ConstantExpr>(be->left)) {
         if (!CE->isFalse()) {
-          ExprReplaceVisitor visitor(replacedUN, visitedUN, be->right,
+          ExprReplaceVisitorSingle visitor(replacedUN, visitedUN, be->right,
                                      be->left);
           visitedUN.clear();
           if (replaceVisitor)

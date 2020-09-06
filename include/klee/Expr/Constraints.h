@@ -81,7 +81,7 @@ private:
   std::vector<ref<Expr>> addedConstraints;
   std::unordered_set<klee::IndependentElementSet*> factors;
   // equalities consists of EqExpr in current constraints.
-  // For each item <key,value> in this map, ExprReplaceVisitor2 can find 
+  // For each item <key,value> in this map, ExprReplaceVisitorMulti can find
   // occurrences of "key" in an expression and replace it with "value"
   ExprHashMap<ref<Expr>> equalities;
   // std::map<ref<Expr>, ref<Expr>> equalities;
@@ -91,10 +91,10 @@ private:
   // in replay.
   mutable UNMap_ty replacedUN;
   mutable UNMap_ty visitedUN;
-  mutable ExprReplaceVisitor2 *replaceVisitor = nullptr;
+  mutable ExprReplaceVisitorMulti *replaceVisitor = nullptr;
 
   // returns true iff the constraints were modified
-  bool rewriteConstraints(ExprVisitor &visitor);
+  bool rewriteConstraints(ExprReplaceVisitorBase &visitor);
 
   bool addConstraintInternal(ref<Expr> e);
 

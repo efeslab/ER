@@ -54,10 +54,15 @@ ExprReplaceVisitorBase::visitUpdateNode(const ref<UpdateNode> &un) {
         std::tie(replacedUN_it, unseen) =
             replacedUN.insert(std::make_pair(newUN, newUN));
         if (!unseen) {
+          // A previously seen UN (found in the replacedUN) is going to replace
+          // newUN (just allocated above)
+          replacedUNBuffer.push_back(newUN);
           newUN = replacedUN_it->second;
         }
         visitedUN[n] = newUN;
         nextUN = newUN;
+        // newUN is going to replace n
+        replacedUNBuffer.push_back(n);
       } else {
         visitedUN[n] = n;
         nextUN = n;

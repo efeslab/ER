@@ -41,7 +41,7 @@ bool ConstraintManager::rewriteConstraints(ExprReplaceVisitorBase &visitor) {
     for (ConstraintManager::constraints_ty::iterator 
            it = old.begin(), ie = old.end(); it != ie; ++it) {
       ref<Expr> &ce = *it;
-      ref<Expr> e = visitor.visit(ce);
+      ref<Expr> e = visitor.replace(ce);
 
       if (e!=ce) {
         // TODO: maybe I can check if the rewritten expr has the same IndependentSet as previous one.
@@ -57,7 +57,7 @@ bool ConstraintManager::rewriteConstraints(ExprReplaceVisitorBase &visitor) {
     for (ConstraintManager::constraints_ty::iterator 
            it = old_temp.begin(), ie = old_temp.end(); it != ie; ++it) {
       ref<Expr> &ce = *it;
-      ref<Expr> e = visitor.visit(ce);
+      ref<Expr> e = visitor.replace(ce);
 
       if (e!=ce) {
         addConstraintInternal(e); // enable further reductions
@@ -81,7 +81,7 @@ ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
   if (!replaceVisitor) {
     replaceVisitor = new klee::ExprReplaceVisitorMulti(replacedUN, visitedUN, equalities);
   }
-  ref<Expr> res = replaceVisitor->visit(e);
+  ref<Expr> res = replaceVisitor->replace(e);
   return res;
 }
 

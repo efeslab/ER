@@ -134,8 +134,7 @@ public:
 
   ref<Expr> getBoundsCheckOffset(ref<Expr> offset) const {
     if (size==0) {
-      return EqExpr::create(offset, 
-                            ConstantExpr::alloc(0, Context::get().getPointerWidth()));
+      return ConstantExpr::alloc(0, Expr::Bool);
     } else {
       return UltExpr::create(offset, getSizeExpr());
     }

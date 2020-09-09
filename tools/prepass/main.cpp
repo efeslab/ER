@@ -88,6 +88,10 @@ llvm::cl::opt<std::string> PTWriteCFG(
     llvm::cl::init(""),
     llvm::cl::cat(klee::HASEPrePassCat));
 
+static llvm::cl::extrahelp extrahelp("\n"
+        "NOTE: You need an input bitcode containing frequency info to see "
+        "the recording statistics (how many records, how many bytes, etc.)\n");
+
 static void HideOptions() {
     StringMap<cl::Option *> &map = cl::getRegisteredOptions();
     for (auto &elem : map) {

@@ -1219,7 +1219,7 @@ void externalsAndGlobalsCheck(const llvm::Module *m) {
       for (BasicBlock::const_iterator it = bbIt->begin(), ie = bbIt->end();
            it != ie; ++it) {
         if (const llvm::CallInst *ci = dyn_cast<llvm::CallInst>(it)) {
-          if (isa<llvm::InlineAsm>(ci->getCalledValue())) {
+          if (isa<llvm::InlineAsm>(ci->getCalledOperand())) {
             klee_warning_once(&*fnIt,
                               "function \"%s\" has inline asm",
                               fnIt->getName().data());

@@ -37,7 +37,7 @@
 // System Limits
 ////////////////////////////////////////////////////////////////////////////////
 
-#define MAX_THREADS         16
+#define MAX_THREADS         128
 #define MAX_PROCESSES       8
 
 #define MAX_SEMAPHORES      8

@@ -29,12 +29,12 @@ void quicksort(int *a, int l, int r) {
 	}
 }
 
-#define SIZE 100
+#define SIZE 1024
 int main(){
 	int *a=malloc(SIZE*sizeof(a[0]));
-	for (unsigned int i=0; i < SIZE; ++i) {
-		scanf("%d", a+i);
-	}
+	FILE *f = fopen("stdin", "rb");
+	fread(a, sizeof(a[0]), SIZE, f);
+	fclose(f);
 #ifdef KLEE_SYMBOLIC
 	klee_make_symbolic(a, SIZE*sizeof(a[0]), "input");
 #endif

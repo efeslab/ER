@@ -4,35 +4,6 @@
 #include "klee/Expr/ExprVisitor.h"
 #include "klee/util/RefHashMap.h"
 namespace klee {
-//typedef llvm::DenseSet<std::pair<const UpdateNode *, const UpdateNode *>>
-//    UpdateNodeEquivSet;
-//extern UpdateNodeEquivSet equivUN;
-//extern uint64_t UNCacheHit;
-//extern uint64_t UNCacheMiss;
-//struct CachedUpdateNodeEqu {
-//  bool operator()(const ref<UpdateNode> &a, const ref<UpdateNode> &b) const {
-//    const UpdateNode *ap, *bp;
-//    if (a.get() < b.get()) {
-//      ap = a.get(); bp = b.get();
-//    } else {
-//      ap = b.get(); bp = a.get();
-//    }
-//    if (equivUN.count(std::make_pair(ap, bp))) {
-//      UNCacheHit++;
-//      return 0;
-//    }
-//    UNCacheMiss++;
-//    if (a == b) {
-//      equivUN.insert(std::make_pair(ap, bp));
-//      return true;
-//    } else {
-//      return false;
-//    }
-//  }
-//};
-//typedef std::unordered_map<ref<UpdateNode>, ref<UpdateNode>,
-//                           util::RefHash<UpdateNode>, CachedUpdateNodeEqu>
-//    UNMap_ty;
 typedef RefHashMap<UpdateNode, ref<UpdateNode>> UNMap_ty;
 /**
  * ExprReplaceVisitor can find and replace occurrence of a single expression.

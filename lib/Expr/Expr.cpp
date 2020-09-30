@@ -252,10 +252,19 @@ int Expr::compare_internal(const Expr &b) const {
     ap = &b; bp = this;
   }
 
+  // I choose to not cache ConstantExpr in the equality cache since temporary
+  // ConstantExpr may be allocated and freed during Expression rebuild, more
+  // precisely, during partial constant expression transformation.
+  // Since current equality cache delays flush for better performance and there
+  // is no better way to handle those temporary Expr alloc/free, I want to not
+  // put ConstantExpr in the cache from the first place.
+  Kind ak = getKind(), bk = b.getKind();
+  if (ak == bk && ak == Expr::Constant) {
+    return ap->compareContents(*bp);
+  }
   if (equivs.count(std::make_pair(ap, bp)))
     return 0;
 
-  Kind ak = getKind(), bk = b.getKind();
   if (ak!=bk)
     return (ak < bk) ? -1 : 1;
 

@@ -356,3 +356,8 @@ DEFINE_MODEL(const unsigned short **, __ctype_b_loc, void) {
   return &b_locale;
 }
 #endif
+
+int pthread_sigmask(int how, void *set, void *oldset) {
+  klee_warning("ignore pthread_sigmask");
+  return 0;
+}

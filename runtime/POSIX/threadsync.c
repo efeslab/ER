@@ -579,3 +579,9 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock) {
 
   return res;
 }
+
+int sigwaitinfo(void *set, void *info) {
+  wlist_id_t sig_wlist = klee_get_wlist();
+  __thread_sleep(sig_wlist);
+  return 0;
+}

@@ -532,7 +532,7 @@ static int _can_open(int flags, const struct stat64 *s) {
 
 int __fd_open(const char *pathname, int flags, mode_t mode) {
   const char *cpathname = __concretize_string(pathname);
-  posix_debug_msg("Attempting to open: %s\n", cpathname);
+  posix_debug_msg("Attempting to open: %s, flags %#X, mode %#X\n", cpathname, flags, mode);
   // Obtain a symbolic file
   disk_file_t *dfile = __get_sym_file(pathname);
 
@@ -1116,11 +1116,16 @@ int unlink(const char *pathname) {
       errno = EPERM;
       return -1;
     }
+  } else {
+    // Allowing symbolic execution to delete files could be dangerous.
+    // But I decide to enable this due to httpd, which create and delete files
+    // at runtime to implement cross-process locks.
+    posix_debug_msg("Attempting to call unlink at %s\n", pathname);
+    int res = CALL_UNDERLYING(unlink, pathname);
+    if (res == -1)
+      errno = klee_get_errno();
+    return res;
   }
-
-  klee_warning("ignoring (EPERM)");
-  errno = EPERM;
-  return -1;
 }
 
 int unlinkat(int dirfd, const char *pathname, int flags) {

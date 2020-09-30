@@ -30,6 +30,7 @@ except ImportError:
     from fakegynode import FakeGyNode
     from fakegynode import FakeGyEdge
     import argparse
+    import pdb
 finally:
     import sys
     if sys.version_info >= (2,7):
@@ -96,7 +97,7 @@ Important properties:
     freq (int): how many times this instruction got executed in the entire trace
 """
 class RecordableInst(object):
-    SUBGRAPH = True
+    SUBGRAPH = False
     def __init__(self, pygraph, gynode, rec_nodes, hidden_nodes,
             concretized_nodes):
         self.pygraph = pygraph

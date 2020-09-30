@@ -16,6 +16,12 @@ typedef struct {
 } socket_event_handler_t;
 
 typedef struct {
+  socket_event_handler_t __base;
+  socket_t *client_sock;
+  socket_t *server_sock;
+} client_socket_handler_t;
+
+typedef struct {
   unsigned int registered_cnt;
   socket_event_handler_t  *handlers[MAX_SOCK_EVT_HANDLE];
 } socket_simulator_t;
@@ -33,4 +39,21 @@ void register_predefined_socket_handler(const char *handler_name);
         hdl->handle(hdl, __VA_ARGS__);                                         \
     }                                                                          \
   } while (0)
+
+#define DECLARE_SOCKET_HANDLER_FUNC(name)                                      \
+  void name##_handler_init(void *self);                                        \
+  void name##_handler_post_bind(void *self, socket_t *sock,                    \
+                                const struct sockaddr *addr,                   \
+                                socklen_t addrlen);                            \
+  void name##_handler_post_listen(void *self, socket_t *sock,                  \
+                                  __attribute__((unused)) int backlog)
+/*
+ * sockets simulator for different applications
+ */
+// memcached 1.5.13
+typedef client_socket_handler_t memcached_1_5_13_handler_t;
+DECLARE_SOCKET_HANDLER_FUNC(memcached_1_5_13);
+// apache-60324
+typedef client_socket_handler_t apache_60324_handler_t;
+DECLARE_SOCKET_HANDLER_FUNC(apache_60324);
 #endif // SOCKETS_SIMULATOR_H_

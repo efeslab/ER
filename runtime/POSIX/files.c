@@ -794,8 +794,12 @@ int futimesat(int fd, const char* path, const struct timeval times[2]) {
 ////////////////////////////////////////////////////////////////////////////////
 
 int _close_file(file_t *file) {
+  int res = 0;
+  if (_file_is_concrete(file)) {
+    res = CALL_UNDERLYING(close, file->concrete_fd);
+  }
   free(file);
-  return 0;
+  return res;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

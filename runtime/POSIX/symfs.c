@@ -78,6 +78,32 @@ static int _truncate_symbolic(struct disk_file *dfile, size_t size) {
   return 0;
 }
 
+static ssize_t _read_symbolic_devrandom(struct disk_file *dfile, void *buf,
+                                        size_t count,
+                                        off_t __attribute__((unused)) offset) {
+  devrandom_file_t *drand_file = (devrandom_file_t *)(dfile);
+  if (drand_file->offset + count < dfile->size) {
+    block_buffer_t *buff = &dfile->bbuf;
+    ssize_t ret = _block_read(buff, buf, count, drand_file->offset);
+    drand_file->offset += ret;
+    return ret;
+  } else {
+    posix_debug_msg("random file %s is exhausted\n", dfile->name);
+    return -1;
+  }
+}
+static ssize_t _abort_write_symbolic(struct disk_file *dfile, const void *buf,
+                                     size_t count, off_t offset) {
+  posix_debug_msg("should not perform write on file %s\n", dfile->name);
+  abort();
+  return 0;
+}
+static int _abort_truncate_symbolic(struct disk_file *dfile, size_t size) {
+  posix_debug_msg("should not perform truncate on file %s\n", dfile->name);
+  abort();
+  return 0;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // FS Routines
 ////////////////////////////////////////////////////////////////////////////////
@@ -109,6 +135,10 @@ disk_file_t *__get_sym_file(const char *pathname) {
         return NULL;
       return df;
     }
+  }
+  /* special symbolic files */
+  if (strcmp(pathname, "/dev/urandom") == 0) {
+    return (disk_file_t*)(__sym_fs.devurandom);
   }
   return NULL;
 }
@@ -271,6 +301,32 @@ static disk_file_t *_create_dual_file(disk_file_t *dfile, const char *origpath,
   return dfile;
 }
 
+//\param[in] origpath: create concrete file if non-NULL
+static void _create_devrandom_file(devrandom_file_t *drand, unsigned size,
+                                   const char *origpath) {
+  disk_file_t *dfile = &drand->disk_file;
+  _init_file_name(dfile, "/dev/urandom");
+  if (origpath) {
+    _init_concrete_buffer(dfile, origpath, size);
+  } else {
+    // valid symbolic name should not contain '/'
+    _init_pure_symbolic_buffer(dfile, size, "_dev_urandom");
+  }
+  dfile->size = size;
+  dfile->ops = (disk_file_ops_t){
+    .truncate = _abort_truncate_symbolic,
+    .read = _read_symbolic_devrandom,
+    .write = _abort_write_symbolic,
+  };
+  dfile->stat = (struct stat64*)malloc(sizeof(struct stat64));
+  struct stat64 s;
+  int res = CALL_UNDERLYING(lstat, "/dev/urandom", &s);
+  assert(res == 0 && "Could not get the stat of the /dev/urandom");
+  memcpy(dfile->stat, &s, sizeof(struct stat64));
+
+  drand->offset = 0;
+}
+
 static disk_file_t *_create_pure_symbolic_file(disk_file_t *dfile,
                                                size_t maxsize,
                                                const char *symname,
@@ -387,6 +443,27 @@ void klee_init_symfs(fs_init_descriptor_t *fid) {
     __sym_fs.stdout_writes = 0;
   }
   else __sym_fs.sym_stdout = NULL;
+
+  /* setting /dev/(u)random */
+  if (fid->urandom_size > 0 && fid->conc_urandom_path) {
+    posix_debug_msg("cannot define symbolic and concrete /dev/urandom "
+        "at the same time\n");
+    abort();
+  }
+  if (fid->urandom_size > 0) {
+    __sym_fs.devurandom = malloc(sizeof(*__sym_fs.devurandom));
+    _create_devrandom_file(__sym_fs.devurandom, fid->urandom_size,
+                           /*concrete?*/ NULL);
+  }
+  if (fid->conc_urandom_path) {
+    __sym_fs.devurandom = malloc(sizeof(*__sym_fs.devurandom));
+    struct stat64 s;
+    int res = CALL_UNDERLYING(lstat, fid->conc_urandom_path, &s);
+    assert(res == 0 && "Could not get the stat of the orignal file.");
+    _create_devrandom_file(__sym_fs.devurandom, s.st_size,
+                           fid->conc_urandom_path);
+  }
+
   /* setting misc options */
   __sym_fs.allow_unsafe = fid->allow_unsafe;
   __sym_fs.overlapped_writes = fid->overlapped_writes;

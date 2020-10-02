@@ -60,6 +60,12 @@ typedef struct disk_file {
   block_buffer_t bbuf;
 } disk_file_t;  // The "disk" storage of the file
 
+// Special model for /dev/(u)random
+// need a file specific offset not affected by read/write/open/close, etc.
+typedef struct devrandom_file {
+  disk_file_t disk_file;
+  off_t offset;
+} devrandom_file_t;
 
 enum sym_file_type {
   // both file content and file stats are symbolic
@@ -78,6 +84,8 @@ typedef struct {
   disk_file_t *sym_stdin, *sym_stdout;
   unsigned stdout_writes; /* how many chars were written to stdout */
   disk_file_t *sym_files; /* this is statically allocated */
+  /*  special symbolic files */
+  devrandom_file_t *devurandom; // can either be symbolic or concrete
 
   /* --- */
   /* the maximum number of failures on one path; gets decremented after each failure */
@@ -133,6 +141,11 @@ typedef struct {
   unsigned n_remap_files;
   const char *remap_files[MAX_FILES];
   const char *remap_target_files[MAX_FILES];
+
+  /* special symbolic files*/
+  // size of /dev/(u)random, 0 means disable, > 0 means enable
+  unsigned urandom_size;
+  const char *conc_urandom_path;
 } fs_init_descriptor_t;
 
 extern filesystem_t __sym_fs;

@@ -128,6 +128,8 @@ void klee_init_env(int *argcPtr, char ***argvPtr) {
   fid.sym_file_stdin_flag = 0;
   fid.sym_stdout_flag = 0;
   fid.max_failures = 0;
+  fid.urandom_size = 0;
+  fid.conc_urandom_path = NULL;
   /* Global option initialization */
   // This is defined in common.c
   enableDebug = 0;
@@ -169,7 +171,9 @@ usage: (klee_init_env) [options] [program arguments]\n\
   -posix-debug              - Enable debug message in POSIX runtime\n\
   -sock-handler <NAME>      - Use predefined socket handler\n\
   -symbolic-sock-handler    - Inform socket handler that it is used during a\n\
-                              symbolic replay. (default=false)\n");
+                              symbolic replay. (default=false)\n\
+  -symbolic-urandom <size>  - Specify the size (>0) of a symbolic /dev/urandom\n\
+  -conc-urandom <file>      - Specify the content of a concrete fake /dev/urandom\n");
   }
 
   while (k < argc) {
@@ -341,6 +345,18 @@ usage: (klee_init_env) [options] [program arguments]\n\
                __streq(argv[k], "-symbolic-gettimeofday")) {
       k++;
       useSymbolicgettimeofday = 1;
+    } else if (__streq(argv[k], "--symbolic-urandom") ||
+               __streq(argv[k], "-symbolic-urandom")) {
+      k++;
+      const char *msg =
+          "--symbolic-urandom expects one integer argument <size>";
+      fid.urandom_size = __str_to_int(argv[k++], msg);
+    } else if (__streq(argv[k], "--conc-urandom") ||
+               __streq(argv[k], "-conc-urandom")) {
+      const char *msg = "--conc-urandom expects a file path argument <file>";
+      if (++k == argc)
+        __emit_error(msg);
+      fid.conc_urandom_path = argv[k++];
     } else {
       /* simply copy arguments */
       __add_arg(&new_argc, new_argv, argv[k++], 1024);

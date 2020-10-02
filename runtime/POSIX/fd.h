@@ -62,8 +62,8 @@ typedef struct {
   unsigned int attr;      /* flags from exec_file_flag_t */
   file_base_t *io_object; /* This is dynamically allocated
                            * type: file_t*, if fd is a regular file;
-                           * TODO pipe type;
-                           * TODO socket type;
+                           * type: pipe_end_t*, if fd is a pipe;
+                           * type: socket_t*, if fd is a socket;
                            */
 } fd_entry_t;
 // NOTE: exe_file_t -> fd_entry_t

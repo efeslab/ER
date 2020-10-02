@@ -207,6 +207,10 @@ static size_t _read_file_contents(const char *file_path, size_t size, char *orig
 
 static void _init_pure_symbolic_buffer(disk_file_t *dfile, size_t maxsize,
     const char *symname) {
+  // This namebuf is required to avoid memory address resolving error
+  // Note that the symname comes from argv, which is not managed by klee's
+  // memory object model to my best knowledge.
+  // By using this namebuf, klee_make_symbolic can access the string.
   static char namebuf[64];
 
   // Initializing the buffer contents...
@@ -219,22 +223,12 @@ static void _init_pure_symbolic_buffer(disk_file_t *dfile, size_t maxsize,
   klee_make_shared(buff->contents, maxsize);
 }
 
-static void _init_dual_buffer(disk_file_t *dfile, const char *origpath,
-    size_t size, const char *symname, int make_symbolic) {
-
+static void _init_concrete_buffer(disk_file_t *dfile, const char *origpath,
+    size_t size) {
   block_buffer_t *buff = &dfile->bbuf;
   _block_init(buff, size);
   buff->size = size;
-
-  if (make_symbolic) {
-    static char namebuf[64];
-    strcpy(namebuf, symname);
-
-    klee_make_symbolic(buff->contents, size, namebuf);
-    klee_make_shared(buff->contents, size);
-  } else {
-    _read_file_contents(origpath, size, buff->contents);
-  }
+  _read_file_contents(origpath, size, buff->contents);
 }
 
 // NOTE: the SYMBOLIC file has the same file name as the given file (origpath)
@@ -258,8 +252,13 @@ static disk_file_t *_create_dual_file(disk_file_t *dfile, const char *origpath,
   }
 
   _init_file_name(dfile, symname);
-  _init_dual_buffer(dfile, origpath, s.st_size, symname, make_symbolic);
+  if (make_symbolic) {
+    _init_pure_symbolic_buffer(dfile, s.st_size, symname);
+  } else {
+    _init_concrete_buffer(dfile, origpath, s.st_size);
+  }
 
+  dfile->size = s.st_size;
   dfile->stat = (struct stat64*)malloc(sizeof(struct stat64));
   memcpy(dfile->stat, &s, sizeof(struct stat64));
 
@@ -284,6 +283,7 @@ static disk_file_t *_create_pure_symbolic_file(disk_file_t *dfile,
   // Update the stat size
   block_buffer_t *buff = &dfile->bbuf;
   dfile->stat->st_size = buff->size;
+  dfile->size = maxsize;
 
   // Register the operations
   memset(&dfile->ops, 0, sizeof(dfile->ops));
@@ -297,7 +297,12 @@ static disk_file_t *_create_pure_symbolic_file(disk_file_t *dfile,
 void klee_init_symfs(fs_init_descriptor_t *fid) {
   struct stat64 def_stat;
 
-  int res = stat64(".", &def_stat);
+  int res;
+#if __WORDSIZE == 64
+  res = CALL_UNDERLYING(stat, ".", &def_stat);
+#else
+  res = CALL_UNDERLYING(stat64, ".", &def_stat);
+#endif
   assert(res == 0 && "Could not get default stat64 values");
 
   memset(&__sym_fs, 0, sizeof(__sym_fs));

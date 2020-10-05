@@ -263,6 +263,7 @@ static void _init_concrete_buffer(disk_file_t *dfile, const char *origpath,
 
 // NOTE: the SYMBOLIC file has the same file name as the given file (origpath)
 // e.g. origpath "a/b/c" -> symname "c"
+// We assume the origpath is a file (not ending with '/')
 // \param[in] make_symbolic: bool, whether should we make the file content
 // symbolic
 static disk_file_t *_create_dual_file(disk_file_t *dfile, const char *origpath,
@@ -276,7 +277,7 @@ static disk_file_t *_create_dual_file(disk_file_t *dfile, const char *origpath,
   const char *basename = strrchr(origpath, '/');
   const char *symname;
   if (basename) {
-    symname = basename;
+    symname = basename + 1;
   } else {
     symname = origpath;
   }

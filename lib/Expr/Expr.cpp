@@ -122,7 +122,7 @@ void Expr::updateKInst(const KInstruction *newkinst) {
     break;
   case KInstBindingPolicy::LessFreq:
     should_update =
-        (!kinst || (kinst->frequency > newkinst->frequency));
+        (!kinst || (kinst->getLoadedFreq() > newkinst->getLoadedFreq()));
     break;
   case KInstBindingPolicy::CallStackTopFirstOccur:
     should_update =

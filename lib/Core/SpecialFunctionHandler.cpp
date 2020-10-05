@@ -196,7 +196,7 @@ SpecialFunctionHandler::SpecialFunctionHandler(Executor &_executor)
   : executor(_executor) {}
 
 void SpecialFunctionHandler::prepare(
-    std::vector<const char *> &preservedFunctions) {
+    std::vector<const char *> &preservedFunctions) const {
   unsigned N = size();
 
   for (unsigned i=0; i<N; ++i) {

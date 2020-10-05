@@ -554,44 +554,56 @@ Executor::setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
          "can only register one module"); // XXX gross
 
   kmodule = std::unique_ptr<KModule>(new KModule());
+  specialFunctionHandler = new SpecialFunctionHandler(*this);
 
   // Preparing the final module happens in multiple stages
+  // May skip some stages if the given module is preprocessed
+  if (!opts.MonolithicModule) {
+    // Link with KLEE intrinsics library before running any optimizations
+    SmallString<128> LibPath(opts.LibraryDir);
+    llvm::sys::path::append(LibPath, "libkleeRuntimeIntrinsic.bca");
+    std::string error;
+    if (!klee::loadFile(LibPath.str(), modules[0]->getContext(), modules,
+                        error)) {
+      klee_error("Could not load KLEE intrinsic file %s", LibPath.c_str());
+    }
 
-  // Link with KLEE intrinsics library before running any optimizations
-  SmallString<128> LibPath(opts.LibraryDir);
-  llvm::sys::path::append(LibPath, "libkleeRuntimeIntrinsic.bca");
-  std::string error;
-  if (!klee::loadFile(LibPath.str(), modules[0]->getContext(), modules,
-                      error)) {
-    klee_error("Could not load KLEE intrinsic file %s", LibPath.c_str());
+    // 1.) Link the modules together
+    while (kmodule->link(modules, opts.EntryPoint)) {
+      // 2.) Apply different instrumentation
+      kmodule->instrument(opts);
+    }
+
+    // 3.) Optimise and prepare for KLEE
+
+    // Create a list of functions that should be preserved if used
+    std::vector<const char *> preservedFunctions;
+    specialFunctionHandler->prepare(preservedFunctions);
+
+    preservedFunctions.push_back(opts.EntryPoint.c_str());
+
+    // Preserve the free-standing library calls
+    preservedFunctions.push_back("memset");
+    preservedFunctions.push_back("memcpy");
+    preservedFunctions.push_back("memcmp");
+    preservedFunctions.push_back("memmove");
+
+    // Assign ID for newly added instructions
+    std::string prefix = "POST";
+    KModule::assignID(kmodule->module.get(), prefix);
+
+    kmodule->optimiseAndPrepare(opts, preservedFunctions);
+  } else {
+    if (modules.size() != 1) {
+      klee_error("Monolithic Module should not have %lu modules",
+                 modules.size());
+    }
+    kmodule->module = std::move(modules.back());
+    kmodule->targetData = std::unique_ptr<llvm::DataLayout>(
+        new DataLayout(kmodule->module.get()));
+    modules.pop_back();
   }
 
-  // 1.) Link the modules together
-  while (kmodule->link(modules, opts.EntryPoint)) {
-    // 2.) Apply different instrumentation
-    kmodule->instrument(opts);
-  }
-
-  // 3.) Optimise and prepare for KLEE
-
-  // Create a list of functions that should be preserved if used
-  std::vector<const char *> preservedFunctions;
-  specialFunctionHandler = new SpecialFunctionHandler(*this);
-  specialFunctionHandler->prepare(preservedFunctions);
-
-  preservedFunctions.push_back(opts.EntryPoint.c_str());
-
-  // Preserve the free-standing library calls
-  preservedFunctions.push_back("memset");
-  preservedFunctions.push_back("memcpy");
-  preservedFunctions.push_back("memcmp");
-  preservedFunctions.push_back("memmove");
-
-  // Assign ID for newly added instructions
-  std::string prefix = "POST";
-  KModule::assignID(kmodule->module.get(), prefix);
-
-  kmodule->optimiseAndPrepare(opts, preservedFunctions);
   kmodule->checkModule();
 
   // 4.) Manifest the module

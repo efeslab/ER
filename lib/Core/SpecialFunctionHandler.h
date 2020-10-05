@@ -80,7 +80,7 @@ namespace klee {
     ///
     /// @param preservedFunctions contains all the function names which should
     /// be preserved during optimization
-    void prepare(std::vector<const char *> &preservedFunctions);
+    void prepare(std::vector<const char *> &preservedFunctions) const;
 
     /// Initialize the internal handler map after the module has been
     /// prepared for execution.

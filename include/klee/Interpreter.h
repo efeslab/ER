@@ -57,12 +57,19 @@ public:
     bool Optimize;
     bool CheckDivZero;
     bool CheckOvershift;
+    /// Monolithic Module?
+    /// true if the given module is self-contained, i.e. already linked with all
+    /// required module (POSIX, uclibc, kleeIntrinsic, etc.) and preprosessed by
+    /// klee
+    bool MonolithicModule;
 
     ModuleOptions(const std::string &_LibraryDir,
                   const std::string &_EntryPoint, bool _Optimize,
-                  bool _CheckDivZero, bool _CheckOvershift)
+                  bool _CheckDivZero, bool _CheckOvershift,
+                  bool _MonolithicModule)
         : LibraryDir(_LibraryDir), EntryPoint(_EntryPoint), Optimize(_Optimize),
-          CheckDivZero(_CheckDivZero), CheckOvershift(_CheckOvershift) {}
+          CheckDivZero(_CheckDivZero), CheckOvershift(_CheckOvershift),
+          MonolithicModule(_MonolithicModule) {}
   };
 
   enum LogType

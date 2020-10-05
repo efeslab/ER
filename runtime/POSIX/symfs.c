@@ -85,10 +85,11 @@ static ssize_t _read_symbolic_devrandom(struct disk_file *dfile, void *buf,
   if (drand_file->offset + count < dfile->size) {
     block_buffer_t *buff = &dfile->bbuf;
     ssize_t ret = _block_read(buff, buf, count, drand_file->offset);
+    //posix_debug_msg("read urandom at off %lu, sz %lu\n", drand_file->offset, ret);
     drand_file->offset += ret;
     return ret;
   } else {
-    posix_debug_msg("random file %s is exhausted\n", dfile->name);
+    klee_warning("random file is exhausted");
     return -1;
   }
 }

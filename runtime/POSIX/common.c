@@ -98,6 +98,7 @@ size_t _count_iovec(const struct iovec *iov, int iovcnt) {
   return result;
 }
 char enableDebug = 0;
+char enableDebug_bak = 0;
 void posix_debug_msg(const char *fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
@@ -110,5 +111,16 @@ void posix_debug_msg(const char *fmt, ...) {
     vfprintf(stderr, fmt, ap);
     enableDebug = 1;
   }
+  va_end(ap);
+}
+
+void posix_echo_msg(const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  // FIXME: need to take multithreading racing into consideration
+  // NOTE: fprintf and vfprintf can work together if you compile klee-uclibc
+  // with: make KLEE_CFLAGS='-DKLEE_SYM_PRINTF'
+  fprintf(stderr, "[thread %lu] ", pthread_self());
+  vfprintf(stderr, fmt, ap);
   va_end(ap);
 }

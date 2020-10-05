@@ -404,5 +404,10 @@ int __klee_posix_wrapped_main(int argc, char **argv, char **envp);
  */
 int __klee_posix_wrapper(int argcPtr, char **argvPtr, char** envp) {
   klee_init_env(&argcPtr, &argvPtr);
+  posix_debug_msg("argc: %d\n", argcPtr);
+  int i;
+  for (i=0; i < argcPtr; ++i) {
+    posix_debug_msg("argv[%d] = \"%s\"\n", i, argvPtr[i]);
+  }
   return __klee_posix_wrapped_main(argcPtr, argvPtr, envp);
 }

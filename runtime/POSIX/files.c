@@ -145,6 +145,8 @@ ssize_t _read_file(file_t *file, void *buf, size_t count, off_t offset) {
 
     return res;
   } else if (file->storage->ops.read) {
+    posix_debug_msg("symfile %s, offset %lu, dfile->size %lu\n",
+        file->storage->name, file->offset, file->storage->size);
     if (((off64_t)file->storage->size) < file->offset)
       return 0;
     ssize_t res = file->storage->ops.read(
@@ -177,8 +179,8 @@ ssize_t _write_file(file_t *file, const void *buf, size_t count, off64_t offset)
 
     int res;
 
-    posix_debug_msg("Writing concretely at (%d) %d bytes...\n",
-                    file->concrete_fd, count);
+    //posix_debug_msg("Writing concretely at (%d) %d bytes...\n",
+    //                file->concrete_fd, count);
 
     if (file->concrete_fd == 1 || file->concrete_fd == 2) {
       assert(offset == -1 && "Should never write stdout/stderr with offset");
@@ -542,6 +544,11 @@ int __fd_open(const char *pathname, int flags, mode_t mode) {
     }
   }
 
+  if (strcmp(pathname, "/dev/urandom") == 0) {
+    enableDebug_bak = enableDebug;
+    enableDebug = 0;
+  }
+
   posix_debug_msg("Attempting to open: %s, flags %#X, mode %#X\n", pathname, flags, mode);
   // Obtain a symbolic file
   disk_file_t *dfile = __get_sym_file(pathname);
@@ -790,6 +797,8 @@ int _close_file(file_t *file) {
   int res = 0;
   if (_file_is_concrete(file)) {
     res = CALL_UNDERLYING(close, file->concrete_fd);
+  } else if (file->storage == (disk_file_t*)__sym_fs.devurandom) {
+    enableDebug = enableDebug_bak;
   }
   free(file);
   return res;

@@ -1142,7 +1142,7 @@ if __name__ == "__main__":
     parser.add_argument("--recordUN", action="store", type=str, default=None,
             help="a list of array name, whose update lists should be "
                  "concretized, separated by comma")
-    parser.add_argument("--recordUN-out", action="store", type=str,
+    parser.add_argument("--datarec-out", action="store", type=str,
             default="", help="A file to output datarec.cfg")
     parser.add_argument("--UN-constraints", type=str, default=None,
             help="A file each line giving a path of a (simplified) "
@@ -1186,8 +1186,8 @@ if __name__ == "__main__":
                 Changed = True
         kinst_sorted = sorted(list(OptimizedUNKinstset))
         print("OptimizedUNKinstset: %s" % ','.join(kinst_sorted))
-        if len(args.recordUN_out) > 0:
-            f = open(args.recordUN_out, "w")
+        if len(args.datarec_out) > 0:
+            f = open(args.datarec_out, "w")
             f.write("%s\n" % '\n'.join(kinst_sorted))
             f.close()
         sys.exit(0)
@@ -1260,16 +1260,29 @@ if __name__ == "__main__":
         print("bigarray: %s" % ','.join(bigarray_name))
     elif len(query_nodes) > 0:
         for n in query_nodes:
-            kinstset = subh.GetKInstSetFromNids(subh.MustConcretize(n.id))
-            record_bytes = h.GetKInstSetRecordingSize(kinstset)
-            print("Query Expression with kinst \"%s\" can be "
-                  "covered by recording %d bytes from %d instructions:" %
-                  (n.kinst, record_bytes, len(kinstset)))
-            RI, subhh = subh.buildRecKInstL(kinstset)
-            if len(RI) > 0:
-                print(subh.getRecInstsInfo(RI))
-            else:
-                print("Already Concretized!")
+            print("query %s, kinst: %s" % (n.label, n.kinst))
+        initial_strategy = set([x.id for x in query_nodes])
+        new_strategy = subh.recursiveOptimizeRecNids(initial_strategy)
+        kinsts = subh.GetKInstSetFromNids(new_strategy)
+        recinsts, graph_withrecinsts = subh.buildRecKInstL(kinsts)
+        kinst_sorted = sorted(kinsts)
+        if len(recinsts) > 0:
+            print("To concretize %d nodes" % len(query_nodes))
+            print(subh.getRecInstsInfo(recinsts))
+            print("Python kinst list:")
+            print("\"%s\"" % '\",\"'.join(kinst_sorted))
+            print("Datarec.cfg:")
+            datarecCFG= "%s\n" % '\n'.join(kinst_sorted)
+            print(datarecCFG)
+            if len(args.datarec_out) > 0:
+                f = open(args.datarec_out, "w")
+                f.write(datarecCFG)
+                f.close()
+            print("All Label:")
+            print("%s" % ', '.join(sorted([subh.id_map[nid].label
+                for kinst in kinst_sorted for nid in subh.kinst2nodes[kinst]])))
+        else:
+            print("Already Concretized!")
     elif args.recordUN is not None:
         if len(array_to_concretize) == 0:
             print("Empty array list")
@@ -1287,8 +1300,8 @@ if __name__ == "__main__":
         print("Datarec.cfg:")
         datarecCFG= "%s\n" % '\n'.join(kinst_sorted)
         print(datarecCFG)
-        if len(args.recordUN_out) > 0:
-            f = open(args.recordUN_out, "w")
+        if len(args.datarec_out) > 0:
+            f = open(args.datarec_out, "w")
             f.write(datarecCFG)
             f.close()
         print("All Label:")

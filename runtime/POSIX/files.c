@@ -269,14 +269,15 @@ int _stat_file(file_t *file, struct stat64 *buf) {
 }
 
 int __fd_stat(const char *path, struct stat64 *buf) {
+  klee_mustnotbe_symbolic_str(path);
   disk_file_t *dfile = __get_sym_file(path);
 
   if (!dfile) {
     int res;
 #if __WORDSIZE == 64
-    res = syscall(__NR_stat, __concretize_string(path), buf);
+    res = syscall(__NR_stat, path, buf);
 #else
-    res = syscall(__NR_stat64, __concretize_string(path), buf);
+    res = syscall(__NR_stat64, path, buf);
 #endif
     if (res == -1)
       errno = klee_get_errno();
@@ -291,6 +292,7 @@ int __fd_stat(const char *path, struct stat64 *buf) {
 // FIXME: this should be put into fd_32 and fd_64 as well. Currently I force a
 // struct stat -> struct stat64 conversion
 int fstatat(int dirfd, const char *path, struct stat *buf, int flags) {  
+  klee_mustnotbe_symbolic_str(path);
   if (dirfd != AT_FDCWD) {
     fd_entry_t *bf = __get_fd(dirfd);
 
@@ -314,11 +316,9 @@ int fstatat(int dirfd, const char *path, struct stat *buf, int flags) {
 
   int res;
 #if (defined __NR_newfstatat) && (__NR_newfstatat != 0)
-  res = syscall(__NR_newfstatat, (long)dirfd,
-                 __concretize_string(path), buf, (long)flags);
+  res = syscall(__NR_newfstatat, (long)dirfd, path, buf, (long)flags);
 #else
-  res = syscall(__NR_fstatat64, (long)dirfd,
-                 __concretize_string(path), buf, (long)flags);
+  res = syscall(__NR_fstatat64, (long)dirfd, path, buf, (long)flags);
 #endif
   if (res == -1)
     errno = klee_get_errno();
@@ -331,9 +331,9 @@ int __fd_lstat(const char *path, struct stat64 *buf) {
   if (!dfile) {
     int res;
 #if __WORDSIZE == 64
-    res = syscall(__NR_lstat, __concretize_string(path), buf);
+    res = syscall(__NR_lstat, path, buf);
 #else
-    res = syscall(__NR_lstat64, __concretize_string(path), buf);
+    res = syscall(__NR_lstat64, path, buf);
 #endif
     if (res == -1)
       errno = klee_get_errno();
@@ -531,18 +531,18 @@ static int _can_open(int flags, const struct stat64 *s) {
 }
 
 int __fd_open(const char *pathname, int flags, mode_t mode) {
-  const char *cpathname = __concretize_string(pathname);
+  klee_mustnotbe_symbolic_str(pathname);
   int i;
   for (i = 0; i < __sym_fs.n_remap_files; i++) {
-    if (strcmp(cpathname, __sym_fs.remap_files[i]) == 0) {
-      printf("fd_open: replace %s with %s\n", cpathname,
+    if (strcmp(pathname, __sym_fs.remap_files[i]) == 0) {
+      posix_debug_msg("fd_open: replace %s with %s\n", pathname,
              __sym_fs.remap_target_files[i]);
-      cpathname = __sym_fs.remap_target_files[i];
+      pathname = __sym_fs.remap_target_files[i];
       break;
     }
   }
 
-  posix_debug_msg("Attempting to open: %s, flags %#X, mode %#X\n", cpathname, flags, mode);
+  posix_debug_msg("Attempting to open: %s, flags %#X, mode %#X\n", pathname, flags, mode);
   // Obtain a symbolic file
   disk_file_t *dfile = __get_sym_file(pathname);
 
@@ -555,7 +555,7 @@ int __fd_open(const char *pathname, int flags, mode_t mode) {
       return -1;
     }
 
-    int concrete_fd = syscall(__NR_open, cpathname, flags, mode);
+    int concrete_fd = syscall(__NR_open, pathname, flags, mode);
 
     if (concrete_fd == -1) {
       errno = klee_get_errno();
@@ -569,7 +569,7 @@ int __fd_open(const char *pathname, int flags, mode_t mode) {
       return -1;
     }
 
-    posix_debug_msg("%s opened as %d\n", cpathname, fd);
+    posix_debug_msg("%s opened as %d\n", pathname, fd);
     return fd;
   }
 }
@@ -694,6 +694,7 @@ int _open_symbolic(disk_file_t *dfile, int flags, mode_t mode) {
 }
 
 int __fd_openat(int basefd, const char *pathname, int flags, mode_t mode) {
+  klee_mustnotbe_symbolic_str(pathname);
   if (basefd != AT_FDCWD) {
     fd_entry_t *bf = __get_fd(basefd);
 
@@ -710,12 +711,13 @@ int __fd_openat(int basefd, const char *pathname, int flags, mode_t mode) {
     basefd = bfile->concrete_fd;
   }
 
+  posix_echo_msg("Attempt to openat %s\n", pathname);
   if (__get_sym_file(pathname)) {
     /* for a symbolic file, it doesn't matter if/where it exists on disk */
     return __fd_open(pathname, flags, mode);
   }
 
-  int os_fd = syscall(__NR_openat, (long)basefd, __concretize_string(pathname), (long)flags, mode);
+  int os_fd = syscall(__NR_openat, (long)basefd, pathname, (long)flags, mode);
   if (os_fd == -1) {
     errno = klee_get_errno();
     return -1;
@@ -735,6 +737,7 @@ DEFINE_MODEL(int, creat, const char *pathname, mode_t mode) {
 }
 
 int utimes(const char *path, const struct timeval times[2]) {
+  klee_mustnotbe_symbolic_str(path);
   disk_file_t *dfile = __get_sym_file(path);
 
   if (dfile) {
@@ -755,10 +758,11 @@ int utimes(const char *path, const struct timeval times[2]) {
 #endif
     return 0;
   }
-  return syscall(__NR_utimes, __concretize_string(path), times);
+  return syscall(__NR_utimes, path, times);
 }
 
 int futimesat(int fd, const char* path, const struct timeval times[2]) {
+  klee_mustnotbe_symbolic_str(path);
   if (fd != AT_FDCWD) {
     fd_entry_t *fde = __get_fd(fd);
 
@@ -778,8 +782,7 @@ int futimesat(int fd, const char* path, const struct timeval times[2]) {
     return utimes(path, times);
   }
 
-  return syscall(__NR_futimesat, (long)fd,
-                 (path ? __concretize_string(path) : NULL), times);
+  return syscall(__NR_futimesat, (long)fd, path, times);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -942,6 +945,7 @@ static int _df_chmod(disk_file_t *dfile, mode_t mode) {
 }
 
 DEFINE_MODEL(int, chmod, const char *path, mode_t mode) {
+  klee_mustnotbe_symbolic_str(path);
   static int n_calls = 0;
   n_calls++;
   if (__sym_fs.max_failures && *__sym_fs.chmod_fail == n_calls) {
@@ -952,7 +956,7 @@ DEFINE_MODEL(int, chmod, const char *path, mode_t mode) {
   disk_file_t *dfile = __get_sym_file(path);
 
   if (!dfile) {
-    int res = CALL_UNDERLYING(chmod, __concretize_string(path), mode);
+    int res = CALL_UNDERLYING(chmod, path, mode);
     if (res == -1)
       errno = klee_get_errno();
     return res;
@@ -1169,13 +1173,13 @@ int unlinkat(int dirfd, const char *pathname, int flags) {
 
 #define _WRAP_FILE_SYSCALL_ERROR_CUSTOM(call, ERR, ...)                        \
   do {                                                                         \
+    klee_mustnotbe_symbolic_str(pathname);                                     \
     if (__get_sym_file(pathname)) {                                            \
       klee_warning("symbolic path, " #call " unsupported (" #ERR ")");         \
       errno = ERR;                                                             \
       return -1;                                                               \
     }                                                                          \
-    int ret =                                                                  \
-        CALL_UNDERLYING(call, __concretize_string(pathname), ##__VA_ARGS__);   \
+    int ret = CALL_UNDERLYING(call, pathname, ##__VA_ARGS__);                  \
     if (ret == -1)                                                             \
       errno = klee_get_errno();                                                \
     return ret;                                                                \
@@ -1186,12 +1190,12 @@ int unlinkat(int dirfd, const char *pathname, int flags) {
 
 #define _WRAP_FILE_SYSCALL_IGNORE(call, ...)                                   \
   do {                                                                         \
+    klee_mustnotbe_symbolic_str(pathname);                                     \
     if (__get_sym_file(pathname)) {                                            \
       klee_warning("symbolic path, " #call " does nothing");                   \
       return 0;                                                                \
     }                                                                          \
-    int ret =                                                                  \
-        CALL_UNDERLYING(call, __concretize_string(pathname), ##__VA_ARGS__);   \
+    int ret = CALL_UNDERLYING(call, pathname, ##__VA_ARGS__);                  \
     if (ret == -1)                                                             \
       errno = klee_get_errno();                                                \
     return ret;                                                                \

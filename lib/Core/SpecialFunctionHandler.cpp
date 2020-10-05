@@ -10,6 +10,7 @@
 #include "SpecialFunctionHandler.h"
 
 #include "Executor.h"
+#include "ExecutorDebugHelper.h"
 #include "Memory.h"
 #include "MemoryManager.h"
 #include "Searcher.h"
@@ -99,6 +100,8 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
   add("__error", handleErrnoLocation, true),
 #endif
   add("klee_is_symbolic", handleIsSymbolic, true),
+  add("klee_mustnotbe_symbolic", handleMustNotBeSymbolic, false),
+  add("klee_mustnotbe_symbolic_str", handleMustNotBeSymbolicStr, false),
   add("klee_make_symbolic", handleMakeSymbolic, false),
   add("klee_mark_global", handleMarkGlobal, false),
   add("klee_open_merge", handleOpenMerge, false),
@@ -801,6 +804,101 @@ void SpecialFunctionHandler::handleDefineFixedObject(ExecutionState &state,
   MemoryObject *mo = executor.memory->allocateFixed(address, size, state.prevPC()->inst);
   executor.bindObjectInState(state, mo, false);
   mo->isUserSpecified = true; // XXX hack;
+}
+
+void SpecialFunctionHandler::handleMustNotBeSymbolic(ExecutionState &state,
+                                                KInstruction *target,
+                                                std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size() == 2 &&
+      "invalid number of arguments to klee_mustnotbe_symbolic");
+  assert(isa<ConstantExpr>(arguments[0]) &&
+      "expect constant address argument to klee_mustnotbe_symbolic");
+  assert(isa<ConstantExpr>(arguments[1]) &&
+      "expect constant size argument to klee_mustnotbe_symbolic");
+  ObjectPair op;
+  ref<ConstantExpr> address = cast<ConstantExpr>(arguments[0]);
+  ref<ConstantExpr> size = cast<ConstantExpr>(arguments[1]);
+  if (!state.addressSpace.resolveOne(address, op)) {
+    executor.terminateStateOnError(
+        state, "Invalid pointer passed to klee_mustnotbe_symbolic",
+        Executor::TerminateReason::User);
+  } else {
+    const MemoryObject *mo = op.first;
+    const ObjectState *os = op.second;
+    std::vector<ref<Expr>> symbolicVals;
+    bool hasSymbolicValue = false;
+    unsigned start_offset =
+        cast<ConstantExpr>(mo->getOffsetExpr(address))->getZExtValue();
+    unsigned sizebytes = size->getZExtValue();
+    for (unsigned int i = 0; i < sizebytes; ++i) {
+      ref<Expr> cur = os->read8(start_offset + i);
+      cur = state.constraints.simplifyExpr(cur);
+      if (!isa<ConstantExpr>(cur)) {
+        symbolicVals.push_back(cur);
+        hasSymbolicValue = true;
+      }
+    }
+    if (hasSymbolicValue) {
+      klee_message("Did not expect to see %lu symbolic bytes",
+                   symbolicVals.size());
+      std::string file_path = executor.interpreterHandler->getOutputFilename(
+          "symbolicValues.kquery");
+      debugDumpConstraintsEval(state, state.constraints, symbolicVals,
+                               file_path.c_str());
+      executor.terminateStateOnError(state, "klee_mustnotbe_symbolic violated",
+                                     Executor::TerminateReason::User);
+    }
+  }
+}
+
+void SpecialFunctionHandler::handleMustNotBeSymbolicStr(ExecutionState &state,
+                                                KInstruction *target,
+                                                std::vector<ref<Expr> > &arguments) {
+  assert(arguments.size() == 1 &&
+      "invalid number of arguments to klee_mustnotbe_symbolic_str");
+  assert(isa<ConstantExpr>(arguments[0]) &&
+      "expect constant address argument to klee_mustnotbe_symbolic_str");
+  ObjectPair op;
+  ref<ConstantExpr> address = cast<ConstantExpr>(arguments[0]);
+  if (!state.addressSpace.resolveOne(address, op)) {
+    executor.terminateStateOnError(
+        state, "Invalid pointer passed to klee_mustnotbe_symbolic_str",
+        Executor::TerminateReason::User);
+  } else {
+    const MemoryObject *mo = op.first;
+    const ObjectState *os = op.second;
+    std::vector<ref<Expr>> symbolicVals;
+    bool hasSymbolicValue = false;
+    unsigned start_offset =
+        cast<ConstantExpr>(mo->getOffsetExpr(address))->getZExtValue();
+    unsigned len = 0;
+    while (true) {
+     ref<Expr> cur = os->read8(start_offset + len);
+     cur = state.constraints.simplifyExpr(cur);
+     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(cur)) {
+       if (CE->getZExtValue() == 0) {
+         break;
+       }
+     } else {
+       symbolicVals.push_back(cur);
+       hasSymbolicValue = true;
+     }
+     ++len;
+    }
+    if (hasSymbolicValue) {
+      klee_message(
+          "Did not expect to see %lu symbolic bytes in a %u long string",
+          symbolicVals.size(), len);
+      std::string file_path = executor.interpreterHandler->getOutputFilename(
+          "symbolicValues.kquery");
+      debugDumpConstraintsEval(state, state.constraints, symbolicVals,
+                               file_path.c_str());
+      executor.terminateStateOnError(state,
+                                     "klee_mustnotbe_symbolic_str violated",
+                                     Executor::TerminateReason::User);
+    }
+  }
+
 }
 
 void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,

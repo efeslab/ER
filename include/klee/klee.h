@@ -101,6 +101,13 @@ extern "C" {
    * mode.
    */
   unsigned klee_is_symbolic(uintptr_t n);
+  /*
+   * Annotate certain memory region or strings cannot contain symbolic values
+   * This is used in POSIX env to make sure no symbolic file names in the
+   * symbolic file systems
+   */
+  void klee_mustnotbe_symbolic(void *p, size_t nbytes);
+  void klee_mustnotbe_symbolic_str(const char *s);
 
 
   /* The following intrinsics are primarily intended for internal use

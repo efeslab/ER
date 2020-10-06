@@ -195,7 +195,7 @@ public:
   void dumpConstraints(llvm::raw_ostream &out) const;
   void dumpConstraints() const;
   void dumpStack(llvm::raw_ostream &out) const;
-  void dumpStack() const { dumpStack(llvm::errs()); }
+  void dumpStack() const;
   void dumpStackPathOS();
   void dumpStatsPathOS();
   void dumpConsPathOS(const std::string &cons);

@@ -489,6 +489,10 @@ void ExecutionState::dumpStack(llvm::raw_ostream &out) const {
   }
 }
 
+void ExecutionState::dumpStack() const {
+ dumpStack(llvm::errs());
+}
+
 void ExecutionState::dumpStackPathOS() {
   struct StringInstStats stack;
   llvm::raw_string_ostream sos(stack.str);

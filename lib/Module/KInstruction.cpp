@@ -39,3 +39,8 @@ unsigned int KInstruction::getLoadedFreq() const {
   }
   return 0;
 }
+
+unsigned int KInstruction::getRecordingCost() const {
+  const llvm::Module *m = inst->getModule();
+  return m->getDataLayout().getTypeSizeInBits(inst->getType()) * getLoadedFreq();
+}

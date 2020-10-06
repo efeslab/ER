@@ -57,10 +57,10 @@ cl::opt<Expr::KInstBindingPolicy> KInstBinding(
             "the callstack top function, but the first occurance in "
             "that function."),
         clEnumValN(
-            Expr::KInstBindingPolicy::LessFreq, "lessfreq",
+            Expr::KInstBindingPolicy::LessCost, "lesscost",
             "Bind a symbolic expression to the instruction associating to it "
-            "which has less frequency than existing bindings. i.e. only "
-            "overwrite existing bindings if new bindings has less frequency.")
+            "which has lower recording cost than existing bindings. i.e. only "
+            "overwrite existing bindings if new bindings are cheaper")
             KLEE_LLVM_CL_VAL_END),
     cl::init(Expr::KInstBindingPolicy::CallStackTopFirstOccur), cl::cat(ExprCat));
 }
@@ -120,9 +120,9 @@ void Expr::updateKInst(const KInstruction *newkinst) {
   case KInstBindingPolicy::FirstOccur:
     should_update = !kinst;
     break;
-  case KInstBindingPolicy::LessFreq:
+  case KInstBindingPolicy::LessCost:
     should_update =
-        (!kinst || (kinst->getLoadedFreq() > newkinst->getLoadedFreq()));
+        (!kinst || (kinst->getRecordingCost() > newkinst->getRecordingCost()));
     break;
   case KInstBindingPolicy::CallStackTopFirstOccur:
     should_update =

@@ -13,6 +13,8 @@
 #include "klee/Config/Version.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -49,6 +51,8 @@ namespace klee {
     virtual ~KInstruction();
     std::string getSourceLocation() const;
     unsigned int getLoadedFreq() const;
+    // recording cost == inst freq * inst width (bits)
+    unsigned int getRecordingCost() const;
 
   };
 

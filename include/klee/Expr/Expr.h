@@ -189,11 +189,10 @@ public:
     // instructions)
     FirstOccur, // do not overwrite existing bindings
     LastOccur,  // always overwrite existing bindings
-    LessFreq,   // only overwrite existing bindings if new binding has less
-                // frequency
+    LessCost,   // only overwrite existing bindings if new binding has lower
+                // recording cost
     CallStackTopFirstOccur, // only overwrite existing bindings if new binding
-                            // is
-                            // from a different function
+                            // is from a different function
   };
 
   /// @brief Required by klee::ref-managed objects

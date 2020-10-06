@@ -138,7 +138,9 @@ ref<Expr> ExprVisitor::visitActual(const ref<Expr> &e) {
         if (res.kind==Action::ChangeTo)
           e_ret = res.argument;
       }
-      e_ret->updateKInst(e->getKInst());
+      if (e_ret.get() != e.get()) {
+        e_ret->updateKInst(e->getKInst());
+      }
       return e_ret;
     }
     case Action::SkipChildren:

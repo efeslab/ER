@@ -3,7 +3,6 @@
 
 #include "llvm/Support/raw_ostream.h"
 
-#include "klee/Expr/ExprPPrinter.h"
 #include "klee/util/ExprConcretizer.h"
 #include "ExecutorCmdLine.h"
 using namespace klee;
@@ -20,6 +19,7 @@ void debugDumpLLVMValue(llvm::Value *V) {
 ///
 /// \param[in] state Contains all symbolic variables we are interested in.
 /// \param[in] cm Contains all constraints, not necessary to be state.constraints
+///   used to simplify expressions to be eval
 /// \param[in] expr_vec: if non-empty, it has the exprs you want to evaluate and 
 ///   the dumped query will only evaluate given exprs
 ///   if empty, the query will evaluate `false` and ask for assignment of every
@@ -28,46 +28,26 @@ void debugDumpLLVMValue(llvm::Value *V) {
 /// FIXME: this is no longer a debug helper. iterative constraints
 ///   simplification depends on this function to dump the constraints from on going
 ///   symbolic replay.
-void debugDumpConstraintsEval(ExecutionState &state, ConstraintManager &cm, const std::vector<ref<Expr>> &expr_vec, const char *filename) {
-  std::string str;
-  llvm::raw_string_ostream os(str);
-  std::ofstream ofs(filename);
-  if (!ofs.good()) {
-    llvm::errs() << "open file " << filename << "failed\n";
-    return;
-  }
-  const ref<Expr> *evalExprsBegin = nullptr;
-  const ref<Expr> *evalExprsEnd = nullptr;
-  const Array *const *evalArraysBegin = nullptr;
-  const Array *const *evalArraysEnd = nullptr;
+void debugDumpConstraintsEval(ExecutionState &state, ConstraintManager &cm,
+                              const std::vector<ref<Expr>> &expr_vec,
+                              const char *filename) {
   std::vector<const Array*> symbolic_objs;
   std::vector<ref<Expr>> simplified_expr_vec;
   for (const ref<Expr> &e: expr_vec) {
     simplified_expr_vec.push_back(cm.simplifyExpr(e));
   }
-  if (simplified_expr_vec.empty()) { // no query expr, dumping for initial assigment
-    for (auto s: state.symbolics) {
-      symbolic_objs.push_back(s.second);
-    }
-    if (!symbolic_objs.empty()) {
-      evalArraysBegin = &(symbolic_objs[0]);
-      evalArraysEnd = evalArraysBegin + symbolic_objs.size();
-    }
+  for (auto s: state.symbolics) {
+    symbolic_objs.push_back(s.second);
   }
-  else { // has query expr, dumping for evaluation
-    evalExprsBegin = &simplified_expr_vec[0];
-    evalExprsEnd = evalExprsBegin + simplified_expr_vec.size();
-  }
-  ExprPPrinter::printQuery(os, cm.getAllConstraints(), ConstantExpr::alloc(false, Expr::Bool),
-      evalExprsBegin, evalExprsEnd,
-      evalArraysBegin, evalArraysEnd, true);
-  ofs << os.str();
-  ofs.close();
+  debugDumpConstraintsImpl(cm.getAllConstraints(), symbolic_objs,
+                           simplified_expr_vec, filename);
 }
+
 /// Similar to above, but easier to use in gdb
 /// \param[in] expr If non-null, it's the expr you want to evaluate and
 ///   the dumped query will not ask for symbolic values' assignment.
 ///   If null, the query will evalute `false` and ask for assignment.
+///   You can use `debugExpr` as a null ref<Expr> in gdb
 ref<Expr> debugExpr = ref<Expr>(0);
 void debugDumpConstraints(ExecutionState &state, ConstraintManager &cm, ref<Expr> expr, const char *filename) {
   std::vector<ref<Expr>> exprs;

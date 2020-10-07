@@ -28,6 +28,13 @@
 #include <ostream>
 #include <vector>
 
+#undef INDEPENDENT_DEBUG
+#undef INDEPENDENT_DEBUG_DUMPCONSTRAINTS
+
+#ifdef INDEPENDENT_DEBUG
+#include "klee/Expr/ExprDebugHelper.h"
+#endif
+
 using namespace klee;
 using llvm::errs;
 
@@ -240,6 +247,9 @@ bool IndependentSolver::computeInitialValues(const Query& query,
 
   //Used to rearrange all of the answers into the correct order
   std::map<const Array*, std::vector<unsigned char> > retMap;
+#ifdef INDEPENDENT_DEBUG
+  unsigned int id = 0;
+#endif
   for (std::list<IndependentElementSet>::iterator it = factors->begin();
        it != factors->end(); ++it) {
     std::vector<const Array*> arraysInFactor;
@@ -249,6 +259,20 @@ bool IndependentSolver::computeInitialValues(const Query& query,
     if (arraysInFactor.size() == 0){
       continue;
     }
+#ifdef INDEPENDENT_DEBUG
+    /* IndependentSolver performance debugging */
+    llvm::errs() << "independent set " << id << " / " << factors->size()
+                 << " #array: " << arraysInFactor.size()
+                 << " #expr: " << it->exprs.size() << ' ';
+#ifdef INDEPENDENT_DEBUG_DUMPCONSTRAINTS
+    char dumpfilename[128];
+    snprintf(dumpfilename, sizeof(dumpfilename), "independentQuery_%05u.kquery",
+             id);
+    ++id;
+    debugDumpConstraintsImpl(it->exprs, arraysInFactor, dumpfilename);
+#endif
+    const WallTimer solver_timer;
+#endif
     std::vector<std::vector<unsigned char> > tempValues;
     if (!solver->impl->computeInitialValues(Query(query.constraintMgr, it->exprs, ConstantExpr::alloc(0, Expr::Bool)),
                                             arraysInFactor, tempValues, hasSolution)){
@@ -260,6 +284,10 @@ bool IndependentSolver::computeInitialValues(const Query& query,
       delete factors;
       return true;
     } else {
+#ifdef INDEPENDENT_DEBUG
+      time::Span solver_time = solver_timer.delta();
+      const WallTimer result_timer;
+#endif
       assert(tempValues.size() == arraysInFactor.size() &&
              "Should be equal number arrays and answers");
       for (unsigned i = 0; i < tempValues.size(); i++){
@@ -280,6 +308,12 @@ bool IndependentSolver::computeInitialValues(const Query& query,
           retMap[arraysInFactor[i]] = tempValues[i];
         }
       }
+#ifdef INDEPENDENT_DEBUG
+      time::Span result_time = result_timer.delta();
+      llvm::errs() << "solver_time(us): " << solver_time.toMicroseconds()
+                   << " result_time(us): " << result_time.toMicroseconds()
+                   << "\n";
+#endif
     }
   }
   for (std::vector<const Array *>::const_iterator it = objects.begin();
@@ -315,4 +349,3 @@ void IndependentSolver::setCoreSolverTimeout(time::Span timeout) {
 Solver *klee::createIndependentSolver(Solver *s) {
   return new Solver(new IndependentSolver(s));
 }
-

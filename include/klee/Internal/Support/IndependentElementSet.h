@@ -45,9 +45,15 @@ public:
   std::set<unsigned>::iterator begin(){
     return s.begin();
   }
+  std::set<unsigned>::const_iterator begin() const {
+    return s.cbegin();
+  }
 
   std::set<unsigned>::iterator end(){
     return s.end();
+  }
+  std::set<unsigned>::const_iterator end() const {
+    return s.cend();
   }
 
   void print(llvm::raw_ostream &os) const {

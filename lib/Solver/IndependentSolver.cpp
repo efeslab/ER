@@ -121,19 +121,14 @@ IndependentElementSet getIndependentConstraints(const Query& query,
 // the actual known array accesses arr[1] plus the undetermined accesses arr[x].
 static
 void calculateArrayReferences(const IndependentElementSet & ie,
-                              std::vector<const Array *> &returnVector){
-  std::set<const Array*> thisSeen;
+                              std::set<const Array *> &returnSet){
   for(std::map<const Array*, DenseSet<unsigned> >::const_iterator it = ie.elements.begin();
       it != ie.elements.end(); it ++){
-    thisSeen.insert(it->first);
+    returnSet.insert(it->first);
   }
   for(std::set<const Array *>::iterator it = ie.wholeObjects.begin();
       it != ie.wholeObjects.end(); it ++){
-    thisSeen.insert(*it);
-  }
-  for(std::set<const Array *>::iterator it = thisSeen.begin(); it != thisSeen.end();
-      it ++){
-    returnVector.push_back(*it);
+    returnSet.insert(*it);
   }
 }
 
@@ -150,6 +145,24 @@ public:
   bool computeValidity(const Query&, Solver::Validity &result);
   bool computeValue(const Query&, ref<Expr> &result);
   bool computeInitialValues(const Query& query,
+                            const std::vector<const Array*> &objects,
+                            std::vector< std::vector<unsigned char> > &values,
+                            bool &hasSolution) {
+    switch (UseIndependentSolverType) {
+      case IndependentSolverType::PER_FACTOR:
+        return computeInitialValuesPerFactor(query, objects, values,
+                                             hasSolution);
+      case IndependentSolverType::BATCH:
+        return computeInitialValuesBatch(query, objects, values, hasSolution);
+      default:
+        assert(0 && "Unknown Independent Solver Type");
+    }
+  }
+  bool computeInitialValuesPerFactor(const Query& query,
+                            const std::vector<const Array*> &objects,
+                            std::vector< std::vector<unsigned char> > &values,
+                            bool &hasSolution);
+  bool computeInitialValuesBatch(const Query& query,
                             const std::vector<const Array*> &objects,
                             std::vector< std::vector<unsigned char> > &values,
                             bool &hasSolution);
@@ -232,10 +245,10 @@ bool assertCreatedPointEvaluatesToTrue(
   return cast<ConstantExpr>(q)->isTrue();
 }
 
-bool IndependentSolver::computeInitialValues(const Query& query,
+bool IndependentSolver::computeInitialValuesPerFactor(const Query& query,
                                              const std::vector<const Array*> &objects,
                                              std::vector< std::vector<unsigned char> > &values,
-                                             bool &hasSolution){
+                                             bool &hasSolution) {
   TimerStatIncrementer t(stats::independentTime);
   // We assume the query has a solution except proven differently
   // This is important in case we don't have any constraints but
@@ -252,8 +265,11 @@ bool IndependentSolver::computeInitialValues(const Query& query,
 #endif
   for (std::list<IndependentElementSet>::iterator it = factors->begin();
        it != factors->end(); ++it) {
+    std::set<const Array*> arraysInFactorSet;
     std::vector<const Array*> arraysInFactor;
-    calculateArrayReferences(*it, arraysInFactor);
+    calculateArrayReferences(*it, arraysInFactorSet);
+    arraysInFactor.insert(arraysInFactor.end(), arraysInFactorSet.begin(),
+                          arraysInFactorSet.end());
     // Going to use this as the "fresh" expression for the Query() invocation below
     assert(it->exprs.size() >= 1 && "No null/empty factors");
     if (arraysInFactor.size() == 0){
@@ -348,4 +364,162 @@ void IndependentSolver::setCoreSolverTimeout(time::Span timeout) {
 
 Solver *klee::createIndependentSolver(Solver *s) {
   return new Solver(new IndependentSolver(s));
+}
+
+bool IndependentSolver::computeInitialValuesBatch(const Query& query,
+                                             const std::vector<const Array*> &objects,
+                                             std::vector< std::vector<unsigned char> > &values,
+                                             bool &hasSolution){
+  TimerStatIncrementer t(stats::independentTime);
+#ifdef INDEPENDENT_DEBUG
+  const WallTimer total_timer;
+#endif
+  // We assume the query has a solution except proven differently
+  // This is important in case we don't have any constraints but
+  // we need initial values for requested array objects.
+  hasSolution = true;
+  // FIXME: When we switch to C++11 this should be a std::unique_ptr so we don't need
+  // to remember to manually call delete
+  std::list<IndependentElementSet> *factors = getAllIndependentConstraintsSets(query);
+
+  //Used to rearrange all of the answers into the correct order
+  std::map<const Array*, std::vector<unsigned char> > retMap;
+  typedef std::vector<std::list<IndependentElementSet>::const_iterator>
+    IndEleSetPart_t;
+  std::vector<IndEleSetPart_t> part_container(1);
+  factors->sort([](auto &a, auto &b) {
+      return a.exprs.size() < b.exprs.size();
+      });
+#ifdef INDEPENDENT_DEBUG
+  unsigned int id = 0;
+#endif
+  unsigned int acc_expr_cnt = 0;
+  unsigned int acc_factor_cnt = 0;
+  for (std::list<IndependentElementSet>::const_iterator it = factors->begin();
+       it != factors->end(); ++it) {
+    assert(it->exprs.size() >= 1 && "No null/empty factors");
+    if (acc_expr_cnt >= ExprNumThreshold) {
+#ifdef INDEPENDENT_DEBUG
+      llvm::errs() << "id: " << id << " #expr: " << acc_expr_cnt
+                   << " #factors: " << acc_factor_cnt << " "
+                   << double(acc_expr_cnt) / acc_factor_cnt << '\n';
+      ++id;
+#endif
+      part_container.push_back({});
+      acc_expr_cnt = 0;
+      acc_factor_cnt = 0;
+    }
+    part_container.back().push_back(it);
+    acc_expr_cnt += it->exprs.size();
+    ++acc_factor_cnt;
+  }
+  if (part_container.back().empty()) {
+    part_container.pop_back();
+#ifdef INDEPENDENT_DEBUG
+  } else {
+    llvm::errs() << "id: " << id << " #expr: " << acc_expr_cnt
+                 << " #factors: " << acc_factor_cnt << " "
+                 << double(acc_expr_cnt) / acc_factor_cnt << '\n';
+  }
+  id = 0;
+#else
+  }
+#endif
+  for (const IndEleSetPart_t &p : part_container) {
+    Constraints_ty constraints;
+    std::set<const Array *> arraysInFactorSet;
+    std::vector<const Array *> arraysInFactor;
+    for (std::list<IndependentElementSet>::const_iterator it : p) {
+      calculateArrayReferences(*it, arraysInFactorSet);
+      // Going to use this as the "fresh" expression for the Query() invocation
+      // below
+      assert(it->exprs.size() >= 1 && "No null/empty factors");
+      assert(arraysInFactorSet.size() > 0);
+      constraints.insert(constraints.end(), it->exprs.begin(), it->exprs.end());
+    }
+    arraysInFactor.insert(arraysInFactor.end(), arraysInFactorSet.begin(),
+                          arraysInFactorSet.end());
+#ifdef INDEPENDENT_DEBUG
+    /* IndependentSolver performance debugging */
+    llvm::errs() << "independent set part" << id
+                 << " #array: " << arraysInFactor.size()
+                 << " #expr: " << constraints.size() << ' ';
+    char dumpfilename[128];
+    snprintf(dumpfilename, sizeof(dumpfilename), "independentQuery_%05u.kquery",
+             id);
+    ++id;
+    debugDumpConstraintsImpl(constraints, arraysInFactor, dumpfilename);
+    const WallTimer solver_timer;
+#endif
+    std::vector<std::vector<unsigned char>> tempValues;
+    if (!solver->impl->computeInitialValues(
+            Query(query.constraintMgr, constraints,
+                  ConstantExpr::alloc(0, Expr::Bool)),
+            arraysInFactor, tempValues, hasSolution)) {
+      values.clear();
+      delete factors;
+      return false;
+    } else if (!hasSolution) {
+      values.clear();
+      delete factors;
+      return true;
+    } else {
+#ifdef INDEPENDENT_DEBUG
+      time::Span solver_time = solver_timer.delta();
+      const WallTimer result_timer;
+#endif
+      assert(tempValues.size() == arraysInFactor.size() &&
+             "Should be equal number arrays and answers");
+      for (unsigned i = 0; i < tempValues.size(); i++) {
+        if (retMap.count(arraysInFactor[i])) {
+          // We already have an array with some partially correct answers,
+          // so we need to place the answers to the new query into the right
+          // spot while avoiding the undetermined values also in the array
+          std::vector<unsigned char> *tempPtr = &retMap[arraysInFactor[i]];
+          assert(tempPtr->size() == tempValues[i].size() &&
+                 "we're talking about the same array here");
+          for (std::list<IndependentElementSet>::const_iterator it:p) {
+            auto find_it = it->elements.find(arraysInFactor[i]);
+            // assert(find_it != it->elements.end() &&
+            //       "Array found in IndependentElementSet is now gone");
+            if (find_it != it->elements.end()) {
+              const DenseSet<unsigned> &ds = find_it->second;
+              for (auto index : ds) {
+                (*tempPtr)[index] = tempValues[i][index];
+              }
+            }
+          }
+        } else {
+          // Dump all the new values into the array
+          retMap[arraysInFactor[i]] = tempValues[i];
+        }
+      }
+#ifdef INDEPENDENT_DEBUG
+      time::Span result_time = result_timer.delta();
+      llvm::errs() << "solver_time(us): " << solver_time.toMicroseconds()
+                   << " result_time(us): " << result_time.toMicroseconds()
+                   << "\n";
+#endif
+    }
+  }
+  for (std::vector<const Array *>::const_iterator it = objects.begin();
+       it != objects.end(); it++){
+    const Array * arr = * it;
+    if (!retMap.count(arr)){
+      // this means we have an array that is somehow related to the
+      // constraint, but whose values aren't actually required to
+      // satisfy the query.
+      std::vector<unsigned char> ret(arr->size);
+      values.push_back(ret);
+    } else {
+      values.push_back(retMap[arr]);
+    }
+  }
+#ifdef INDEPENDENT_DEBUG
+  time::Span total_time = total_timer.delta();
+  llvm::errs() << "total time(us): " << total_time.toMicroseconds() << '\n';
+#endif
+  assert(assertCreatedPointEvaluatesToTrue(query, objects, values, retMap) && "should satisfy the equation");
+  delete factors;
+  return true;
 }

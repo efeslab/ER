@@ -30,6 +30,11 @@ extern llvm::cl::opt<bool> UseBranchCache;
 
 extern llvm::cl::opt<bool> UseIndependentSolver;
 
+enum class IndependentSolverType { PER_FACTOR, BATCH };
+extern llvm::cl::opt<IndependentSolverType> UseIndependentSolverType;
+
+extern llvm::cl::opt<unsigned int> ExprNumThreshold;
+
 extern llvm::cl::opt<bool> DebugValidateSolver;
 
 extern llvm::cl::opt<std::string> MinQueryTimeToLog;

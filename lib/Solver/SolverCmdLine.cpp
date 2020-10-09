@@ -59,6 +59,23 @@ cl::opt<bool>
                          cl::desc("Use constraint independence (default=true)"),
                          cl::cat(SolvingCat));
 
+cl::opt<IndependentSolverType> UseIndependentSolverType(
+    "independent-solver", cl::init(IndependentSolverType::BATCH),
+    cl::desc("Use which type of independent solver"),
+    cl::values(
+        clEnumValN(IndependentSolverType::PER_FACTOR, "per-factor",
+                   "Call solver for each independent element set"),
+        clEnumValN(IndependentSolverType::BATCH, "batch",
+                   "Call solver every `Nexpr-thres` expressions, ordered "
+                   "by #expr of each independent element set(default)")),
+    cl::cat(SolvingCat));
+
+cl::opt<unsigned int> ExprNumThreshold(
+    "Nexpr-thres", cl::init(500),
+    cl::desc(
+        "Max number of exprs should IndependentSolver split (default=500)"),
+    cl::cat(SolvingCat));
+
 cl::opt<bool> DebugValidateSolver(
     "debug-validate-solver", cl::init(false),
     cl::desc("Crosscheck the results of the solver chain above the core solver "

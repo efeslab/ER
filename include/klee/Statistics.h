@@ -65,6 +65,7 @@ namespace klee {
     void registerStatistic(Statistic &s);
     void incrementStatistic(Statistic &s, uint64_t addend);
     uint64_t getValue(const Statistic &s) const;
+    void setValue(const Statistic &s, uint64_t value);
     void incrementIndexedValue(const Statistic &s, unsigned index, 
                                uint64_t addend) const;
     uint64_t getIndexedValue(const Statistic &s, unsigned index) const;
@@ -133,6 +134,10 @@ namespace klee {
 
   inline uint64_t StatisticManager::getValue(const Statistic &s) const {
     return globalStats[s.id];
+  }
+
+  inline void StatisticManager::setValue(const Statistic &s, uint64_t value) {
+    globalStats[s.id] = value;
   }
 
   inline void StatisticManager::incrementIndexedValue(const Statistic &s, 

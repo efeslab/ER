@@ -85,6 +85,10 @@ uint64_t Statistic::getValue() const {
   return theStatisticManager->getValue(*this);
 }
 
+void Statistic::setValue(uint64_t value) {
+  theStatisticManager->setValue(*this, value);
+}
+
 void klee::dumpStatisticsToLLVMrawos(llvm::raw_ostream &os) {
   for (size_t i = 0 ; i < theStatisticManager->getNumStatistics(); ++i) {
     Statistic &stat = theStatisticManager->getStatistic(i);

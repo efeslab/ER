@@ -114,6 +114,21 @@ void Expr::updateKInst(const KInstruction *newkinst) {
   // NOTE: Since kinst tracked with "lastoccur" or "lessfreq" policy is no
   // longer guaranteed to be the latest instruction bind this symbolic value to
   // a llvm register, I should never use Expr::kinst to locate a llvm register.
+  if (const ReadExpr *RE = dyn_cast<ReadExpr>(this)) {
+    if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(RE->index)) {
+      if (CE->getZExtValue() == 2192) {
+        if (RE->updates.head.isNull() &&
+            RE->updates.root->name == "httpd.conf") {
+          if (newkinst) {
+            llvm::errs() << "Found httpd.conf[2192] with freq "
+                         << newkinst->getLoadedFreq() << " cost "
+                         << newkinst->getRecordingCost() << " at kinst "
+                         << klee::getKInstUniqueIDOrNull(newkinst) << "\n";
+          }
+        }
+      }
+    }
+  }
   if (!newkinst) return;
   bool should_update = false;
   switch (KInstBinding) {

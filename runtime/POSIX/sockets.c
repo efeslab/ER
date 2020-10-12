@@ -1950,6 +1950,7 @@ int getaddrinfo(const char *node, const char *service, const struct addrinfo *hi
   }
 
   if (node != NULL) {
+    klee_mustnotbe_symbolic_str(node);
     if (strcmp(node, "localhost") != 0 && strcmp(node, DEFAULT_HOST_NAME) != 0) {
       posix_debug_msg("resolving '%s' to localhost\n", node);
     }

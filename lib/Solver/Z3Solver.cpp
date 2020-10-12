@@ -254,7 +254,7 @@ bool Z3SolverImpl::internalRunSolver(
     const Query &query, const std::vector<const Array *> *objects,
     std::vector<std::vector<unsigned char> > *values, bool &hasSolution) {
 
-  TimerStatIncrementer t(stats::queryTime);
+  TimerStatIncrementerWithMax t(stats::queryTime, stats::queryTimeMaxOnce);
   // NOTE: Z3 will switch to using a slower solver internally if push/pop are
   // used so for now it is likely that creating a new solver each time is the
   // right way to go until Z3 changes its behaviour.

@@ -20,7 +20,7 @@ namespace klee {
    * A TimerStatIncrementer adds its lifetime to a specified Statistic.
    */
   class TimerStatIncrementer {
-  private:
+  protected:
     const WallTimer timer;
     Statistic &statistic;
     bool checked;
@@ -43,6 +43,32 @@ namespace klee {
     }
 
     time::Span delta() const { return timer.delta(); }
+  };
+
+  class TimerStatIncrementerWithMax: public TimerStatIncrementer {
+    protected:
+      Statistic &max_stat;
+      bool maxUpdated = false;
+    public:
+      explicit TimerStatIncrementerWithMax(Statistic &_inc_stat, Statistic &_max_stat): TimerStatIncrementer(_inc_stat), max_stat(_max_stat) {}
+
+      time::Span check() {
+        time::Span t = TimerStatIncrementer::check();
+        uint64_t t_us = t.toMicroseconds();
+        if (t_us > max_stat) {
+          max_stat.setValue(t_us);
+          maxUpdated = true;
+        }
+        return t;
+      }
+
+      bool isMaxUpdated() const { return maxUpdated; }
+
+      ~TimerStatIncrementerWithMax() {
+        if (!checked) {
+          check();
+        }
+      }
   };
 }
 

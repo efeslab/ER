@@ -31,6 +31,7 @@ namespace stats {
   extern Statistic independentTime;
   extern Statistic cexCacheTime;
   extern Statistic queryTime;
+  extern Statistic queryTimeMaxOnce;
   
 #ifdef KLEE_ARRAY_DEBUG
   extern Statistic arrayHashTime;

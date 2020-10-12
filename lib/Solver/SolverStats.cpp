@@ -26,6 +26,7 @@ Statistic stats::independentAllConstraints("IndependentAllConstraints", "IAllCon
 Statistic stats::independentTime("IndependentTime", "Itime");
 Statistic stats::cexCacheTime("CexCacheTime", "CCtime");
 Statistic stats::queryTime("QueryTime", "Qtime");
+Statistic stats::queryTimeMaxOnce("QueryTimeMaxOnce", "QtimeMO");
 
 #ifdef KLEE_ARRAY_DEBUG
 Statistic stats::arrayHashTime("ArrayHashTime", "AHtime");

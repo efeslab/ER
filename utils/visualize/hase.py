@@ -851,11 +851,12 @@ class PyGraph(object):
     @type arraynames: set of string
     @param arraynames: the arrays, upon which you want to get rid of all
     symbolic index access.
+    @param indep_thres: int
     @rtype: list of RecordableInst
     @return: the list of RecordableInst to concretize all symbolic indirect
         access (Read and Write/UN)
     """
-    def UpdateListConcretize(self, arraynames):
+    def UpdateListConcretize(self, arraynames, indep_thres):
         # initial_strategy is the union of the best strategy of concretize
         # nodes individually
         initial_strategy = set()
@@ -863,14 +864,16 @@ class PyGraph(object):
         for n in self.all_nodes_topo_order:
             if str(n.kind) == "UN" and n.root.split("[")[0] in arraynames:
                 for e in self.edges[n.id]:
-                    if e.weight == 1.5 and e.target.id not in visited_nids:
+                    if e.weight == 1.5 and e.target.id not in visited_nids and \
+                    self.idep_map[e.target.id] >= indep_thres:
                         visited_nids.add(e.target.id)
                         initial_strategy |= self.MustConcretize(e.target.id)
             if str(n.kind) == "3" and n.root.split("[")[0] in arraynames: # ReadExpr
                 readnode = n
                 for re in self.edges[readnode.id]:
                     if re.weight == 1.5 and \
-                            re.target.id not in visited_nids:
+                            re.target.id not in visited_nids and \
+                            self.idep_map[re.target.id] >= indep_thres:
                         visited_nids.add(re.target.id)
                         initial_strategy |= self.MustConcretize(re.target.id)
         PyGraph.ALLOWPTR = False
@@ -1142,6 +1145,9 @@ if __name__ == "__main__":
     parser.add_argument("--recordUN", action="store", type=str, default=None,
             help="a list of array name, whose update lists should be "
                  "concretized, separated by comma")
+    parser.add_argument("--indep-thres", action="store", type=int, default=0,
+            help="The minimum indirect depth of an index value used to access "
+                 "recordUN (default is 0)")
     parser.add_argument("--datarec-out", action="store", type=str,
             default="", help="A file to output datarec.cfg")
     parser.add_argument("--UN-constraints", type=str, default=None,
@@ -1220,6 +1226,9 @@ if __name__ == "__main__":
         arr2UNlen = {}
         # @type: Dict(arrayname -> list of [Indirect Read CNT, Direct Read CNT])
         arr2ReadRef = {}
+        # @type: Dict(arrayname -> list of indirect depth of read/write
+        # accessing this array
+        arr2Indep = {}
         for n in subh.all_nodes_topo_order:
             if str(n.kind) == "UN":
                 arr2UNlen.setdefault(n.root, [0])[-1] += 1
@@ -1236,6 +1245,9 @@ if __name__ == "__main__":
                     arr2ReadRef.setdefault(n.root, []).append(
                         [len(IndirectReads),
                          len(readNodes)-len(IndirectReads)])
+                    arr2Indep.setdefault(n.root, []).extend([
+                        subh.idep_map[n.id] for n in readNodes
+                        ])
             if str(n.kind) == "3" and (n.id in subh.edges) and \
                all([str(e.target.kind) != "UN" for e in subh.edges[n.id]]) and \
                any([e.weight == 1.5 for e in subh.edges[n.id]]):
@@ -1243,6 +1255,8 @@ if __name__ == "__main__":
                 # Should keep tracking of its root
                 arr2UNlen.setdefault(n.root, [0])
                 arr2ReadRef.setdefault(n.root, [[0,0]])[-1][0] += 1
+                arr2Indep.setdefault(n.root,
+                        []).append(subh.idep_map[n.id])
 
         bigarray_name = []
         for arr, UNL in arr2UNlen.items():
@@ -1255,6 +1269,9 @@ if __name__ == "__main__":
             print("\t%s" % ', '.join(["%d(%d,%d)@[%d]" % (l, IR, R, accu_l) \
                 for l, (IR, R) , accu_l in \
                 zip(UNL, arr2ReadRef.get(arr, [[0,0]]), accumulate_len)]))
+            print("\tindep: avg %f, max %d" %
+                    (sum(arr2Indep[arr])/len(arr2Indep[arr]),
+                        max(arr2Indep[arr])))
             if accumulate_len[-1] > 4096:
                 bigarray_name.append(arr[0:arr.find('[')])
         print("bigarray: %s" % ','.join(bigarray_name))
@@ -1289,7 +1306,8 @@ if __name__ == "__main__":
             sys.exit(0)
         # Require recursive optimization. disable idep calculation
         RecordableInst.SUBGRAPH = False
-        recnids = subh.UpdateListConcretize(array_to_concretize)
+        recnids = subh.UpdateListConcretize(array_to_concretize,
+                args.indep_thres)
         kinsts = subh.GetKInstSetFromNids(recnids)
         recinsts, graph_withrecinsts = subh.buildRecKInstL(kinsts)
         kinst_sorted = sorted(kinsts)

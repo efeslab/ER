@@ -22,7 +22,6 @@ ExprInPlaceTransformer::ExprInPlaceTransformer(const QueryCommand &_QC)
   new_QCp =
       new QueryCommand(out_Constraints, QC.Query, out_Values, QC.Objects);
 }
-// TODO UpdateNode* memory leak
 void ExprInPlaceTransformer::visitDFS(Expr *e) {
   expr_worklist.push_back(e);
   while (!expr_worklist.empty()) {
@@ -108,6 +107,7 @@ void ExprInPlaceTransformer::visitExpr(Expr *e) {
       else if ((nonnull_kids.size() == 1) && (e->getKInst() == nullptr)) {
         // can be omitted to its only dependence
         replaced_expr = *(nonnull_kids.begin());
+        replaced_expr->updateKInst(e->getKInst());
       }
       else {
         // cannot be omitted, just rebuildInPlace itself

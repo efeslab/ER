@@ -1949,12 +1949,19 @@ int getaddrinfo(const char *node, const char *service, const struct addrinfo *hi
     }
   }
 
-  if (node != NULL) {
-    klee_mustnotbe_symbolic_str(node);
-    if (strcmp(node, "localhost") != 0 && strcmp(node, DEFAULT_HOST_NAME) != 0) {
-      posix_debug_msg("resolving '%s' to localhost\n", node);
-    }
-  }
+  /*
+   * `node` can be a pointer to symbolic memory.
+   * In apache-60324 case, there is no cheap instructions to record this node
+   * string ("127.0.0.1").
+   * This node is not important in this POSIX model anyway, so I comment the
+   * following code out.
+   */
+  // if (node != NULL) {
+  //   klee_mustnotbe_symbolic_str(node);
+  //   if (strcmp(node, "localhost") != 0 && strcmp(node, DEFAULT_HOST_NAME) != 0) {
+  //     posix_debug_msg("resolving '%s' to localhost\n", node);
+  //   }
+  // }
 
   struct addrinfo *info = (struct addrinfo*) malloc(sizeof(struct addrinfo));
   memset(info, 0, sizeof(struct addrinfo));

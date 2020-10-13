@@ -112,19 +112,20 @@ bool PTWritePass::runOnModule(Module &M) {
         }
 
         unsigned int type_width = DL.getTypeSizeInBits(itype);
-        llvm::errs() << "Instruction " << iname << " (w" << type_width
-                     << ") matched\n";
+        unsigned int freq = 0;
         MDNode *MD = i->getMetadata("klee.freq");
         if (MD) {
           if (ConstantAsMetadata *CMD =
                   dyn_cast<ConstantAsMetadata>(MD->getOperand(0).get())) {
             if (ConstantInt *CI = dyn_cast<ConstantInt>(CMD->getValue())) {
-              unsigned int freq = CI->getZExtValue();
+              freq = CI->getZExtValue();
               ptwrite_freq += freq;
               actual_bytes += freq * type_width / 8;
             }
           }
         }
+        llvm::errs() << "Instruction " << iname << " (w" << type_width
+                     << ") " << " freq " << freq << " matched\n";
         // to assign each additional CastInst a unique ID
         static unsigned int ptwrite_cnt = 0;
 

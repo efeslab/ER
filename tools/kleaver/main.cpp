@@ -17,6 +17,7 @@
 #include "klee/Expr/ExprVisitor.h"
 #include "klee/Expr/Parser/Lexer.h"
 #include "klee/Expr/Parser/Parser.h"
+#include "klee/Expr/ExprDebugHelper.h"
 #include "klee/Internal/Support/PrintVersion.h"
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/OptionCategories.h"
@@ -43,6 +44,7 @@
 #include "GraphvizDOTDrawer.h"
 #include "JsonDrawer.h"
 #include "ExprInPlaceTransformation.h"
+#include "DataRecReplaceVisitor.h"
 
 using namespace klee;
 using namespace klee::expr;
@@ -84,6 +86,12 @@ llvm::cl::opt<unsigned> AdditionalConcreteValuesRandomRatio(
     llvm::cl::init(5),
     llvm::cl::cat(klee::HASECat));
 
+llvm::cl::opt<std::string>
+    DataRecConfig("datarec-cfg", llvm::cl::init(""),
+                  llvm::cl::desc("Specify a datarec.cfg for expre replacement "
+                                 "(only useful in datarec-replace mode)"),
+                  llvm::cl::cat(klee::HASECat));
+
 enum class DrawFormats {
   GraphVizDOT = 0x1 << 0,
   JSON = 0x1 << 1,
@@ -101,25 +109,29 @@ static llvm::cl::opt<DrawFormats> DrawFormat(
             KLEE_LLVM_CL_VAL_END),
     llvm::cl::cat(klee::HASECat));
 
-enum ToolActions { PrintTokens, PrintAST, PrintSMTLIBv2, Evaluate, Analyze, Draw, KTestEval};
+enum ToolActions { PrintTokens, PrintAST, PrintSMTLIBv2, Evaluate, Analyze, Draw, KTestEval, DataRecReplace};
 
 static llvm::cl::opt<ToolActions> ToolAction(
     llvm::cl::desc("Tool actions:"), llvm::cl::init(Evaluate),
-    llvm::cl::values(clEnumValN(PrintTokens, "print-tokens",
-                                "Print tokens from the input file."),
-                     clEnumValN(PrintSMTLIBv2, "print-smtlib",
-                                "Print parsed input file as SMT-LIBv2 query."),
-                     clEnumValN(PrintAST, "print-ast",
-                                "Print parsed AST nodes from the input file."),
-                     clEnumValN(Evaluate, "evaluate",
-                                "Evaluate parsed AST nodes from the input file. (default)"),
-                     clEnumValN(Analyze, "analyze",
-                                "Analyze parsed AST nodes from the input file"),
-                     clEnumValN(Draw, "draw",
-                                "Draw AST nodes in Graphviz DOT file"),
-                     clEnumValN(KTestEval, "KTestEval",
-                                "use KTest to evaluate constraints, unstatisfiable constraints will be reported.")
-                         KLEE_LLVM_CL_VAL_END),
+    llvm::cl::values(
+        clEnumValN(PrintTokens, "print-tokens",
+                   "Print tokens from the input file."),
+        clEnumValN(PrintSMTLIBv2, "print-smtlib",
+                   "Print parsed input file as SMT-LIBv2 query."),
+        clEnumValN(PrintAST, "print-ast",
+                   "Print parsed AST nodes from the input file."),
+        clEnumValN(Evaluate, "evaluate",
+                   "Evaluate parsed AST nodes from the input file. (default)"),
+        clEnumValN(Analyze, "analyze",
+                   "Analyze parsed AST nodes from the input file"),
+        clEnumValN(Draw, "draw", "Draw AST nodes in Graphviz DOT file"),
+        clEnumValN(KTestEval, "KTestEval",
+                   "use KTest to evaluate constraints, unstatisfiable "
+                   "constraints will be reported."),
+        clEnumValN(
+            DataRecReplace, "datarec-replace",
+            "Use oracle-ktest and datarec.cfg to simplify existing queries")
+        KLEE_LLVM_CL_VAL_END),
     llvm::cl::cat(klee::SolvingCat));
 
 enum BuilderKinds {
@@ -571,6 +583,48 @@ static bool KTestEvalInputAST(const char *Filename,
   return true;
 }
 
+static bool DataRecReplaceInputAST(const char *Filename,
+                         const MemoryBuffer *MB,
+                         ExprBuilder *Builder) {
+  if (BitcodePath.empty()) {
+    klee_warning("No bitcode is provided while performing DataRecReplacement");
+  }
+  InputAST ast(Filename, MB, Builder);
+  if (!ast.isValid())
+    return false;
+
+  UNMap_ty replacedUN, visitedUN;
+  DataRecReplaceVisitor datarec_eval(replacedUN, visitedUN, DataRecConfig,
+                                        OracleKTest);
+  Constraints_ty replacedConstraints;
+
+  std::vector<Decl*> &Decls = ast.getDecls();
+  for (Decl *D: Decls) {
+    if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
+      for (unsigned int i = 0; i < QC->Constraints.size(); ++i) {
+        const ref<Expr> &constraint = QC->Constraints[i];
+        ref<Expr> new_constraint = datarec_eval.replace(constraint);
+        if (ConstantExpr *CE = dyn_cast<ConstantExpr>(new_constraint)) {
+          assert(CE->isTrue() &&
+                 "DataRecReplaceVisitor returned false constraints");
+        } else {
+          replacedConstraints.push_back(new_constraint);
+        }
+      }
+      const RefHashSet<Expr> &new_constraints = datarec_eval.getNewConstraints();
+      replacedConstraints.insert(replacedConstraints.end(),
+                                 new_constraints.begin(),
+                                 new_constraints.end());
+
+      std::string newKQueryOutput = InputFile + ".replaced";
+      debugDumpConstraintsImpl(replacedConstraints, QC->Objects,
+                               newKQueryOutput.c_str());
+      break;
+    }
+  }
+  return true;
+}
+
 static bool printInputAsSMTLIBv2(const char *Filename,
                              const MemoryBuffer *MB,
                              ExprBuilder *Builder)
@@ -689,6 +743,10 @@ int main(int argc, char **argv) {
     break;
   case KTestEval:
     success = KTestEvalInputAST(InputFile=="-"? "<stdin>" : InputFile.c_str(),
+        MB.get(), Builder);
+    break;
+  case DataRecReplace:
+    success = DataRecReplaceInputAST(InputFile=="-"? "<stdin>" : InputFile.c_str(),
         MB.get(), Builder);
     break;
   default:

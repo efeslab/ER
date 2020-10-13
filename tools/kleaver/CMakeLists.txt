@@ -12,6 +12,7 @@ add_executable(kleaver
   Drawer.cpp
   GraphvizDOTDrawer.cpp
   JsonDrawer.cpp
+  DataRecReplaceVisitor.cpp
 )
 
 set(KLEE_LIBS

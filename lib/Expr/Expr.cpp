@@ -62,7 +62,7 @@ cl::opt<Expr::KInstBindingPolicy> KInstBinding(
             "which has lower recording cost than existing bindings. i.e. only "
             "overwrite existing bindings if new bindings are cheaper")
             KLEE_LLVM_CL_VAL_END),
-    cl::init(Expr::KInstBindingPolicy::CallStackTopFirstOccur), cl::cat(ExprCat));
+    cl::init(Expr::KInstBindingPolicy::LessCost), cl::cat(ExprCat));
 }
 
 /***/

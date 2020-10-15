@@ -937,11 +937,16 @@ class PyGraph(object):
                 newKInstSet = self.GetKInstSetFromNids(RecNids)
                 newRecCost = self.GetKInstSetRecordingSize(newKInstSet)
                 oldRecCost = self.GetKInstSetRecordingSize([k])
+                # take any single element from a set
+                # said to be the best practice in python3.X
+                for anynid in kinst2nids[k]: break
+                oldRecIsPointer = (self.id_map[anynid].ispointer == "true")
                 #print("newRecCost %d, oldRecCost %d, newKInstSet %s" % (
                 #    newRecCost, oldRecCost, ','.join(newKInstSet)))
                 if newRecCost < oldRecCost or \
                    (newRecCost == oldRecCost and \
-                    len(newKInstSet) == 1 and k not in newKInstSet):
+                    len(newKInstSet) == 1 and k not in newKInstSet) or \
+                   ((not PyGraph.ALLOWPTR) and oldRecIsPointer):
                     changed = True
                     # replace old kinst with the new ones
                     del kinst2nids[k]

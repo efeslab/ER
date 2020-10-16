@@ -1367,6 +1367,12 @@ inline void CompareCacheSemaphoreDec() {
   }
 }
 
+class CompareCacheSemaphoreHolder {
+public:
+  CompareCacheSemaphoreHolder() { CompareCacheSemaphoreInc(); }
+  ~CompareCacheSemaphoreHolder() { CompareCacheSemaphoreDec(); }
+};
+
 } // End klee namespace
 
 #endif /* KLEE_EXPR_H */

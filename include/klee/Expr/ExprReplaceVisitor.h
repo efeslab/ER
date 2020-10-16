@@ -35,9 +35,8 @@ public:
   // Expr::equivs and UpdateNode::UNequivs can cache stuff longer.
   // NOTE: you should not directly call visit() anymore
   ref<Expr> replace(const ref<Expr> &e) {
-    CompareCacheSemaphoreInc();
+    CompareCacheSemaphoreHolder CCSH;
     ref<Expr> e_ret = visit(e);
-    CompareCacheSemaphoreDec();
     return e_ret;
   }
 };

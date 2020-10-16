@@ -128,6 +128,7 @@ struct NullOrSatisfyingAssignment {
 /// unsatisfiable query).
 /// \return - True if a cached result was found.
 bool CexCachingSolver::searchForAssignment(KeyType &key, Assignment *&result) {
+  CompareCacheSemaphoreHolder CCSH;
   Assignment * const *lookup = cache.lookup(key);
   if (lookup) {
     result = *lookup;

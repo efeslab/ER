@@ -243,6 +243,8 @@ int Expr::compare(const Expr &b) const {
 int Expr::compare_internal(const Expr &b) const {
   if (this == &b) return 0;
 
+  // NOTE: ap and bp should only be used to query equivalency cache
+  // Since this compare is NOT commutative
   const Expr *ap, *bp;
   if (this < &b) {
     ap = this; bp = &b;
@@ -258,7 +260,7 @@ int Expr::compare_internal(const Expr &b) const {
   // put ConstantExpr in the cache from the first place.
   Kind ak = getKind(), bk = b.getKind();
   if (ak == bk && ak == Expr::Constant) {
-    return ap->compareContents(*bp);
+    return compareContents(b);
   }
   if (equivs.count(std::make_pair(ref<const Expr>(ap), ref<const Expr>(bp))))
     return 0;

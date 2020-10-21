@@ -34,37 +34,51 @@ llvm::cl::opt<bool> RewriteEqualities(
     llvm::cl::cat(SolvingCat));
 }
 
-bool ConstraintManager::rewriteConstraints(ExprReplaceVisitorBase &visitor) {
+// Non-null `to_replace` implies `UseIndependentSolver`
+bool ConstraintManager::rewriteConstraints(
+    ExprReplaceVisitorBase &visitor, const IndependentElementSet *to_replace,
+    IndepElemSetPtrSet_ty *intersected_factors) {
   bool changed = false;
-  if (old.empty()) {
-    constraints.swap(old);
-    for (ConstraintManager::constraints_ty::iterator 
-           it = old.begin(), ie = old.end(); it != ie; ++it) {
-      ref<Expr> &ce = *it;
-      ref<Expr> e = visitor.replace(ce);
 
-      if (e!=ce) {
-        // TODO: maybe I can check if the rewritten expr has the same IndependentSet as previous one.
-        addConstraintInternal(e); // enable further reductions
-        changed = true;
-      } else {
-        constraints.push_back(ce);
+  // we will update constraints by making a copy and regenerate its content
+  Constraints_ty swap_temp;
+  constraints.swap(swap_temp);
+  if (to_replace) {
+    assert(to_replace->exprs.size() == 1 &&
+           "Should only replace one Expr at a time");
+    assert(intersected_factors &&
+           "Null intersected_factors while to_replace is non-null");
+    for (IndependentElementSet *elemset : factors) {
+      if (to_replace->intersects(*elemset)) {
+        intersected_factors->insert(elemset);
       }
     }
-  } else {
-    ConstraintManager::constraints_ty old_temp;
-    constraints.swap(old_temp);
-    for (ConstraintManager::constraints_ty::iterator 
-           it = old_temp.begin(), ie = old_temp.end(); it != ie; ++it) {
-      ref<Expr> &ce = *it;
-      ref<Expr> e = visitor.replace(ce);
-
-      if (e!=ce) {
-        addConstraintInternal(e); // enable further reductions
-        changed = true;
+    Constraints_ty intersected_temp;
+    intersected_temp.swap(swap_temp);
+    for (ref<Expr> &e : intersected_temp) {
+      if (intersected_factors->count(representative[e])) {
+        swap_temp.push_back(e);
       } else {
-        constraints.push_back(ce);
+        // ignore unrelated exprs by removing them from the copy `swap_temp`
+        // and putting them in constraints directly;
+        constraints.push_back(e);
       }
+    }
+  }
+
+  for (ConstraintManager::constraints_ty::iterator it = swap_temp.begin(),
+                                                   ie = swap_temp.end();
+       it != ie; ++it) {
+    ref<Expr> &ce = *it;
+    ref<Expr> e = visitor.replace(ce);
+
+    if (e != ce) {
+      // TODO: maybe I can check if the rewritten expr has the same
+      // IndependentSet as previous one.
+      addConstraintInternal(e); // enable further reductions
+      changed = true;
+    } else {
+      constraints.push_back(ce);
     }
   }
 
@@ -121,7 +135,18 @@ bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
           visitedUN.clear();
           if (replaceVisitor)
             replaceVisitor->resetVisited();
-          changed |= rewriteConstraints(visitor);
+          if (UseIndependentSolver) {
+            // create a new IndependentElementSet of the expr to be replaced
+            IndependentElementSet to_replace(be->right);
+            auto insert_it = intersected_factors_cache.insert(
+                std::make_pair(e, IndepElemSetPtrSet_ty()));
+            IndepElemSetPtrSet_ty &intersected_factors =
+                insert_it.first->second;
+            changed |=
+                rewriteConstraints(visitor, &to_replace, &intersected_factors);
+          } else {
+            changed |= rewriteConstraints(visitor, nullptr, nullptr);
+          }
         }
       }
     }
@@ -138,7 +163,12 @@ bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
   return changed;
 }
 
-void ConstraintManager::updateDelete() {
+void ConstraintManager::updateIndependentSetDelete() {
+  // First find if there are removed constraint. If is, update the correspoding set.
+  if (deleteConstraints.empty()) {
+    return;
+  }
+
   // I believe delete only happens when a constraint is rewritten. But I think
   // it is unlikely to break a IndependentSet if you rewrite a constraint.
   // TODO: do we really want to traverse the entire IndependentSet upon delete/rewrite?
@@ -149,7 +179,8 @@ void ConstraintManager::updateDelete() {
   for (auto it = deleteConstraints.begin(); it != deleteConstraints.end(); it++) {
     updateList[representative[*it]].insert(*it);
     // Update representative.
-    representative.erase(*it);
+    assert(representative.erase(*it) &&
+           "Seems like representative out of sync");
   }
 
   // Update factors.
@@ -202,36 +233,41 @@ void ConstraintManager::updateDelete() {
 }
 
 // Update the representative after adding constraint
-void ConstraintManager::updateIndependentSet() {
-  // First find if there are removed constraint. If is, update the correspoding set.
-  if (!deleteConstraints.empty()) {
-    updateDelete();
-  }
-
+void ConstraintManager::updateIndependentSetAdd() {
   while (!addedConstraints.empty()) {
-    IndependentElementSet* current = new IndependentElementSet(addedConstraints.back());
+    ref<Expr> e = addedConstraints.back();
     addedConstraints.pop_back();
+    IndependentElementSet* current = new IndependentElementSet(e);
     // garbage consists of existing factors which are intersected with
     // this new constraint
-    std::vector<IndependentElementSet*> garbage;
-    for (auto it = factors.begin(); it != factors.end(); it++ ) {
-      if (current->intersects(*(*it))) {
-        garbage.push_back(*it);
+    // We will use cached results when available (change garbage_p)
+    IndepElemSetPtrSet_ty garbage;
+    IndepElemSetPtrSet_ty *garbage_p = &garbage;
+    auto find_it = intersected_factors_cache.find(e);
+    if (find_it != intersected_factors_cache.end()) {
+      // cache hit, we have run intersects on this new constraint before
+      garbage_p = &(find_it->second);
+    } else {
+      // cache miss, we need to calculate the intersected factors here
+      for (auto it = factors.begin(); it != factors.end(); it++) {
+        if (current->intersects(*(*it))) {
+          garbage_p->insert(*it);
+        }
       }
     }
 
-    if (garbage.size() == 1) {
-      // special case: newly added constraint falls exactly in one existing factor
-      // we can reuse the existing factor
-      IndependentElementSet *singleIntersect = garbage.back();
+    if (garbage_p->size() == 1) {
+      // lucky and cheap case: newly added constraint falls exactly in one
+      // existing factor we can reuse the existing factor
+      IndependentElementSet *singleIntersect = *(garbage_p->begin());
       singleIntersect->add(*current);
       for (auto &it: current->exprs) {
         representative[it] = singleIntersect;
       }
       delete current;
-    }
-    else {
-      for (IndependentElementSet *indepSet: garbage) {
+    } else {
+      // expensive case: need to merge multiple intersected independent sets
+      for (IndependentElementSet *indepSet: *(garbage_p)) {
         current->add(*indepSet);
       }
       // Update representative and factors.
@@ -239,13 +275,22 @@ void ConstraintManager::updateIndependentSet() {
         representative[*it] = current;
       }
 
-      for (IndependentElementSet *victim: garbage) {
+      for (IndependentElementSet *victim: *(garbage_p)) {
         factors.erase(victim);
         delete victim;
       }
 
       factors.insert(current);
     }
+  }
+}
+
+void ConstraintManager::updateDeleteAdd() {
+  for (ref<Expr> &e : deleteConstraints) {
+    assert(representative.erase(e) && "Seems like representative out of sync");
+  }
+  for (ref<Expr> &e : addedConstraints) {
+    representative[e] = nullptr;
   }
 }
 
@@ -276,12 +321,8 @@ void ConstraintManager::updateEqualities() {
   }
 }
 
-void ConstraintManager::checkConstraintChange() {
-  ExprHashSet oldConsSet;
-  while (!old.empty()) {
-    oldConsSet.insert(old.back());
-    old.pop_back();
-  }
+void ConstraintManager::checkConstraintChange(const Constraints_ty &old) {
+  ExprHashSet oldConsSet(old.begin(), old.end());
 
   for (auto it = constraints.begin(); it != constraints.end(); it++ ) {
     if (!oldConsSet.erase(*it)) {
@@ -296,12 +337,15 @@ void ConstraintManager::checkConstraintChange() {
 }
 
 bool ConstraintManager::addConstraint(ref<Expr> e) {
+  CompareCacheSemaphoreHolder CCSH;
   if (representative.find(e) != representative.end()) {
     // found a duplicated constraint
     return true;
   }
+  // make a copy of current constraint set. Will be used to calculate
+  // constraint changes if rewritting changes any constraint.
+  Constraints_ty old(constraints);
   // After update the independant, the add and delete vector should be cleaned;
-  assert(old.empty() && "old vector is not empty"); 
   assert(deleteConstraints.empty() && "delete Constraints not empty"); 
   assert(addedConstraints.empty() && "add Constraints not empty"); 
 
@@ -312,23 +356,27 @@ bool ConstraintManager::addConstraint(ref<Expr> e) {
   bool changed = addConstraintInternal(simplified);
 
   // If the constraints are changed by rewriteConstraints. Check what has been
-  // modified; Important clear the old vector after finish running.
+  // modified;
   if (changed) {
     addedConstraints.clear();
-    checkConstraintChange();
+    checkConstraintChange(old);
   }
-  old.clear();
 
   updateEqualities();
 
   // NOTE that updateIndependentSet will destroy addedConstraints and
   // deletedConstraints. Thus I should updateEqualities before this.
   if (UseIndependentSolver) {
-    updateIndependentSet();
+    // should first process deleted constraints then newly added
+    updateIndependentSetDelete();
+    updateIndependentSetAdd();
+  } else {
+    updateDeleteAdd();
   }
 
   addedConstraints.clear();
   deleteConstraints.clear();
+  intersected_factors_cache.clear();
   // TODO Check factors are exclusive (sum the number of constraints and compare with representative.size())
   return true;
 }

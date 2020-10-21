@@ -75,8 +75,17 @@ public:
 
 private:
   Constraints_ty constraints;
-  std::vector<ref<Expr>> old;
+  // When `UseIndependentSolver` is disabled, representative serves as a set of
+  // constraints for deduplication
+  // When `UseIndependentSolver` is enabled, representative also track the
+  // mapping from a constraint to its IndependentElementSet
   ExprHashMap<klee::IndependentElementSet*> representative;
+
+  // intersected_factors_cache is to reuse results in both rewriteConstraints
+  // and updateIndependentSetAdd when `UseIndependentSolver` is enabled
+  typedef std::unordered_set<IndependentElementSet *> IndepElemSetPtrSet_ty;
+  ExprHashMap<IndepElemSetPtrSet_ty> intersected_factors_cache;
+
   std::vector<ref<Expr>> deleteConstraints;
   std::vector<ref<Expr>> addedConstraints;
   std::unordered_set<klee::IndependentElementSet*> factors;
@@ -94,17 +103,31 @@ private:
   mutable ExprReplaceVisitorMulti *replaceVisitor = nullptr;
 
   // returns true iff the constraints were modified
-  bool rewriteConstraints(ExprReplaceVisitorBase &visitor);
+  // This function is only called when you want to rewrite existing constraints
+  // based on a newly learnt equivalency
+  // @param to_replace: non-null if IndependentSolver is enabled so that we
+  // can only work on Independent sets intersecting with the expr to be
+  // replaced.
+  // @param intersected_factors: only makes sense when to_replace is non-null
+  // This should come from intersected_factors_cache.
+  bool rewriteConstraints(ExprReplaceVisitorBase &visitor,
+                          const IndependentElementSet *to_replace,
+                          IndepElemSetPtrSet_ty *intersected_factors);
 
   bool addConstraintInternal(ref<Expr> e);
 
-  void updateIndependentSet();
+  // when `UseIndependentSolver` is enabled, these two function digest
+  // constraints changes
+  void updateIndependentSetAdd();
+  void updateIndependentSetDelete();
+  // when `UseIndependentSolver` is disabled, I still need to digest constraints
+  // changes to the set representative
+  void updateDeleteAdd();
   // maintain the equalities used to simplify(replace) expression
   void updateEqualities();
 
-  void checkConstraintChange();
+  void checkConstraintChange(const Constraints_ty &old);
 
-  void updateDelete();
 };
 
 } // namespace klee

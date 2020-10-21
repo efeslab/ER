@@ -65,25 +65,49 @@ void IndependentElementSet::print(llvm::raw_ostream &os) const {
 }
 
 // more efficient when this is the smaller set
-bool IndependentElementSet::intersects(const IndependentElementSet &b) {
+bool IndependentElementSet::intersects(const IndependentElementSet &b) const {
   // If there are any symbolic arrays in our query that b accesses
-  for (std::set<const Array*>::iterator it = wholeObjects.begin(), 
-      ie = wholeObjects.end(); it != ie; ++it) {
-    const Array *array = *it;
-    if (b.wholeObjects.count(array) || 
-        b.elements.find(array) != b.elements.end())
+  const std::set<const Array*> *smallerWholeObjects = nullptr;
+  const std::set<const Array*> *largerWholeObjects = nullptr;
+  const elements_ty *elementsWithlargerWholeObjects = nullptr;
+  if (wholeObjects.size() < b.wholeObjects.size()) {
+    smallerWholeObjects = &wholeObjects;
+    largerWholeObjects = &(b.wholeObjects);
+    elementsWithlargerWholeObjects = &(b.elements);
+  } else {
+    smallerWholeObjects = &(b.wholeObjects);
+    largerWholeObjects = &wholeObjects;
+    elementsWithlargerWholeObjects = &elements;
+  }
+  for (const Array* array: *smallerWholeObjects) {
+    if (largerWholeObjects->count(array) ||
+        (elementsWithlargerWholeObjects->find(array) !=
+         elementsWithlargerWholeObjects->end()))
       return true;
   }
-  for (elements_ty::iterator it = elements.begin(), ie = elements.end();
-      it != ie; ++it) {
-    const Array *array = it->first;
+
+  // check whether concrete array accesses overlap
+  const elements_ty *smallerElements = nullptr;
+  const elements_ty *largerElements = nullptr;
+  const std::set<const Array*> *wholeObjectsWithlargerElements = nullptr;
+  if (elements.size() < b.elements.size()) {
+    smallerElements = &elements;
+    largerElements = &(b.elements);
+    wholeObjectsWithlargerElements = &(b.wholeObjects);
+  } else {
+    smallerElements = &(b.elements);
+    largerElements = &elements;
+    wholeObjectsWithlargerElements = &wholeObjects;
+  }
+  for (const elements_ty::value_type &it : *smallerElements) {
+    const Array *array = it.first;
     // if the array we access is symbolic in b
-    if (b.wholeObjects.count(array))
+    if (wholeObjectsWithlargerElements->count(array))
       return true;
-    elements_ty::const_iterator it2 = b.elements.find(array);
+    elements_ty::const_iterator it2 = largerElements->find(array);
     // if any of the elements we access are also accessed by b
-    if (it2 != b.elements.end()) {
-      if (it->second.intersects(it2->second))
+    if (it2 != largerElements->end()) {
+      if (it.second.intersects(it2->second))
         return true;
     }
   }

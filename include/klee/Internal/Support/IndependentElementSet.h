@@ -34,7 +34,11 @@ public:
     return modified;
   }
 
-  bool intersects(const DenseSet &b) {
+  bool intersects(const DenseSet &b) const {
+    // smallter_set.interesects(larger_set) is more efficient
+    if (s.size() > b.s.size()) {
+      return b.intersects(*this);
+    }
     for (typename set_ty::iterator it = s.begin(), ie = s.end(); 
          it != ie; ++it)
       if (b.s.count(*it))
@@ -106,7 +110,7 @@ public:
   void print(llvm::raw_ostream &os) const;
 
   // more efficient when this is the smaller set
-  bool intersects(const IndependentElementSet &b);
+  bool intersects(const IndependentElementSet &b) const;
 
   // returns true iff set is changed by addition
   bool add(const IndependentElementSet &b);

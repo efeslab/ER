@@ -139,12 +139,16 @@ bool CexCachingSolver::searchForAssignment(KeyType &key, Assignment *&result) {
     // Look for a satisfying assignment for a superset, which is trivially an
     // assignment for any subset.
     Assignment **lookup = 0;
-    if (CexCacheSuperSet)
+    if (CexCacheSuperSet) {
       lookup = cache.findSuperset(key, NonNullAssignment());
+      if (lookup) ++stats::queryCexCacheSuperset;
+    }
 
     // Otherwise, look for a subset which is unsatisfiable, see below.
-    if (!lookup) 
+    if (!lookup)  {
       lookup = cache.findSubset(key, NullAssignment());
+      if (lookup) ++stats::queryCexCacheSubset;
+    }
 
     // If either lookup succeeded, then we have a cached solution.
     if (lookup) {
@@ -168,16 +172,20 @@ bool CexCachingSolver::searchForAssignment(KeyType &key, Assignment *&result) {
     // Look for a satisfying assignment for a superset, which is trivially an
     // assignment for any subset.
     Assignment **lookup = 0;
-    if (CexCacheSuperSet)
+    if (CexCacheSuperSet) {
       lookup = cache.findSuperset(key, NonNullAssignment());
+      if (lookup) ++stats::queryCexCacheSuperset;
+    }
 
     // Otherwise, look for a subset which is unsatisfiable -- if the subset is
     // unsatisfiable then no additional constraints can produce a valid
     // assignment. While searching subsets, we also explicitly the solutions for
     // satisfiable subsets to see if they solve the current query and return
     // them if so. This is cheap and frequently succeeds.
-    if (!lookup) 
+    if (!lookup) {
       lookup = cache.findSubset(key, NullOrSatisfyingAssignment(key));
+      if (lookup) ++stats::queryCexCacheSubset;
+    }
 
     // If either lookup succeeded, then we have a cached solution.
     if (lookup) {

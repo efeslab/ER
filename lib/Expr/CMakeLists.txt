@@ -29,6 +29,7 @@ klee_add_component(kleaverExpr
   IndependentElementSet.cpp
   ExprReplaceVisitor.cpp
   ExprDebugHelper.cpp
+  ExprStats.cpp
 )
 
 set(LLVM_COMPONENTS

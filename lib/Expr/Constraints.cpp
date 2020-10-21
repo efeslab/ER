@@ -14,6 +14,7 @@
 #include "klee/OptionCategories.h"
 #include "klee/Solver/SolverCmdLine.h"
 #include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/TimerStatIncrementer.h"
 
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
@@ -23,6 +24,8 @@
 #include <unordered_set>
 #include "klee/Expr/ExprHashMap.h"
 #include "klee/util/RefHashMap.h"
+
+#include "ExprStats.h"
 
 #include <fstream>
 
@@ -46,6 +49,7 @@ bool ConstraintManager::rewriteConstraints(
     ExprReplaceVisitorBase &visitor, const IndependentElementSet *to_replace,
     std::vector<ref<Expr>> &deleteConstraints,
     std::vector<ref<Expr>> &toAddConstraints) {
+  TimerStatIncrementer timer(stats::CMrewrite);
   bool changed = false;
   if (to_replace) {
     assert(to_replace->exprs.size() == 1 &&
@@ -73,6 +77,7 @@ bool ConstraintManager::rewriteConstraints(
           changed = true;
         }
       }
+      stats::rewriteVisited += elemset->exprs.size();
     }
   } else {
     for (Constraints_ty::iterator it = constraints.begin(),
@@ -102,6 +107,7 @@ void ConstraintManager::simplifyForValidConstraint(ref<Expr> e) {
 }
 
 ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
+  TimerStatIncrementer t(stats::SimplifyExpr);
   if (isa<ConstantExpr>(e))
     return e;
   if (!replaceVisitor) {
@@ -119,6 +125,7 @@ ref<Expr> ConstraintManager::simplifyExpr(ref<Expr> e) const {
 // `rewiteConstraints`
 bool ConstraintManager::addConstraintInternal(
     ref<Expr> e, std::vector<ref<Expr>> &toAddConstraints) {
+  TimerStatIncrementer t(stats::CMaddInternalTime);
   if (representative.find(e) != representative.end()) {
     // found a duplicated constraint, nothing changed, directly return
     return false;
@@ -198,6 +205,7 @@ bool ConstraintManager::addConstraintInternal(
 
 void ConstraintManager::updateIndependentSetDelete(
     const std::vector<ref<Expr>> &deleteConstraints) {
+  TimerStatIncrementer t(stats::CMIndepDel);
   // First find if there are removed constraint. If is, update the correspoding set.
   if (deleteConstraints.empty()) {
     return;
@@ -271,6 +279,7 @@ void ConstraintManager::updateIndependentSetDelete(
 }
 // Update the representative after adding constraint
 void ConstraintManager::updateIndependentSetAdd(const ref<Expr> &e) {
+  TimerStatIncrementer t(stats::CMIndepAdd);
   IndependentElementSet *current = new IndependentElementSet(e);
   // indep_elemsets consists of existing factors which are intersected with
   // this new constraint
@@ -288,6 +297,8 @@ void ConstraintManager::updateIndependentSetAdd(const ref<Expr> &e) {
   }
 
   if (indep_elemsets.size() == 1) {
+    TimerStatIncrementer t(stats::CMIndepAddCheapTimer);
+    ++stats::CMIndepAddCheapCnt;
     // lucky and cheap case: newly added constraint falls exactly in one
     // existing factor we can reuse the existing factor
     IndependentElementSet *singleIntersect = *(indep_elemsets.begin());
@@ -298,6 +309,8 @@ void ConstraintManager::updateIndependentSetAdd(const ref<Expr> &e) {
     }
     delete current;
   } else {
+    TimerStatIncrementer t(stats::CMIndepAddExpensiveTimer);
+    ++stats::CMIndepAddExpensiveCnt;
     // expensive case: need to merge multiple intersected independent sets
     for (IndependentElementSet *indepSet : indep_elemsets) {
       current->add(*indepSet);
@@ -326,6 +339,7 @@ void ConstraintManager::updateDeleteAdd(
 
 void ConstraintManager::updateEqualities(
     const ref<Expr> &e, const std::vector<ref<Expr>> &deleteConstraints) {
+  TimerStatIncrementer t(stats::CMupdateEqualities);
   { // add one new constraint e
     bool isConstantEq = false;
     if (const EqExpr *EE = dyn_cast<EqExpr>(e)) {
@@ -353,6 +367,7 @@ void ConstraintManager::updateEqualities(
 }
 
 bool ConstraintManager::addConstraint(ref<Expr> e) {
+  TimerStatIncrementer timer(stats::CMaddTime);
   CompareCacheSemaphoreHolder CCSH;
   if (representative.find(e) != representative.end()) {
     // found a duplicated constraint

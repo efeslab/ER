@@ -22,6 +22,8 @@ namespace stats {
   extern Statistic queryCacheMisses;
   extern Statistic queryCexCacheHits;
   extern Statistic queryCexCacheMisses;
+  extern Statistic queryCexCacheSuperset;
+  extern Statistic queryCexCacheSubset;
   extern Statistic queryConstructTime;
   extern Statistic queryConstructs;
   extern Statistic queryCounterexamples;

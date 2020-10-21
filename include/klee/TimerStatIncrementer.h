@@ -21,7 +21,7 @@ namespace klee {
    */
   class TimerStatIncrementer {
   protected:
-    const WallTimer timer;
+    WallTimer timer;
     Statistic &statistic;
     bool checked;
 
@@ -40,6 +40,11 @@ namespace klee {
       statistic += t.toMicroseconds();
       checked = true;
       return t;
+    }
+
+    void reset() {
+      timer.reset();
+      checked = false;
     }
 
     time::Span delta() const { return timer.delta(); }

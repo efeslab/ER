@@ -23,12 +23,13 @@ namespace klee {
    * A WallTimer stores its creation time.
    */
   class WallTimer {
-    const time::Point start;
+    time::Point start;
   public:
 	WallTimer();
 
     /// Return the delta since the timer was created
     time::Span delta() const;
+    void reset();
   };
 
 

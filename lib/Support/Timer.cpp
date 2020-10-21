@@ -23,6 +23,10 @@ time::Span WallTimer::delta() const {
   return {time::getWallTime() - start};
 }
 
+void WallTimer::reset() {
+  start = time::getWallTime();
+}
+
 
 // Timer
 

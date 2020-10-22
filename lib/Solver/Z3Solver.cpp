@@ -73,6 +73,8 @@ private:
                          const std::vector<const Array *> *objects,
                          std::vector<std::vector<unsigned char> > *values,
                          bool &hasSolution);
+  int Z3GetInitialRead(const Array *array, ::Z3_model &theModel,
+                       unsigned offset);
   bool validateZ3Model(::Z3_solver &theSolver, ::Z3_model &theModel);
 
 public:
@@ -98,8 +100,9 @@ public:
                             bool &hasSolution);
   SolverRunStatus
   handleSolverResponse(::Z3_solver theSolver, ::Z3_lbool satisfiable,
+                       const IndependentElementSet *indep_elemset,
                        const std::vector<const Array *> *objects,
-                       std::vector<std::vector<unsigned char> > *values,
+                       std::vector<std::vector<unsigned char>> *values,
                        bool &hasSolution);
   SolverRunStatus getOperationStatusCode();
 };
@@ -311,8 +314,9 @@ bool Z3SolverImpl::internalRunSolver(
   }
 
   ::Z3_lbool satisfiable = Z3_solver_check(builder->ctx, theSolver);
-  runStatusCode = handleSolverResponse(theSolver, satisfiable, objects, values,
-                                       hasSolution);
+  runStatusCode =
+      handleSolverResponse(theSolver, satisfiable, query.indep_elemset, objects,
+                           values, hasSolution);
 
   Z3_solver_dec_ref(builder->ctx, theSolver);
   // Clear the builder's cache to prevent memory usage exploding.
@@ -334,10 +338,36 @@ bool Z3SolverImpl::internalRunSolver(
   return false; // failed
 }
 
+inline int Z3SolverImpl::Z3GetInitialRead(const Array *array,
+                                          ::Z3_model &theModel,
+                                          unsigned offset) {
+  // We can't use Z3ASTHandle here so have to do ref counting manually
+  ::Z3_ast arrayElementExpr;
+  Z3ASTHandle initial_read = builder->getInitialRead(array, offset);
+
+  __attribute__((unused)) bool successfulEval =
+      Z3_model_eval(builder->ctx, theModel, initial_read,
+                    /*model_completion=*/Z3_TRUE, &arrayElementExpr);
+  assert(successfulEval && "Failed to evaluate model");
+  Z3_inc_ref(builder->ctx, arrayElementExpr);
+  assert(Z3_get_ast_kind(builder->ctx, arrayElementExpr) == Z3_NUMERAL_AST &&
+         "Evaluated expression has wrong sort");
+
+  int arrayElementValue = 0;
+  __attribute__((unused)) bool successGet =
+      Z3_get_numeral_int(builder->ctx, arrayElementExpr, &arrayElementValue);
+  assert(successGet && "failed to get value back");
+  assert(arrayElementValue >= 0 && arrayElementValue <= 255 &&
+         "Integer from model is out of range");
+  Z3_dec_ref(builder->ctx, arrayElementExpr);
+  return arrayElementValue;
+}
+
 SolverImpl::SolverRunStatus Z3SolverImpl::handleSolverResponse(
     ::Z3_solver theSolver, ::Z3_lbool satisfiable,
+    const IndependentElementSet *indep_elemset,
     const std::vector<const Array *> *objects,
-    std::vector<std::vector<unsigned char> > *values, bool &hasSolution) {
+    std::vector<std::vector<unsigned char>> *values, bool &hasSolution) {
   switch (satisfiable) {
   case Z3_L_TRUE: {
     hasSolution = true;
@@ -355,35 +385,21 @@ SolverImpl::SolverRunStatus Z3SolverImpl::handleSolverResponse(
                                                     ie = objects->end();
          it != ie; ++it) {
       const Array *array = *it;
-      std::vector<unsigned char> data;
-
-      data.reserve(array->size);
-      for (unsigned offset = 0; offset < array->size; offset++) {
-        // We can't use Z3ASTHandle here so have to do ref counting manually
-        ::Z3_ast arrayElementExpr;
-        Z3ASTHandle initial_read = builder->getInitialRead(array, offset);
-
-        __attribute__((unused))
-        bool successfulEval =
-            Z3_model_eval(builder->ctx, theModel, initial_read,
-                          /*model_completion=*/Z3_TRUE, &arrayElementExpr);
-        assert(successfulEval && "Failed to evaluate model");
-        Z3_inc_ref(builder->ctx, arrayElementExpr);
-        assert(Z3_get_ast_kind(builder->ctx, arrayElementExpr) ==
-                   Z3_NUMERAL_AST &&
-               "Evaluated expression has wrong sort");
-
-        int arrayElementValue = 0;
-        __attribute__((unused))
-        bool successGet = Z3_get_numeral_int(builder->ctx, arrayElementExpr,
-                                             &arrayElementValue);
-        assert(successGet && "failed to get value back");
-        assert(arrayElementValue >= 0 && arrayElementValue <= 255 &&
-               "Integer from model is out of range");
-        data.push_back(arrayElementValue);
-        Z3_dec_ref(builder->ctx, arrayElementExpr);
+      IndependentElementSet::elements_ty::const_iterator indep_ele_it;
+      std::vector<unsigned char> data(array->size, 0);
+      if (indep_elemset && ((indep_ele_it = indep_elemset->elements.find(
+                                 array)) != indep_elemset->elements.end())) {
+        for (auto offset : indep_ele_it->second) {
+          int arrayElementValue = Z3GetInitialRead(array, theModel, offset);
+          data[offset] = arrayElementValue;
+        }
+      } else {
+        for (unsigned offset = 0; offset < array->size; offset++) {
+          int arrayElementValue = Z3GetInitialRead(array, theModel, offset);
+          data[offset] = arrayElementValue;
+        }
       }
-      values->push_back(data);
+      values->push_back(std::move(data));
     }
 
     // Validate the model if requested

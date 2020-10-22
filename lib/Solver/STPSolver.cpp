@@ -184,6 +184,7 @@ static SolverImpl::SolverRunStatus
 runAndGetCex(::VC vc, STPBuilder *builder, ::VCExpr q,
              const std::vector<const Array *> &objects,
              std::vector<std::vector<unsigned char>> &values,
+             const IndependentElementSet *indep_elemset,
              bool &hasSolution) {
   // XXX I want to be able to timeout here, safely
   hasSolution = !vc_query(vc, q);
@@ -193,13 +194,26 @@ runAndGetCex(::VC vc, STPBuilder *builder, ::VCExpr q,
 
   values.reserve(objects.size());
   unsigned i = 0; // FIXME C++17: use reference from emplace_back()
-  for (const auto object : objects) {
-    values.emplace_back(object->size);
-
-    for (unsigned offset = 0; offset < object->size; offset++) {
-      ExprHandle counter =
-          vc_getCounterExample(vc, builder->getInitialRead(object, offset));
-      values[i][offset] = static_cast<unsigned char>(getBVUnsigned(counter));
+  for (const Array *object : objects) {
+    // initialize assignment to be all zero
+    values.emplace_back(object->size, 0);
+    if (indep_elemset) {
+      IndependentElementSet::elements_ty::const_iterator indep_ele_it =
+          indep_elemset->elements.find(object);
+      if (indep_ele_it != indep_elemset->elements.end()) {
+        for (auto offset : indep_ele_it->second) {
+          ExprHandle counter =
+              vc_getCounterExample(vc, builder->getInitialRead(object, offset));
+          values[i][offset] =
+              static_cast<unsigned char>(getBVUnsigned(counter));
+        }
+      }
+    } else {
+      for (unsigned offset = 0; offset < object->size; offset++) {
+        ExprHandle counter =
+            vc_getCounterExample(vc, builder->getInitialRead(object, offset));
+        values[i][offset] = static_cast<unsigned char>(getBVUnsigned(counter));
+      }
     }
     ++i;
   }
@@ -346,8 +360,8 @@ bool STPSolverImpl::computeInitialValues(
     success = ((SOLVER_RUN_STATUS_SUCCESS_SOLVABLE == runStatusCode) ||
                (SOLVER_RUN_STATUS_SUCCESS_UNSOLVABLE == runStatusCode));
   } else {
-    runStatusCode =
-        runAndGetCex(vc, builder, stp_e, objects, values, hasSolution);
+    runStatusCode = runAndGetCex(vc, builder, stp_e, objects, values,
+                                 query.indep_elemset, hasSolution);
     success = true;
   }
 

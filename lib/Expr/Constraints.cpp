@@ -385,6 +385,18 @@ bool ConstraintManager::addConstraint(ref<Expr> e) {
   return true;
 }
 
+void ConstraintManager::getRelatedIndependentElementSets(
+    const Constraints_ty &constraints,
+    IndepElemSetPtrSet_ty &out_elemsets) const {
+  for (const ref<Expr> &e : constraints) {
+    auto find_it = representative.find(e);
+    assert(find_it != representative.end() &&
+           "Input constriants are not a subset of what are managed by this "
+           "ConstraintManager");
+    out_elemsets.insert(find_it->second);
+  }
+}
+
 ConstraintManager::ConstraintManager(const Constraints_ty &_constraints)
     : constraints(_constraints) {
   std::vector<IndependentElementSet *> init_indep;

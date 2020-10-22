@@ -44,7 +44,7 @@ public:
   ~ConstraintManager();
 
   typedef Constraints_ty::const_iterator constraint_iterator;
-  typedef std::unordered_set<klee::IndependentElementSet*>::const_iterator factor_iterator;
+  typedef IndepElemSetPtrSet_ty::const_iterator factor_iterator;
 
   // given a constraint which is known to be valid, attempt to
   // simplify the existing constraint set
@@ -62,6 +62,7 @@ public:
   std::size_t size() const noexcept { return constraints.size(); }
   factor_iterator factor_begin() const { return indep_indexer.factors.begin(); }
   factor_iterator factor_end() const { return indep_indexer.factors.end(); }
+  size_t factor_size() const { return indep_indexer.factors.size(); }
 
   bool operator==(const ConstraintManager &other) const {
     return constraints == other.constraints;
@@ -78,6 +79,12 @@ public:
                        IndepElemSetPtrSet_ty &out_intersected) const {
     indep_indexer.getIntersection(indep, out_intersected);
   }
+  // compute a set of IndependentElementSet based on a given set of constraints
+  // Assumption: all given constraints are already managed by this
+  // ConstraintManager
+  void
+  getRelatedIndependentElementSets(const Constraints_ty &constraints,
+                                   IndepElemSetPtrSet_ty &out_elemsets) const;
 
 private:
   Constraints_ty constraints;
@@ -96,7 +103,7 @@ private:
     // A faster index of IndependentElementSet::wholeObjects
     std::unordered_map<const Array *, klee::IndependentElementSet *>
         wholeObj_index;
-    std::unordered_set<klee::IndependentElementSet*> factors;
+    IndepElemSetPtrSet_ty factors;
     public:
     void insert(IndependentElementSet *indep);
     void erase(IndependentElementSet *indep);

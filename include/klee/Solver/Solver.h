@@ -13,6 +13,7 @@
 #include "klee/Expr/Expr.h"
 #include "klee/Expr/Constraints.h"
 #include "klee/Internal/System/Time.h"
+#include "klee/Internal/Support/IndependentElementSet.h"
 #include "klee/Solver/SolverCmdLine.h"
 
 #include "llvm/Support/raw_ostream.h"
@@ -33,6 +34,8 @@ namespace klee {
     // constraints - Contain constraints directly related to the expr in this query.
     // Note that constraints here are not necessarily equivalent to all
     // constraints managed by the ConstraintManager above.
+    // But constraints should always be a subset of what are managed by the
+    // ConstraintManager
     // If you use IndependentSolver, only constraints directly related to the query
     // itself will be forwarded to later solver to reason about.
     const Constraints_ty &constraints;
@@ -40,11 +43,20 @@ namespace klee {
     // For Assignment Query (computeInitialValues), this expr should be useless.
     ref<Expr> expr;
 
+    // indep_elemset is an optional hint to the lowest-level solver. When
+    // non-null, the underlying solver can construct sparse assignments
+    // correspondingly.
+    // Note that indep_elemset should cover all constraints.
+    // In practice, current implementation also include the query expr in
+    // indep_elemset, which might be unnecessary?
+    const IndependentElementSet *indep_elemset = nullptr;
+
     // constructor requires an explicit specification of each component.
     Query(const ConstraintManager &_constraintMgr,
-          const Constraints_ty& _constraints, ref<Expr> _expr)
-      : constraintMgr(_constraintMgr), constraints(_constraints), expr(_expr) {
-    }
+          const Constraints_ty &_constraints, ref<Expr> _expr,
+          const IndependentElementSet *_indep_elemset = nullptr)
+        : constraintMgr(_constraintMgr), constraints(_constraints), expr(_expr),
+          indep_elemset(_indep_elemset) {}
     // constructor omits a collection of constraints. Then we use all
     // constraints associated with the ConstraintManager by default.
     Query(const ConstraintManager &_constraintMgr, ref<Expr> _expr)
@@ -53,12 +65,13 @@ namespace klee {
 
     /// withExpr - Return a copy of the query with the given expression.
     Query withExpr(ref<Expr> _expr) const {
-      return Query(constraintMgr, constraints, _expr);
+      return Query(constraintMgr, constraints, _expr, indep_elemset);
     }
 
     /// withFalse - Return a copy of the query with a false expression.
     Query withFalse() const {
-      return Query(constraintMgr, constraints, ConstantExpr::alloc(0, Expr::Bool));
+      return Query(constraintMgr, constraints,
+                   ConstantExpr::alloc(0, Expr::Bool), indep_elemset);
     }
 
     /// negateExpr - Return a copy of the query with the expression negated.

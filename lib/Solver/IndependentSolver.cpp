@@ -38,35 +38,6 @@
 using namespace klee;
 using llvm::errs;
 
-// Breaks down a constraint into all of it's individual pieces, returning a
-// list of IndependentElementSets or the independent factors.
-//
-// Caller takes ownership of returned std::list.
-static std::list<IndependentElementSet>*
-getAllIndependentConstraintsSets(const Query &query) {
-  std::list<IndependentElementSet> *result= new std::list<IndependentElementSet>();
-  ConstantExpr *CE = dyn_cast<ConstantExpr>(query.expr);
-  IndependentElementSet current;
-  if (CE) {
-    assert(CE && CE->isFalse() && "the expr should always be false and "
-                                  "therefore not included in factors");
-  } else {
-    ref<Expr> neg = Expr::createIsZero(query.expr);
-    current = IndependentElementSet(neg);
-  }
-
-  for (ConstraintManager::factor_iterator it = query.constraintMgr.factor_begin(),
-                ie = query.constraintMgr.factor_end(); it != ie; ++it) {
-    if (current.intersects(*(*it))) {
-      current.add(*(*it));
-    } else {
-      result->push_back(*(*it));
-    }
-  }
-  
-  return result;
-}
-
 /*
  * Find constraints relevant to a non-constant query expr.
  * Assumption: query.expr is symbolic (non-constant)
@@ -138,7 +109,7 @@ static void getIndependentConstraints(const Query &query,
 // the actual known array accesses arr[1] plus the undetermined accesses arr[x].
 static
 void calculateArrayReferences(const IndependentElementSet & ie,
-                              std::set<const Array *> &returnSet){
+                              std::unordered_set<const Array *> &returnSet){
   for(std::map<const Array*, DenseSet<unsigned> >::const_iterator it = ie.elements.begin();
       it != ie.elements.end(); it ++){
     returnSet.insert(it->first);
@@ -222,7 +193,7 @@ bool IndependentSolver::computeValue(const Query& query, ref<Expr> &result) {
 bool assertCreatedPointEvaluatesToTrue(
     const Query &query, const std::vector<const Array *> &objects,
     std::vector<std::vector<unsigned char>> &values,
-    std::map<const Array *, std::vector<unsigned char>> &retMap) {
+    std::unordered_map<const Array *, std::vector<unsigned char>> &retMap) {
   // _allowFreeValues is set to true so that if there are missing bytes in the
   // assigment we will end up with a non ConstantExpr after evaluating the
   // assignment and fail
@@ -263,59 +234,73 @@ bool assertCreatedPointEvaluatesToTrue(
   return cast<ConstantExpr>(q)->isTrue();
 }
 
-bool IndependentSolver::computeInitialValuesPerFactor(const Query& query,
-                                             const std::vector<const Array*> &objects,
-                                             std::vector< std::vector<unsigned char> > &values,
-                                             bool &hasSolution) {
+bool IndependentSolver::computeInitialValuesPerFactor(
+    const Query &query, const std::vector<const Array *> &objects,
+    std::vector<std::vector<unsigned char>> &values, bool &hasSolution) {
   TimerStatIncrementer t(stats::independentTime);
   // We assume the query has a solution except proven differently
   // This is important in case we don't have any constraints but
   // we need initial values for requested array objects.
   hasSolution = true;
-  // FIXME: When we switch to C++11 this should be a std::unique_ptr so we don't need
-  // to remember to manually call delete
-  std::list<IndependentElementSet> *factors = getAllIndependentConstraintsSets(query);
+  IndepElemSetPtrSet_ty::const_iterator factors_begin;
+  IndepElemSetPtrSet_ty::const_iterator factors_end;
+  // factors is only used if the query only contains a subset of constraints
+  IndepElemSetPtrSet_ty factors;
+  size_t factors_size;
+  if (&query.constraints == &query.constraintMgr.getAllConstraints()) {
+    // the query contains all constraints managed by the ConstraintManager
+    factors_begin = query.constraintMgr.factor_begin();
+    factors_end = query.constraintMgr.factor_end();
+    factors_size = query.constraintMgr.factor_size();
+  } else {
+    // the query only contains a subset of constraints
+    query.constraintMgr.getRelatedIndependentElementSets(query.constraints,
+                                                         factors);
+    factors_begin = factors.begin();
+    factors_end = factors.end();
+    factors_size = factors.size();
+  }
 
   //Used to rearrange all of the answers into the correct order
-  std::map<const Array*, std::vector<unsigned char> > retMap;
+  std::unordered_map<const Array*, std::vector<unsigned char> > retMap;
 #ifdef INDEPENDENT_DEBUG
   unsigned int id = 0;
 #endif
-  for (std::list<IndependentElementSet>::iterator it = factors->begin();
-       it != factors->end(); ++it) {
-    std::set<const Array*> arraysInFactorSet;
-    std::vector<const Array*> arraysInFactor;
-    calculateArrayReferences(*it, arraysInFactorSet);
-    arraysInFactor.insert(arraysInFactor.end(), arraysInFactorSet.begin(),
-                          arraysInFactorSet.end());
+  for (IndepElemSetPtrSet_ty::const_iterator it = factors_begin;
+       it != factors_end; ++it) {
+    const IndependentElementSet *indep = *it;
+    std::unordered_set<const Array*> arraysInFactorSet;
+    calculateArrayReferences(*indep, arraysInFactorSet);
+    std::vector<const Array *> arraysInFactor(arraysInFactorSet.begin(),
+                                              arraysInFactorSet.end());
     // Going to use this as the "fresh" expression for the Query() invocation below
-    assert(it->exprs.size() >= 1 && "No null/empty factors");
+    assert(indep->exprs.size() >= 1 && "No null/empty factors");
     if (arraysInFactor.size() == 0){
       continue;
     }
 #ifdef INDEPENDENT_DEBUG
     /* IndependentSolver performance debugging */
-    llvm::errs() << "independent set " << id << " / " << factors->size()
+    llvm::errs() << "independent set " << id << " / " << factors_size
                  << " #array: " << arraysInFactor.size()
-                 << " #expr: " << it->exprs.size() << ' ';
+                 << " #expr: " << indep->exprs.size() << ' ';
 #ifdef INDEPENDENT_DEBUG_DUMPCONSTRAINTS
     char dumpfilename[128];
     snprintf(dumpfilename, sizeof(dumpfilename), "independentQuery_%05u.kquery",
              id);
     ++id;
-    debugDumpConstraintsImpl(it->exprs, arraysInFactor, dumpfilename);
+    debugDumpConstraintsImpl(indep->exprs, arraysInFactor, dumpfilename);
 #endif
     const WallTimer solver_timer;
 #endif
     std::vector<std::vector<unsigned char> > tempValues;
-    if (!solver->impl->computeInitialValues(Query(query.constraintMgr, it->exprs, ConstantExpr::alloc(0, Expr::Bool)),
-                                            arraysInFactor, tempValues, hasSolution)){
+    if (!solver->impl->computeInitialValues(
+            Query(query.constraintMgr, indep->exprs,
+                  ConstantExpr::alloc(0, Expr::Bool), indep),
+            arraysInFactor, tempValues, hasSolution)) {
       values.clear();
-      delete factors;
       return false;
-    } else if (!hasSolution){
+    } else if (!hasSolution) {
       values.clear();
-      delete factors;
       return true;
     } else {
 #ifdef INDEPENDENT_DEBUG
@@ -332,8 +317,10 @@ bool IndependentSolver::computeInitialValuesPerFactor(const Query& query,
           std::vector<unsigned char> * tempPtr = &retMap[arraysInFactor[i]];
           assert(tempPtr->size() == tempValues[i].size() &&
                  "we're talking about the same array here");
-          DenseSet<unsigned> * ds = &(it->elements[arraysInFactor[i]]);
-          for (std::set<unsigned>::iterator it2 = ds->begin(); it2 != ds->end(); it2++){
+          auto find_it = indep->elements.find(arraysInFactor[i]);
+          assert(find_it != indep->elements.end());
+          const DenseSet<unsigned> * ds = &(find_it->second);
+          for (auto it2 = ds->begin(); it2 != ds->end(); it2++){
             unsigned index = * it2;
             (* tempPtr)[index] = tempValues[i][index];
           }
@@ -364,7 +351,6 @@ bool IndependentSolver::computeInitialValuesPerFactor(const Query& query,
     }
   }
   assert(assertCreatedPointEvaluatesToTrue(query, objects, values, retMap) && "should satisfy the equation");
-  delete factors;
   return true;
 }
 
@@ -396,26 +382,35 @@ bool IndependentSolver::computeInitialValuesBatch(const Query& query,
   // This is important in case we don't have any constraints but
   // we need initial values for requested array objects.
   hasSolution = true;
-  // FIXME: When we switch to C++11 this should be a std::unique_ptr so we don't need
-  // to remember to manually call delete
-  std::list<IndependentElementSet> *factors = getAllIndependentConstraintsSets(query);
+  IndepElemSetPtrSet_ty::const_iterator factors_begin;
+  IndepElemSetPtrSet_ty::const_iterator factors_end;
+  // factors is only used if the query only contains a subset of constraints
+  IndepElemSetPtrSet_ty factors;
+  if (&query.constraints == &query.constraintMgr.getAllConstraints()) {
+    // the query contains all constraints managed by the ConstraintManager
+    factors_begin = query.constraintMgr.factor_begin();
+    factors_end = query.constraintMgr.factor_end();
+  } else {
+    // the query only contains a subset of constraints
+    query.constraintMgr.getRelatedIndependentElementSets(query.constraints,
+                                                         factors);
+    factors_begin = factors.begin();
+    factors_end = factors.end();
+  }
 
   //Used to rearrange all of the answers into the correct order
-  std::map<const Array*, std::vector<unsigned char> > retMap;
-  typedef std::vector<std::list<IndependentElementSet>::const_iterator>
-    IndEleSetPart_t;
+  std::unordered_map<const Array*, std::vector<unsigned char> > retMap;
+  typedef std::vector<IndependentElementSet *> IndEleSetPart_t;
   std::vector<IndEleSetPart_t> part_container(1);
-  factors->sort([](auto &a, auto &b) {
-      return a.exprs.size() < b.exprs.size();
-      });
 #ifdef INDEPENDENT_DEBUG
   unsigned int id = 0;
 #endif
   unsigned int acc_expr_cnt = 0;
   unsigned int acc_factor_cnt = 0;
-  for (std::list<IndependentElementSet>::const_iterator it = factors->begin();
-       it != factors->end(); ++it) {
-    assert(it->exprs.size() >= 1 && "No null/empty factors");
+  for (IndepElemSetPtrSet_ty::const_iterator it = factors_begin;
+       it != factors_end; ++it) {
+    IndependentElementSet *indep = *it;
+    assert(indep->exprs.size() >= 1 && "No null/empty factors");
     if (acc_expr_cnt >= ExprNumThreshold) {
 #ifdef INDEPENDENT_DEBUG
       llvm::errs() << "id: " << id << " #expr: " << acc_expr_cnt
@@ -427,8 +422,8 @@ bool IndependentSolver::computeInitialValuesBatch(const Query& query,
       acc_expr_cnt = 0;
       acc_factor_cnt = 0;
     }
-    part_container.back().push_back(it);
-    acc_expr_cnt += it->exprs.size();
+    part_container.back().push_back(indep);
+    acc_expr_cnt += indep->exprs.size();
     ++acc_factor_cnt;
   }
   if (part_container.back().empty()) {
@@ -445,15 +440,17 @@ bool IndependentSolver::computeInitialValuesBatch(const Query& query,
 #endif
   for (const IndEleSetPart_t &p : part_container) {
     Constraints_ty constraints;
-    std::set<const Array *> arraysInFactorSet;
+    std::unordered_set<const Array *> arraysInFactorSet;
     std::vector<const Array *> arraysInFactor;
-    for (std::list<IndependentElementSet>::const_iterator it : p) {
-      calculateArrayReferences(*it, arraysInFactorSet);
+    IndependentElementSet combined;
+    for (IndependentElementSet *indep : p) {
+      calculateArrayReferences(*indep, arraysInFactorSet);
       // Going to use this as the "fresh" expression for the Query() invocation
       // below
-      assert(it->exprs.size() >= 1 && "No null/empty factors");
+      assert(indep->exprs.size() >= 1 && "No null/empty factors");
       assert(arraysInFactorSet.size() > 0);
-      constraints.insert(constraints.end(), it->exprs.begin(), it->exprs.end());
+      constraints.insert(constraints.end(), indep->exprs.begin(), indep->exprs.end());
+      combined.add(*indep);
     }
     arraysInFactor.insert(arraysInFactor.end(), arraysInFactorSet.begin(),
                           arraysInFactorSet.end());
@@ -472,14 +469,12 @@ bool IndependentSolver::computeInitialValuesBatch(const Query& query,
     std::vector<std::vector<unsigned char>> tempValues;
     if (!solver->impl->computeInitialValues(
             Query(query.constraintMgr, constraints,
-                  ConstantExpr::alloc(0, Expr::Bool)),
+                  ConstantExpr::alloc(0, Expr::Bool), &combined),
             arraysInFactor, tempValues, hasSolution)) {
       values.clear();
-      delete factors;
       return false;
     } else if (!hasSolution) {
       values.clear();
-      delete factors;
       return true;
     } else {
 #ifdef INDEPENDENT_DEBUG
@@ -496,7 +491,7 @@ bool IndependentSolver::computeInitialValuesBatch(const Query& query,
           std::vector<unsigned char> *tempPtr = &retMap[arraysInFactor[i]];
           assert(tempPtr->size() == tempValues[i].size() &&
                  "we're talking about the same array here");
-          for (std::list<IndependentElementSet>::const_iterator it:p) {
+          for (IndependentElementSet *it : p) {
             auto find_it = it->elements.find(arraysInFactor[i]);
             // assert(find_it != it->elements.end() &&
             //       "Array found in IndependentElementSet is now gone");
@@ -538,6 +533,5 @@ bool IndependentSolver::computeInitialValuesBatch(const Query& query,
   llvm::errs() << "total time(us): " << total_time.toMicroseconds() << '\n';
 #endif
   assert(assertCreatedPointEvaluatesToTrue(query, objects, values, retMap) && "should satisfy the equation");
-  delete factors;
   return true;
 }

@@ -29,6 +29,8 @@ Statistic stats::independentTime("IndependentTime", "Itime");
 Statistic stats::cexCacheTime("CexCacheTime", "CCtime");
 Statistic stats::queryTime("QueryTime", "Qtime");
 Statistic stats::queryTimeMaxOnce("QueryTimeMaxOnce", "QtimeMO");
+Statistic stats::STPDenseAssignTime("STPDenseTime", "STPDenseTime");
+Statistic stats::Z3DenseAssignTime("Z3DenseTime", "Z3DenseTime");
 
 #ifdef KLEE_ARRAY_DEBUG
 Statistic stats::arrayHashTime("ArrayHashTime", "AHtime");

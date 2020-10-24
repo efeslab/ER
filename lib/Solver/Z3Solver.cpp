@@ -382,6 +382,7 @@ SolverImpl::SolverRunStatus Z3SolverImpl::handleSolverResponse(
     const IndependentElementSet *indep_elemset,
     const std::vector<const Array *> *objects,
     std::vector<std::vector<unsigned char>> *values, bool &hasSolution) {
+  TimerStatIncrementer t(stats::Z3DenseAssignTime);
   switch (satisfiable) {
   case Z3_L_TRUE: {
     hasSolution = true;

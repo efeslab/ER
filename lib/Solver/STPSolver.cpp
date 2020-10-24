@@ -194,6 +194,7 @@ runAndGetCex(::VC vc, STPBuilder *builder, ::VCExpr q,
   if (!hasSolution)
     return SolverImpl::SOLVER_RUN_STATUS_SUCCESS_UNSOLVABLE;
 
+  TimerStatIncrementer t(stats::STPDenseAssignTime);
   values.reserve(objects.size());
   unsigned i = 0; // FIXME C++17: use reference from emplace_back()
   for (const Array *object : objects) {

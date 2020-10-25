@@ -121,5 +121,6 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   ies.print(os);
   return os;
 }
+typedef std::unordered_set<IndependentElementSet *> IndepElemSetPtrSet_ty;
 } // namespace klee
 #endif // KLEE_INDEPENDENTELEMENTSET_H

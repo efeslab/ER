@@ -67,31 +67,50 @@ getAllIndependentConstraintsSets(const Query &query) {
   return result;
 }
 
-static 
-IndependentElementSet getIndependentConstraints(const Query& query,
-                                                std::vector< ref<Expr> > &result) {
-  
-  IndependentElementSet eltsClosure(query.expr);
+/*
+ * Find constraints relevant to a non-constant query expr.
+ * Assumption: query.expr is symbolic (non-constant)
+ * @param[in] query - The Query we need to process
+ * @param[out[ result - All related constraints (exclude the query expr). This
+*     will be used as constraints later, so the query expr should be excluded
+ * @param[out] eltsClosure - An IndependentElementSet structure containing the
+ *     query expr and all related constraints expr
+ */
+static void getIndependentConstraints(const Query &query,
+                                      Constraints_ty &result,
+                                      IndependentElementSet &eltsClosure) {
 
-  for (ConstraintManager::factor_iterator it = query.constraintMgr.factor_begin(),
-                ie = query.constraintMgr.factor_end(); it != ie; ++it) {
-    if (eltsClosure.intersects(*(*it))) {
-      // The eltsClosure represents the IndependentElementSet associated with
-      // the query expr.
-      // At a high level, you just take eltsClosure and try every existing factors.
-      // If it has intersection with any factor, associated expressions should
-      // be put in result vector.
-      //
-      // Note that factors managed by ConstraintManager should be exclusive.
-      // So there will not exists two factors f1 f2, that eltsClosure.add(f1)
-      // hides expressions in f2.
-      // The if condition commented out bellow is redundant.
-      //if (eltsClosure.add(*(*it))) {
-        for (auto eb = (*it)->exprs.begin(), ee =  (*it)->exprs.end(); eb != ee; eb++) {
-           result.push_back(*eb);
-        //}
+  eltsClosure = IndependentElementSet(query.expr);
+
+  IndepElemSetPtrSet_ty indep_elemsets;
+  query.constraintMgr.getIntersection(&eltsClosure, indep_elemsets);
+  if (DebugIndependentIntersection) {
+    IndepElemSetPtrSet_ty intersection_slowcheck;
+    for (ConstraintManager::factor_iterator
+             it = query.constraintMgr.factor_begin(),
+             ie = query.constraintMgr.factor_end();
+         it != ie; ++it) {
+      if (eltsClosure.intersects(*(*it))) {
+        intersection_slowcheck.insert(*it);
       }
     }
+    assert(indep_elemsets == intersection_slowcheck && "Indexer BUG");
+  }
+  // The eltsClosure represents the IndependentElementSet associated with
+  // the query expr.
+  // At a high level, you just take eltsClosure and try every existing
+  // factors. If it has intersection with any factor, associated
+  // expressions should be put in result vector.
+  //
+  // Note that factors managed by ConstraintManager should be exclusive.
+  // So there will not exists two factors f1 f2, that eltsClosure.add(f1)
+  // hides expressions in f2.
+  for (IndependentElementSet *indep : indep_elemsets) {
+    eltsClosure.add(*indep);
+  }
+  result.reserve(eltsClosure.exprs.size());
+  for (IndependentElementSet *indep : indep_elemsets) {
+    result.insert(result.end(), indep->exprs.begin(), indep->exprs.end());
   }
 
   // **********************************************************
@@ -113,9 +132,7 @@ IndependentElementSet getIndependentConstraints(const Query& query,
 
   stats::independentConstraints += result.size();
   stats::independentAllConstraints += query.constraints.size();
-  return eltsClosure;
 }
-
 
 // Extracts which arrays are referenced from a particular independent set.  Examines both
 // the actual known array accesses arr[1] plus the undetermined accesses arr[x].
@@ -175,27 +192,28 @@ bool IndependentSolver::computeValidity(const Query& query,
                                         Solver::Validity &result) {
   TimerStatIncrementer t(stats::independentTime);
   std::vector< ref<Expr> > required;
-  IndependentElementSet eltsClosure =
-    getIndependentConstraints(query, required);
-  return solver->impl->computeValidity(Query(query.constraintMgr, required, query.expr),
-                                       result);
+  IndependentElementSet eltsClosure;
+  getIndependentConstraints(query, required, eltsClosure);
+  return solver->impl->computeValidity(
+      Query(query.constraintMgr, required, query.expr, &eltsClosure), result);
 }
 
 bool IndependentSolver::computeTruth(const Query& query, bool &isValid) {
   TimerStatIncrementer t(stats::independentTime);
   std::vector< ref<Expr> > required;
-  IndependentElementSet eltsClosure = 
-    getIndependentConstraints(query, required);
-  return solver->impl->computeTruth(Query(query.constraintMgr, required, query.expr),
-                                    isValid);
+  IndependentElementSet eltsClosure;
+  getIndependentConstraints(query, required, eltsClosure);
+  return solver->impl->computeTruth(
+      Query(query.constraintMgr, required, query.expr, &eltsClosure), isValid);
 }
 
 bool IndependentSolver::computeValue(const Query& query, ref<Expr> &result) {
   TimerStatIncrementer t(stats::independentTime);
   std::vector< ref<Expr> > required;
-  IndependentElementSet eltsClosure = 
-    getIndependentConstraints(query, required);
-  return solver->impl->computeValue(Query(query.constraintMgr, required, query.expr), result);
+  IndependentElementSet eltsClosure;
+  getIndependentConstraints(query, required, eltsClosure);
+  return solver->impl->computeValue(
+      Query(query.constraintMgr, required, query.expr, &eltsClosure), result);
 }
 
 // Helper function used only for assertions to make sure point created

@@ -60,8 +60,8 @@ public:
   const_iterator begin() const { return constraints.cbegin(); }
   const_iterator end() const { return constraints.cend(); }
   std::size_t size() const noexcept { return constraints.size(); }
-  factor_iterator factor_begin() const { return factors.begin(); }
-  factor_iterator factor_end() const { return factors.end(); }
+  factor_iterator factor_begin() const { return indep_indexer.factors.begin(); }
+  factor_iterator factor_end() const { return indep_indexer.factors.end(); }
 
   bool operator==(const ConstraintManager &other) const {
     return constraints == other.constraints;
@@ -72,6 +72,12 @@ public:
   }
 
   const Constraints_ty& getAllConstraints() const { return constraints; }
+  // expose getIntersection to public, should only call it when
+  // `UseIndependentSolver` is enabled
+  void getIntersection(const IndependentElementSet *indep,
+                       IndepElemSetPtrSet_ty &out_intersected) const {
+    indep_indexer.getIntersection(indep, out_intersected);
+  }
 
 private:
   Constraints_ty constraints;
@@ -81,14 +87,33 @@ private:
   // mapping from a constraint to its IndependentElementSet
   ExprHashMap<klee::IndependentElementSet*> representative;
 
-  // intersected_factors_cache is to reuse results in both rewriteConstraints
-  // and updateIndependentSetAdd when `UseIndependentSolver` is enabled
-  typedef std::unordered_set<IndependentElementSet *> IndepElemSetPtrSet_ty;
-  ExprHashMap<IndepElemSetPtrSet_ty> intersected_factors_cache;
+  class IndepElementSetIndexer {
+    friend class ConstraintManager;
+    // A faster index of all IndependentElementSet::elements
+    std::unordered_map<const Array *,
+                       std::vector<klee::IndependentElementSet *>>
+        elements_index;
+    // A faster index of IndependentElementSet::wholeObjects
+    std::unordered_map<const Array *, klee::IndependentElementSet *>
+        wholeObj_index;
+    std::unordered_set<klee::IndependentElementSet*> factors;
+    public:
+    void insert(IndependentElementSet *indep);
+    void erase(IndependentElementSet *indep);
+    // given a independent set `indep`, output all intersected elements
+    void getIntersection(
+        const IndependentElementSet *indep,
+        IndepElemSetPtrSet_ty &out_intersected) const;
+    // Insert `src` to our index, but instead of tracking `src`, we track `dst`.
+    // Useful when merging two IndependentElementSet
+    void redirect(const IndependentElementSet *src, IndependentElementSet *dst);
+    void checkExprsSum(size_t NExprs);
+  };
+
+  IndepElementSetIndexer indep_indexer;
 
   std::vector<ref<Expr>> deleteConstraints;
   std::vector<ref<Expr>> addedConstraints;
-  std::unordered_set<klee::IndependentElementSet*> factors;
   // equalities consists of EqExpr in current constraints.
   // For each item <key,value> in this map, ExprReplaceVisitorMulti can find
   // occurrences of "key" in an expression and replace it with "value"
@@ -108,11 +133,8 @@ private:
   // @param to_replace: non-null if IndependentSolver is enabled so that we
   // can only work on Independent sets intersecting with the expr to be
   // replaced.
-  // @param intersected_factors: only makes sense when to_replace is non-null
-  // This should come from intersected_factors_cache.
   bool rewriteConstraints(ExprReplaceVisitorBase &visitor,
-                          const IndependentElementSet *to_replace,
-                          IndepElemSetPtrSet_ty *intersected_factors);
+                          const IndependentElementSet *to_replace);
 
   bool addConstraintInternal(ref<Expr> e);
 

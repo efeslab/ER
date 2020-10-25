@@ -36,8 +36,7 @@ llvm::cl::opt<bool> RewriteEqualities(
 
 // Non-null `to_replace` implies `UseIndependentSolver`
 bool ConstraintManager::rewriteConstraints(
-    ExprReplaceVisitorBase &visitor, const IndependentElementSet *to_replace,
-    IndepElemSetPtrSet_ty *intersected_factors) {
+    ExprReplaceVisitorBase &visitor, const IndependentElementSet *to_replace) {
   bool changed = false;
 
   // we will update constraints by making a copy and regenerate its content
@@ -46,17 +45,25 @@ bool ConstraintManager::rewriteConstraints(
   if (to_replace) {
     assert(to_replace->exprs.size() == 1 &&
            "Should only replace one Expr at a time");
-    assert(intersected_factors &&
-           "Null intersected_factors while to_replace is non-null");
-    for (IndependentElementSet *elemset : factors) {
-      if (to_replace->intersects(*elemset)) {
-        intersected_factors->insert(elemset);
+    // calculate independent elements related to the expr to be relaced
+    IndepElemSetPtrSet_ty indep_elemsets;
+    indep_indexer.getIntersection(to_replace, indep_elemsets);
+    if (DebugIndependentIntersection) {
+      IndepElemSetPtrSet_ty intersection_slowcheck;
+      for (auto it = factor_begin(); it != factor_end(); ++it) {
+        IndependentElementSet *elemset = *it;
+        if (to_replace->intersects(*elemset)) {
+          intersection_slowcheck.insert(elemset);
+        }
       }
+      assert(indep_elemsets == intersection_slowcheck && "Indexer bug");
     }
+    // filter constraints in related independent elements
     Constraints_ty intersected_temp;
     intersected_temp.swap(swap_temp);
     for (ref<Expr> &e : intersected_temp) {
-      if (intersected_factors->count(representative[e])) {
+      IndependentElementSet *indep_elemset = representative[e];
+      if (indep_elemsets.count(indep_elemset)) {
         swap_temp.push_back(e);
       } else {
         // ignore unrelated exprs by removing them from the copy `swap_temp`
@@ -138,14 +145,10 @@ bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
           if (UseIndependentSolver) {
             // create a new IndependentElementSet of the expr to be replaced
             IndependentElementSet to_replace(be->right);
-            auto insert_it = intersected_factors_cache.insert(
-                std::make_pair(e, IndepElemSetPtrSet_ty()));
-            IndepElemSetPtrSet_ty &intersected_factors =
-                insert_it.first->second;
             changed |=
-                rewriteConstraints(visitor, &to_replace, &intersected_factors);
+                rewriteConstraints(visitor, &to_replace);
           } else {
-            changed |= rewriteConstraints(visitor, nullptr, nullptr);
+            changed |= rewriteConstraints(visitor, nullptr);
           }
         }
       }
@@ -185,7 +188,7 @@ void ConstraintManager::updateIndependentSetDelete() {
 
   // Update factors.
   for (auto it = updateList.begin(); it != updateList.end(); it++) {
-    factors.erase(it->first);
+    indep_indexer.erase(it->first);
   }
 
   for (auto it = updateList.begin(); it != updateList.end(); it++) {
@@ -224,50 +227,47 @@ void ConstraintManager::updateIndependentSetDelete() {
 
     // Update representative and factors.
     for (auto r = result.begin(); r != result.end(); r++) {
-      factors.insert(*r);
+      indep_indexer.insert(*r);
       for (auto e = (*r)->exprs.begin(); e != (*r)->exprs.end(); e++) {
           representative[*e] = *r;
       }
     }
   }
 }
-
 // Update the representative after adding constraint
 void ConstraintManager::updateIndependentSetAdd() {
   while (!addedConstraints.empty()) {
     ref<Expr> e = addedConstraints.back();
     addedConstraints.pop_back();
     IndependentElementSet* current = new IndependentElementSet(e);
-    // garbage consists of existing factors which are intersected with
+    // indep_elemsets consists of existing factors which are intersected with
     // this new constraint
-    // We will use cached results when available (change garbage_p)
-    IndepElemSetPtrSet_ty garbage;
-    IndepElemSetPtrSet_ty *garbage_p = &garbage;
-    auto find_it = intersected_factors_cache.find(e);
-    if (find_it != intersected_factors_cache.end()) {
-      // cache hit, we have run intersects on this new constraint before
-      garbage_p = &(find_it->second);
-    } else {
+    IndepElemSetPtrSet_ty indep_elemsets;
+    indep_indexer.getIntersection(current, indep_elemsets);
+    if (DebugIndependentIntersection) {
+      IndepElemSetPtrSet_ty intersection_slowcheck;
       // cache miss, we need to calculate the intersected factors here
-      for (auto it = factors.begin(); it != factors.end(); it++) {
+      for (auto it = factor_begin(); it != factor_end(); it++) {
         if (current->intersects(*(*it))) {
-          garbage_p->insert(*it);
+          intersection_slowcheck.insert(*it);
         }
       }
+      assert(indep_elemsets == intersection_slowcheck && "Indexer BUG");
     }
 
-    if (garbage_p->size() == 1) {
+    if (indep_elemsets.size() == 1) {
       // lucky and cheap case: newly added constraint falls exactly in one
       // existing factor we can reuse the existing factor
-      IndependentElementSet *singleIntersect = *(garbage_p->begin());
+      IndependentElementSet *singleIntersect = *(indep_elemsets.begin());
       singleIntersect->add(*current);
+      indep_indexer.redirect(current, singleIntersect);
       for (auto &it: current->exprs) {
         representative[it] = singleIntersect;
       }
       delete current;
     } else {
       // expensive case: need to merge multiple intersected independent sets
-      for (IndependentElementSet *indepSet: *(garbage_p)) {
+      for (IndependentElementSet *indepSet: indep_elemsets) {
         current->add(*indepSet);
       }
       // Update representative and factors.
@@ -275,12 +275,12 @@ void ConstraintManager::updateIndependentSetAdd() {
         representative[*it] = current;
       }
 
-      for (IndependentElementSet *victim: *(garbage_p)) {
-        factors.erase(victim);
+      for (IndependentElementSet *victim: indep_elemsets) {
+        indep_indexer.erase(victim);
         delete victim;
       }
 
-      factors.insert(current);
+      indep_indexer.insert(current);
     }
   }
 }
@@ -376,67 +376,56 @@ bool ConstraintManager::addConstraint(ref<Expr> e) {
 
   addedConstraints.clear();
   deleteConstraints.clear();
-  intersected_factors_cache.clear();
-  // TODO Check factors are exclusive (sum the number of constraints and compare with representative.size())
+
+  // Check factors are exclusive (sum the number of constraints and compare with
+  // representative.size())
+  size_t allNExprs = representative.size();
+  assert(allNExprs == constraints.size());
+  indep_indexer.checkExprsSum(allNExprs);
   return true;
 }
 
-ConstraintManager::ConstraintManager(const std::vector< ref<Expr> > &_constraints) :
-  constraints(_constraints) {
-    // Need to establish factors and representative
-    std::vector<IndependentElementSet*> temp;
-    for (auto it = _constraints.begin(); it != _constraints.end(); it ++ ) {
-      temp.push_back(new IndependentElementSet(*it));
-    }
-
-    std::vector<IndependentElementSet*> result;
-    if (!temp.empty()) {
-      result.push_back(temp.back());
-      temp.pop_back();
-    }
-    // work like this:
-    // assume IndependentSet was setup for each constraint independently,
-    // represented by I0, I1, ... In
-    // temp initially has: I1...In
-    // result initially has: I0
-    // then for each IndependentSet Ii in temp, scan the entire result vector,
-    // combine any IndependentSet in result intersecting with Ii and put Ii
-    // in the result vector.
-    //
-    // result vector should only contain exclusive IndependentSet all the time.
-
-    while (!temp.empty()) {
-      IndependentElementSet* current = temp.back();
-      temp.pop_back();
-      unsigned int i = 0;
-      while (i < result.size()) {
-        if (current->intersects(*result[i])) {
-          current->add(*result[i]);
-          IndependentElementSet* victim = result[i];
-          result[i] = result.back();
-          result.pop_back();
-          delete victim;
-        } else {
-          i++;
-        }
+ConstraintManager::ConstraintManager(const Constraints_ty &_constraints)
+    : constraints(_constraints) {
+  std::vector<IndependentElementSet *> init_indep;
+  for (const ref<Expr> &e : _constraints) {
+    init_indep.push_back(new IndependentElementSet(e));
+  }
+  for (IndependentElementSet *indep : init_indep) {
+    IndepElemSetPtrSet_ty intersected;
+    indep_indexer.getIntersection(indep, intersected);
+    if (intersected.empty()) {
+      // no intersection, just add
+      indep_indexer.insert(indep);
+    } else if (intersected.size() == 1) {
+      // intersected with one element, easy merge
+      IndependentElementSet *singleIntersect = *(intersected.begin());
+      singleIntersect->add(*indep);
+      indep_indexer.redirect(indep, singleIntersect);
+      delete indep;
+    } else {
+      // intersected with multiple elements, complex merge
+      for (IndependentElementSet *intersect : intersected) {
+        indep->add(*intersect);
+        indep_indexer.erase(intersect);
+        delete intersect;
       }
-      result.push_back(current);
-    }
-
-    for (auto r = result.begin(); r != result.end(); r++) {
-      factors.insert(*r);
-      for (auto e = (*r)->exprs.begin(); e != (*r)->exprs.end(); e++) {
-        representative[*e] = *r;
-      }
+      indep_indexer.insert(indep);
     }
   }
+  for (auto it = factor_begin(); it != factor_end(); ++it) {
+    for (const ref<Expr> &e : (*it)->exprs) {
+      representative[e] = *it;
+    }
+  }
+}
 
 ConstraintManager::ConstraintManager(const ConstraintManager &cs) : constraints(cs.constraints) {
   // Copy constructor needs to make deep copy of factors and representative
   // Here we assume every IndependentElementSet point in representative also exist in factors.
-  for (auto it = cs.factors.begin(); it != cs.factors.end(); it++) {
+  for (auto it = cs.factor_begin(); it != cs.factor_end(); it++) {
     IndependentElementSet* candidate = new IndependentElementSet(*(*it));
-    factors.insert(candidate);
+    indep_indexer.insert(candidate);
     for (auto e = candidate->exprs.begin(); e != candidate->exprs.end(); e++) {
       representative[*e] = candidate;
     }
@@ -446,7 +435,7 @@ ConstraintManager::ConstraintManager(const ConstraintManager &cs) : constraints(
 // Destructor
 ConstraintManager::~ConstraintManager() {
   // Here we assume every IndependentElementSet point in representative also exist in factors.
-  for (auto it = factors.begin(); it != factors.end(); it++) {
+  for (auto it = factor_begin(); it != factor_end(); it++) {
     delete(*it);
   }
   if (replaceVisitor) {
@@ -454,3 +443,114 @@ ConstraintManager::~ConstraintManager() {
   }
   // TODO Double check your assumption
 }
+
+void ConstraintManager::IndepElementSetIndexer::insert(
+    IndependentElementSet *indep) {
+  redirect(indep, indep);
+  factors.insert(indep);
+}
+
+void ConstraintManager::IndepElementSetIndexer::erase(IndependentElementSet *indep) {
+  for (const Array *arr : indep->wholeObjects) {
+    assert(elements_index.count(arr) == 0 &&
+           "Removing invalid indep elemset: sparse elements is conflict with "
+           "existing whole object");
+    wholeObj_index.erase(arr);
+  }
+  for (auto &elem : indep->elements) {
+    const Array *arr = elem.first;
+    const DenseSet<unsigned> &index_set = elem.second;
+    assert(wholeObj_index.count(arr) == 0 &&
+           "Removing invalid indep elemset: whole object is conflict with "
+           "existing sparse elements.");
+    auto it = elements_index.find(arr);
+    if (it != elements_index.end()) {
+      for (unsigned index : index_set) {
+        it->second[index] = nullptr;
+      }
+    }
+  }
+  factors.erase(indep);
+}
+
+void ConstraintManager::IndepElementSetIndexer::getIntersection(const IndependentElementSet *indep, IndepElemSetPtrSet_ty &out_intersected) const {
+  // check wholeObject intersection
+  for (const Array *arr : indep->wholeObjects) {
+    auto wholeObj_it = wholeObj_index.find(arr);
+    auto elem_it = elements_index.find(arr);
+    if (wholeObj_it != wholeObj_index.end()) {
+      // wholeObject intersects with wholeObject
+      assert(elem_it == elements_index.end());
+      out_intersected.insert(wholeObj_it->second);
+    } else if (elem_it != elements_index.end()) {
+      // wholeObject intersects with elements
+      for (IndependentElementSet *p : elem_it->second) {
+        if (p) {
+          out_intersected.insert(p);
+        }
+      }
+    }
+  }
+  for (auto &item : indep->elements) {
+    const Array *arr = item.first;
+    const DenseSet<unsigned> &index_set = item.second;
+    auto wholeObj_it = wholeObj_index.find(arr);
+    auto elem_it = elements_index.find(arr);
+    if (wholeObj_it != wholeObj_index.end()) {
+      // elements intersects with wholeObject
+      assert(elem_it == elements_index.end());
+      out_intersected.insert(wholeObj_it->second);
+    } else if (elem_it != elements_index.end()) {
+      // elements intersects with elements
+      for (unsigned index : index_set) {
+        IndependentElementSet *p = elem_it->second[index];
+        if (p) {
+          out_intersected.insert(p);
+        }
+      }
+    }
+  }
+}
+
+void ConstraintManager::IndepElementSetIndexer::redirect(const IndependentElementSet *src, IndependentElementSet *dst) {
+  for (const Array *arr : src->wholeObjects) {
+    assert(
+        elements_index.count(arr) == 0 &&
+        "Updating an invalid index: wholeObj and elements have the same Array");
+    wholeObj_index[arr] = dst;
+  }
+  for (auto elem : src->elements) {
+    const Array *arr = elem.first;
+    DenseSet<unsigned> &index_set = elem.second;
+    assert(
+        wholeObj_index.count(arr) == 0 &&
+        "Updating an invalid index: elements and wholeObj have the same Array");
+    auto it = elements_index.emplace(std::make_pair(
+        arr,
+        std::move(std::vector<IndependentElementSet *>(arr->size, nullptr))));
+    for (unsigned index : index_set) {
+      it.first->second[index] = dst;
+    }
+  }
+}
+
+void ConstraintManager::IndepElementSetIndexer::checkExprsSum(size_t NExprs) {
+  size_t n = 0;
+  for (const IndependentElementSet *e : factors) {
+    n += e->exprs.size();
+  }
+  assert(n == NExprs);
+}
+
+/*
+ * Template instantiation for embedding useful debugging helpers
+ * Avoid "cannot evaluate" problems in gdb
+ */
+// for representative
+template class std::unordered_map<ref<klee::Expr>, klee::IndependentElementSet *, klee::util::RefHash<klee::Expr>, klee::util::RefCmp<klee::Expr> >;
+// for factors
+template class std::unordered_set<IndependentElementSet*>;
+// for elements_index
+template class std::unordered_map<const Array *, std::vector<IndependentElementSet*>>;
+// for wholeObj_index
+template class std::unordered_map<const Array *, IndependentElementSet*>;

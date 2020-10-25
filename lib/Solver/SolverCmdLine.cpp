@@ -70,6 +70,12 @@ cl::opt<IndependentSolverType> UseIndependentSolverType(
                    "by #expr of each independent element set(default)")),
     cl::cat(SolvingCat));
 
+cl::opt<bool> DebugIndependentIntersection(
+    "debug-independent-intersection", cl::init(false),
+    cl::desc("Enable Correctness validation of IndependentSolver intersection "
+             "indexer. (default=false)"),
+    cl::cat(SolvingCat));
+
 cl::opt<unsigned int> ExprNumThreshold(
     "Nexpr-thres", cl::init(500),
     cl::desc(

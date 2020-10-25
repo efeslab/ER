@@ -6,18 +6,20 @@ static UpdateNode *under_processing_un = reinterpret_cast<UpdateNode*>(0x1);
 
 ExprInPlaceTransformer::ExprInPlaceTransformer(const QueryCommand &_QC)
     : QC(_QC) {
-  Constraints_ty out_Constraints;
-  std::vector<ref<Expr>> out_Values;
+  std::vector< ref<Expr> > out_Constraints;
+  std::vector< ref<Expr> > out_Values;
   for (const ref<Expr> &e : QC.Constraints) {
     visitDFS(e.get());
-    out_Constraints.push_back(popKidExpr());
-    assert(!out_Constraints.back().isNull());
+    Expr *kid = popKidExpr();
+    assert(kid);
+    out_Constraints.push_back(kid);
   }
   for (const ref<Expr> &e : QC.Values) {
     if (isa<ConstantExpr>(e)) continue;
     visitDFS(e.get());
-    out_Values.push_back(popKidExpr());
-    assert(!out_Values.back().isNull());
+    Expr *kid = popKidExpr();
+    assert(kid);
+    out_Values.push_back(kid);
   }
   new_QCp =
       new QueryCommand(out_Constraints, QC.Query, out_Values, QC.Objects);

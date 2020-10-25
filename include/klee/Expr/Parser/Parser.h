@@ -190,7 +190,7 @@ namespace expr {
                  const std::vector<const Array*> &_Objects
                  )
       : CommandDecl(QueryCommandDeclKind),
-        Constraints(_Constraints),
+        Constraints(_Constraints.begin(), _Constraints.end()),
         Query(_Query),
         Values(_Values),
         Objects(_Objects) {}

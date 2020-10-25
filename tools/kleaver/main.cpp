@@ -346,7 +346,7 @@ static bool EvaluateInputAST(const char *Filename,
     Decl *D = *it;
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
       /* replace some inputs with concrete value */
-      std::vector<ExprHandle> constraints;
+      Constraints_ty constraints;
       if (!concretizedInputs.empty()) {
         ExprConcretizer ec(OracleKTest);
         for (auto ciit = concretizedInputs.begin(), ciie = concretizedInputs.end();
@@ -558,8 +558,7 @@ static bool KTestEvalInputAST(const char *Filename,
   std::ofstream of(std::string(Filename) + ".dot");
   for (Decl *D: Decls) {
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
-      for (unsigned int i=0; i < QC->Constraints.size(); ++i) {
-        const ref<Expr> &constraint = QC->Constraints[i];
+      for (const ref<Expr> &constraint : QC->Constraints) {
         ref<Expr> result = oracle_eval.visit(constraint);
         if (ConstantExpr *CE=dyn_cast<ConstantExpr>(result)) {
           if (CE->isFalse()) {
@@ -601,19 +600,17 @@ static bool DataRecReplaceInputAST(const char *Filename,
   std::vector<Decl*> &Decls = ast.getDecls();
   for (Decl *D: Decls) {
     if (QueryCommand *QC = dyn_cast<QueryCommand>(D)) {
-      for (unsigned int i = 0; i < QC->Constraints.size(); ++i) {
-        const ref<Expr> &constraint = QC->Constraints[i];
+      for (const ref<Expr> &constraint : QC->Constraints) {
         ref<Expr> new_constraint = datarec_eval.replace(constraint);
         if (ConstantExpr *CE = dyn_cast<ConstantExpr>(new_constraint)) {
           assert(CE->isTrue() &&
                  "DataRecReplaceVisitor returned false constraints");
         } else {
-          replacedConstraints.push_back(new_constraint);
+          replacedConstraints.insert(new_constraint);
         }
       }
       const RefHashSet<Expr> &new_constraints = datarec_eval.getNewConstraints();
-      replacedConstraints.insert(replacedConstraints.end(),
-                                 new_constraints.begin(),
+      replacedConstraints.insert(new_constraints.begin(),
                                  new_constraints.end());
 
       std::string newKQueryOutput = InputFile + ".replaced";

@@ -150,7 +150,7 @@ public:
 
   // XXX total hack, just used to make a state so solver can
   // use on structure
-  ExecutionState(const std::vector<ref<Expr> > &assumptions);
+  ExecutionState(const Constraints_ty &assumptions);
 
   // constructor implemention
   ExecutionState(const ExecutionState &state);

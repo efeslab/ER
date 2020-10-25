@@ -81,7 +81,7 @@ static void getIndependentConstraints(const Query &query,
   }
   result.reserve(eltsClosure.exprs.size());
   for (IndependentElementSet *indep : indep_elemsets) {
-    result.insert(result.end(), indep->exprs.begin(), indep->exprs.end());
+    result.insert(indep->exprs.begin(), indep->exprs.end());
   }
 
   // **********************************************************
@@ -162,7 +162,7 @@ public:
 bool IndependentSolver::computeValidity(const Query& query,
                                         Solver::Validity &result) {
   TimerStatIncrementer t(stats::independentTime);
-  std::vector< ref<Expr> > required;
+  Constraints_ty required;
   IndependentElementSet eltsClosure;
   getIndependentConstraints(query, required, eltsClosure);
   return solver->impl->computeValidity(
@@ -171,7 +171,7 @@ bool IndependentSolver::computeValidity(const Query& query,
 
 bool IndependentSolver::computeTruth(const Query& query, bool &isValid) {
   TimerStatIncrementer t(stats::independentTime);
-  std::vector< ref<Expr> > required;
+  Constraints_ty required;
   IndependentElementSet eltsClosure;
   getIndependentConstraints(query, required, eltsClosure);
   return solver->impl->computeTruth(
@@ -180,7 +180,7 @@ bool IndependentSolver::computeTruth(const Query& query, bool &isValid) {
 
 bool IndependentSolver::computeValue(const Query& query, ref<Expr> &result) {
   TimerStatIncrementer t(stats::independentTime);
-  std::vector< ref<Expr> > required;
+  Constraints_ty required;
   IndependentElementSet eltsClosure;
   getIndependentConstraints(query, required, eltsClosure);
   return solver->impl->computeValue(
@@ -449,7 +449,7 @@ bool IndependentSolver::computeInitialValuesBatch(const Query& query,
       // below
       assert(indep->exprs.size() >= 1 && "No null/empty factors");
       assert(arraysInFactorSet.size() > 0);
-      constraints.insert(constraints.end(), indep->exprs.begin(), indep->exprs.end());
+      constraints.insert(indep->exprs.begin(), indep->exprs.end());
       combined.add(*indep);
     }
     arraysInFactor.insert(arraysInFactor.end(), arraysInFactorSet.begin(),

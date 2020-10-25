@@ -124,13 +124,13 @@ void AssignmentValidatingSolver::dumpAssignmentQuery(
     const Query &query, const Assignment &assignment) {
   // Create a Query that is augmented with constraints that
   // enforce the given assignment.
-  std::vector<ref<Expr> > constraints;
+  Constraints_ty constraints;
   assignment.createConstraintsFromAssignment(constraints);
   // Add Constraints from `query`
   for (ConstraintManager::const_iterator it = query.constraints.begin(),
                                          ie = query.constraints.end();
        it != ie; ++it) {
-    constraints.push_back(*it);
+    constraints.insert(*it);
   }
   Query augmentedQuery(query.constraintMgr, constraints, query.expr);
 

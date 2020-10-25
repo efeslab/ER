@@ -208,8 +208,8 @@ void ImpliedValue::checkForImpliedValues(Solver *S, ref<Expr> e,
   std::set< ref<ReadExpr> > readsSet(reads.begin(), reads.end());
   reads = std::vector< ref<ReadExpr> >(readsSet.begin(), readsSet.end());
 
-  std::vector<ref<Expr> > assumption;
-  assumption.push_back(EqExpr::create(e, value));
+  Constraints_ty assumption;
+  assumption.insert(EqExpr::create(e, value));
 
   // obscure... we need to make sure that all the read indices are
   // bounds checked. if we don't do this we can end up constructing
@@ -220,9 +220,9 @@ void ImpliedValue::checkForImpliedValues(Solver *S, ref<Expr> e,
   for (std::vector< ref<ReadExpr> >::iterator i = reads.begin(), 
          ie = reads.end(); i != ie; ++i) {
     ReadExpr *re = i->get();
-    assumption.push_back(UltExpr::create(re->index, 
-                                         ConstantExpr::alloc(re->updates.root->size, 
-                                                             Context::get().getPointerWidth())));
+    assumption.insert(UltExpr::create(
+        re->index, ConstantExpr::alloc(re->updates.root->size,
+                                       Context::get().getPointerWidth())));
   }
 
   ConstraintManager assume(assumption);

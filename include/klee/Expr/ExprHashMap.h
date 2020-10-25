@@ -16,6 +16,7 @@
 namespace klee {
   template <typename T> using ExprHashMap = RefHashMap<Expr, T>;
   typedef RefHashSet<Expr> ExprHashSet;
+  typedef ExprHashSet Constraints_ty;
 } // namespace klee
 
 #endif /* KLEE_EXPRHASHMAP_H */

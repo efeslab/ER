@@ -88,7 +88,7 @@ public:
   typedef std::map<const klee::Array*, DenseSet<unsigned> > elements_ty;
   elements_ty elements;                 // Represents individual elements of array accesses (arr[1])
   std::set<const klee::Array*> wholeObjects;  // Represents symbolically accessed arrays (arr[x])
-  std::vector<ref<klee::Expr> > exprs;        // All expressions that are associated with this factor
+  Constraints_ty exprs;        // All expressions that are associated with this factor
                                         // Although order doesn't matter, we use a vector to match
                                         // the ConstraintManager constructor that will eventually
                                         // be invoked.

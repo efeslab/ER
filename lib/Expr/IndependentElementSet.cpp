@@ -1,7 +1,7 @@
 #include "klee/Internal/Support/IndependentElementSet.h"
 using namespace klee;
 IndependentElementSet::IndependentElementSet(ref<Expr> e) {
-  exprs.push_back(e);
+  exprs.insert(e);
   // Track all reads in the program.  Determines whether reads are
   // concrete or symbolic.  If they are symbolic, "collapses" array
   // by adding it to wholeObjects.  Otherwise, creates a mapping of
@@ -116,10 +116,7 @@ bool IndependentElementSet::intersects(const IndependentElementSet &b) const {
 
 // returns true iff set is changed by addition
 bool IndependentElementSet::add(const IndependentElementSet &b) {
-  for(unsigned i = 0; i < b.exprs.size(); i ++){
-    ref<Expr> expr = b.exprs[i];
-    exprs.push_back(expr);
-  }
+  exprs.insert(b.exprs.begin(), b.exprs.end());
 
   bool modified = false;
   for (std::set<const Array*>::const_iterator it = b.wholeObjects.begin(), 

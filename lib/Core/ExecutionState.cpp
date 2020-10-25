@@ -98,7 +98,7 @@ ExecutionState::ExecutionState(KFunction *kf) :
   setupTime();
 }
 
-ExecutionState::ExecutionState(const std::vector<ref<Expr> > &assumptions)
+ExecutionState::ExecutionState(const Constraints_ty &assumptions)
     : wlistCounter(1), constraints(assumptions), replayPosition(0), replayDataRecEntriesPosition(0), nbranches_rec(0), ptreeNode(0) {}
 
 ExecutionState::~ExecutionState() {

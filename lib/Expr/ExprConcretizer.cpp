@@ -167,11 +167,11 @@ void ExprConcretizer::addConcretizedExprValue
   foundExprs.insert({e, false});
 }
 
-std::vector<ref<Expr>> ExprConcretizer::doEvaluate(
-    const std::vector<ref<Expr>>::const_iterator ib,
-    const std::vector<ref<Expr>>::const_iterator ie) {
+Constraints_ty ExprConcretizer::doEvaluate(
+    const Constraints_ty::const_iterator ib,
+    const Constraints_ty::const_iterator ie) {
 
-  std::vector<ref<Expr>> newCm;
+  Constraints_ty newCm;
 
   /* for all constraints:
    * 1. replace all exprs in concretizedExprs to a concrete value
@@ -179,12 +179,12 @@ std::vector<ref<Expr>> ExprConcretizer::doEvaluate(
   for (auto it = ib; it != ie; it++) {
     const ref<Expr> &e = *it;
     auto newExpr = visit(e);
-    newCm.push_back(newExpr);
+    newCm.insert(newExpr);
   }
 
   for (auto it = additionalConstraints.begin(),
           ie = additionalConstraints.end(); it != ie; it++) {
-    newCm.push_back(*it);
+    newCm.insert(*it);
   }
 
   /* after replacing a concretized Expr, we need to add a new
@@ -196,7 +196,7 @@ std::vector<ref<Expr>> ExprConcretizer::doEvaluate(
       uint64_t val = concretizedExprs[ori];
       ref<Expr> v = ConstantExpr::create(val, ori->getWidth());
       ref<Expr> eq = EqExpr::create(v, ori);
-      newCm.push_back(eq);
+      newCm.insert(eq);
     }
   }
 

@@ -61,22 +61,22 @@ bool ConstraintManager::rewriteConstraints(
     // filter constraints in related independent elements
     Constraints_ty intersected_temp;
     intersected_temp.swap(swap_temp);
-    for (ref<Expr> &e : intersected_temp) {
+    for (const ref<Expr> &e : intersected_temp) {
       IndependentElementSet *indep_elemset = representative[e];
       if (indep_elemsets.count(indep_elemset)) {
-        swap_temp.push_back(e);
+        swap_temp.insert(e);
       } else {
         // ignore unrelated exprs by removing them from the copy `swap_temp`
         // and putting them in constraints directly;
-        constraints.push_back(e);
+        constraints.insert(e);
       }
     }
   }
 
-  for (ConstraintManager::constraints_ty::iterator it = swap_temp.begin(),
+  for (Constraints_ty::iterator it = swap_temp.begin(),
                                                    ie = swap_temp.end();
        it != ie; ++it) {
-    ref<Expr> &ce = *it;
+    const ref<Expr> &ce = *it;
     ref<Expr> e = visitor.replace(ce);
 
     if (e != ce) {
@@ -85,7 +85,7 @@ bool ConstraintManager::rewriteConstraints(
       addConstraintInternal(e); // enable further reductions
       changed = true;
     } else {
-      constraints.push_back(ce);
+      constraints.insert(ce);
     }
   }
 
@@ -153,13 +153,13 @@ bool ConstraintManager::addConstraintInternal(ref<Expr> e) {
         }
       }
     }
-    constraints.push_back(e);
+    constraints.insert(e);
     addedConstraints.push_back(e);
     break;
   }
 
   default:
-    constraints.push_back(e);
+    constraints.insert(e);
     addedConstraints.push_back(e);
     break;
   }

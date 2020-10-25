@@ -33,11 +33,11 @@ namespace klee {
       }
     }
 
-    time::Span check() {
+    virtual time::Span check() {
       assert(!checked && "TimerStatIncrementer should not be checked twice");
       // record microseconds
       time::Span t = delta();
-      statistic += t.toMicroseconds();
+      statistic += t.toNanoseconds();
       checked = true;
       return t;
     }
@@ -59,7 +59,7 @@ namespace klee {
 
       time::Span check() {
         time::Span t = TimerStatIncrementer::check();
-        uint64_t t_us = t.toMicroseconds();
+        uint64_t t_us = t.toNanoseconds();
         if (t_us > max_stat) {
           max_stat.setValue(t_us);
           maxUpdated = true;

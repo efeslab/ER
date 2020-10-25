@@ -160,6 +160,10 @@ std::int64_t time::Span::toMicroseconds() const {
   return (std::int64_t)std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
 }
 
+std::int64_t time::Span::toNanoseconds() const {
+  return (std::int64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+}
+
 double time::Span::toSeconds() const {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() / (double)1000000000;
 }

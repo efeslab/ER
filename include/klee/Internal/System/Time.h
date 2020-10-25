@@ -86,6 +86,7 @@ namespace klee {
 
       std::int64_t toMicroseconds() const;
       double toSeconds() const;
+      std::int64_t toNanoseconds() const;
       std::tuple<std::uint32_t, std::uint8_t, std::uint8_t> toHMS() const; // hours, minutes, seconds
     };
 

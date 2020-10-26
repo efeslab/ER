@@ -112,8 +112,6 @@ private:
 
   IndepElementSetIndexer indep_indexer;
 
-  std::vector<ref<Expr>> deleteConstraints;
-  std::vector<ref<Expr>> addedConstraints;
   // equalities consists of EqExpr in current constraints.
   // For each item <key,value> in this map, ExprReplaceVisitorMulti can find
   // occurrences of "key" in an expression and replace it with "value"
@@ -130,26 +128,42 @@ private:
   // returns true iff the constraints were modified
   // This function is only called when you want to rewrite existing constraints
   // based on a newly learnt equivalency
-  // @param to_replace: non-null if IndependentSolver is enabled so that we
+  // @param[in] visitor: a pre-built ExprReplaceVisitor, which can rewrite
+  // any constraint expressions with the newly added constraint
+  // @param[in] to_replace: non-null if IndependentSolver is enabled so that we
   // can only work on Independent sets intersecting with the expr to be
   // replaced.
+  // @param[out] deleteConstraints: output all deleted/replaced constraint
+  // expressions
+  // @param[out] toAddConstraints: output all new replacement constraint
+  // expressions
   bool rewriteConstraints(ExprReplaceVisitorBase &visitor,
-                          const IndependentElementSet *to_replace);
+                          const IndependentElementSet *to_replace,
+                          std::vector<ref<Expr>> &deleteConstraints,
+                          std::vector<ref<Expr>> &toAddConstraints);
 
-  bool addConstraintInternal(ref<Expr> e);
+  // @param[in] e: the new constraint expression waiting to be added
+  // @param[out] toAddConstraints: will append new rewritten constraints caused
+  // by the constraint `e`
+  bool addConstraintInternal(ref<Expr> e,
+                             std::vector<ref<Expr>> &toAddConstraints);
 
   // when `UseIndependentSolver` is enabled, these two function digest
   // constraints changes
-  void updateIndependentSetAdd();
-  void updateIndependentSetDelete();
+  // We add one constraint at a time (the argument e). All deleted constraints
+  // are stored in `deleteConstraints`.
+  // Replacement will be later added one by one until there is no new
+  // replacements.
+  void updateIndependentSetAdd(const ref<Expr> &e);
+  void
+  updateIndependentSetDelete(const std::vector<ref<Expr>> &deleteConstraints);
   // when `UseIndependentSolver` is disabled, I still need to digest constraints
   // changes to the set representative
-  void updateDeleteAdd();
+  void updateDeleteAdd(const ref<Expr> &e,
+                       const std::vector<ref<Expr>> &deleteConstraints);
   // maintain the equalities used to simplify(replace) expression
-  void updateEqualities();
-
-  void checkConstraintChange(const Constraints_ty &old);
-
+  void updateEqualities(const ref<Expr> &e,
+                        const std::vector<ref<Expr>> &deleteConstraints);
 };
 
 } // namespace klee

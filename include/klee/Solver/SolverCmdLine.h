@@ -33,6 +33,7 @@ extern llvm::cl::opt<bool> UseIndependentSolver;
 enum class IndependentSolverType { PER_FACTOR, BATCH };
 extern llvm::cl::opt<IndependentSolverType> UseIndependentSolverType;
 extern llvm::cl::opt<bool> DebugIndependentIntersection;
+extern llvm::cl::opt<bool> EnableIndepExprCheckSum;
 
 extern llvm::cl::opt<unsigned int> ExprNumThreshold;
 

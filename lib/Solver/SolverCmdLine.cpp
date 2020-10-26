@@ -76,6 +76,13 @@ cl::opt<bool> DebugIndependentIntersection(
              "indexer. (default=false)"),
     cl::cat(SolvingCat));
 
+cl::opt<bool> EnableIndepExprCheckSum(
+    "indep-NExpr-checksum", cl::init(false),
+    cl::desc("Enable sanity check that the number of all expressions from all "
+             "independent element set should equal to the number of all "
+             "constraints without Independent reasoning. (default=false)"),
+    cl::cat(SolvingCat));
+
 cl::opt<unsigned int> ExprNumThreshold(
     "Nexpr-thres", cl::init(500),
     cl::desc(

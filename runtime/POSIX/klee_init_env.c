@@ -158,7 +158,8 @@ usage: (klee_init_env) [options] [program arguments]\n\
   -sym-stdin <N>            - Make stdin symbolic with size N.\n\
   -sym-file-stdin           - Make symbolic stdin behave like piped in from a file if set.\n\
   -sym-stdout               - Make stdout symbolic.\n\
-  -remap-file <FILE-A> <FILE-B> - Remap FILE-A to FILE-B. \n\
+  -remap-file <FILE-A> <FILE-B> - Remap FILE-A (origin requested) to\n\
+                                  FILE-B (redirected). \n\
   -save-all-writes          - Allow write operations to execute as expected\n\
                               even if they exceed the file size. If set to 0, all\n\
                               writes exceeding the initial file size are discarded.\n\

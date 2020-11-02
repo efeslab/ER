@@ -28,7 +28,8 @@
 #include <ostream>
 #include <vector>
 
-#undef INDEPENDENT_DEBUG
+//#undef INDEPENDENT_DEBUG
+#define INDEPENDENT_DEBUG
 #undef INDEPENDENT_DEBUG_DUMPCONSTRAINTS
 
 #ifdef INDEPENDENT_DEBUG

@@ -25,9 +25,9 @@ public:
   using const_iterator = Constraints_ty::const_iterator;
 
   ConstraintManager() = default;
-  //ConstraintManager &operator=(const ConstraintManager &cs) = default;
-  //ConstraintManager(ConstraintManager &&cs) = default;
-  //ConstraintManager &operator=(ConstraintManager &&cs) = default;
+  ConstraintManager &operator=(const ConstraintManager &cs) = default;
+  ConstraintManager(ConstraintManager &&cs) = default;
+  ConstraintManager &operator=(ConstraintManager &&cs) = default;
 
   // create from constraints with no optimization
   explicit

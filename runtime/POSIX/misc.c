@@ -79,7 +79,7 @@ unsigned int sleep(unsigned int seconds) {
   return 0;
 }
 
-int gettimeofday(struct timeval *tv, struct timezone *tz) {
+int gettimeofday(struct timeval *__restrict tv, void *__restrict tz) {
   static unsigned int call_cnt = 0;
   if (useSymbolicgettimeofday) {
     pthread_t tid = pthread_self();
@@ -103,8 +103,9 @@ int gettimeofday(struct timeval *tv, struct timezone *tz) {
     }
 
     if (tz) {
-      tz->tz_dsttime = 0;
-      tz->tz_minuteswest = 0;
+      struct timezone *_tz = (struct timezone *)tz;
+      _tz->tz_dsttime = 0;
+      _tz->tz_minuteswest = 0;
     }
   }
 

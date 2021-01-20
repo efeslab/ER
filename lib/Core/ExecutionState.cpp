@@ -11,8 +11,9 @@
 
 #include "klee/ExecutionState.h"
 
+#include "CoreStats.h"
+#include "klee/ExecutorCmdLine.h"
 #include "klee/Expr/Expr.h"
-#include "klee/OptionCategories.h"
 #include "klee/Internal/Module/Cell.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
@@ -20,8 +21,6 @@
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Internal/Support/ModuleUtil.h"
 #include "klee/OptionCategories.h"
-#include "CoreStats.h"
-#include "ExecutorCmdLine.h"
 
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"

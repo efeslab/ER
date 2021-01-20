@@ -24,12 +24,12 @@
 #include "TimingSolver.h"
 #include "UserSearcher.h"
 #include "ExecutorDebugHelper.h"
-#include "ExecutorCmdLine.h"
 #include "ExecutorConfig.h"
 
 #include "klee/Common.h"
 #include "klee/Config/Version.h"
 #include "klee/ExecutionState.h"
+#include "klee/ExecutorCmdLine.h"
 #include "klee/Expr/Assignment.h"
 #include "klee/Expr/Expr.h"
 #include "klee/Expr/ExprPPrinter.h"
@@ -448,11 +448,6 @@ cl::opt<bool>
                     cl::cat(HASECat));
 } // namespace
 
-
-// exported command line options
-namespace klee {
-  extern cl::opt<std::string> OracleKTest;
-} // namespace klee
 namespace klee {
   RNG theRNG;
 }

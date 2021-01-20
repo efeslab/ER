@@ -173,9 +173,6 @@ private:
   /// When non-null, this evaluator knows all inputs of symbolic objects
   OracleEvaluator *oracle_eval;
 
-  /// A list of string, representing the unique ID of a list of instructions to record
-  std::unordered_set<std::string> dataRecInstSet;
-
   /// When non-null a list of branch decisions to be used for replay.
   const std::vector<PathEntry> *replayPath;
   const std::vector<DataRecEntry> *replayDataRecEntries;

@@ -142,6 +142,11 @@ public:
   // The numbers of times this state has run through Executor::stepInstruction
   std::uint64_t steppedInstructions;
 
+  /// A map tracking what function was executed at the N-th instruction.
+  /// This is used to extract the list of functions executed during the suffix
+  /// of a trace
+  std::unordered_map<std::string, unsigned int> func_inst_map;
+
 private:
   ExecutionState() : replayPosition(0), replayDataRecEntriesPosition(0), nbranches_rec(0), ptreeNode(0) {}
 

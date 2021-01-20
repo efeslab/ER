@@ -380,6 +380,13 @@ void ExecutionState::pushFrame(Thread &t, KInstIterator caller, KFunction *kf) {
     }
     ++t.LIBCDepth;
   }
+
+  // Log at what instruction a function has been executed to generate the list
+  // of functions which get executed during the suffix of a trace.
+  if (DumpFunctionListSuffixLen > 0) {
+    if (isInTargetProgram())
+      func_inst_map[kf->function->getName()] = steppedInstructions;
+  }
 }
 
 void ExecutionState::popFrame(Thread &t) {

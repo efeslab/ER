@@ -450,6 +450,12 @@ cl::opt<bool>
 
 namespace klee {
   RNG theRNG;
+  cl::opt<unsigned int> DumpFunctionListSuffixLen(
+      "dump-func-list-sfxlen", cl::init(0),
+      cl::desc(
+          "Dump the name of functions executed in the last N instructions "
+          "of a replay to \"suffix_func_list.txt\". (default=0, i.e. no dump)"),
+      cl::cat(HASECat));
 }
 
 // XXX hack

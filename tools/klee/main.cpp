@@ -11,6 +11,7 @@
 
 #include "klee/Config/Version.h"
 #include "klee/ExecutionState.h"
+#include "klee/ExecutorCmdLine.h"
 #include "klee/Expr/Expr.h"
 #include "klee/Internal/ADT/KTest.h"
 #include "klee/Internal/ADT/TreeStream.h"
@@ -829,6 +830,24 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       auto f = openTestFile("info", id);
       if (f)
         *f << "Time to generate test case: " << elapsed_time << '\n';
+    }
+
+    // Dump Suffix Function List
+    if (DumpFunctionListSuffixLen > 0 && !state.func_inst_map.empty()) {
+      auto f = openTestFile("suffix_func_list.txt", id);
+      if (f) {
+        for (auto &e : state.func_inst_map) {
+          const std::string &funcname = e.first;
+          const unsigned int &inst = e.second;
+          // FIXME: the DumpFunctionListSuffixLen specifies the number of
+          // instructions from all component (libc, POSIX, app)
+          // I can refactor (track number of executed instructions per frame)
+          // the instruction counting stats to filter the suffix by component as
+          // well.
+          if (inst + DumpFunctionListSuffixLen >= state.steppedInstructions)
+            *f << funcname << '\n';
+        }
+      }
     }
   } // if (!WriteNone)
 

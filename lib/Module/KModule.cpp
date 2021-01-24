@@ -403,9 +403,10 @@ void KModule::assignDebugIR(llvm::Module *M, std::string &directory, std::string
   pm.run(*M);
 }
 
-void KModule::addPTWrite(llvm::Module *M, std::string &cfg) {
+void KModule::addPTWrite(llvm::Module *M, const std::string &instcfg,
+                         const std::string &funccfg) {
   legacy::PassManager pm;
-  pm.add(new PTWritePass(cfg));
+  pm.add(new PTWritePass(instcfg, funccfg));
   pm.run(*M);
 }
 

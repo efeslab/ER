@@ -248,13 +248,21 @@ public:
 
 class PTWritePass : public llvm::ModulePass {
 private:
+  // contains functions whose entire func body waiting be instrumented
+  std::unordered_set<std::string> dataRecWholeFuncSet;
+  // The following three sets all together aim to instrument at the
+  // instruction-level
   std::unordered_set<std::string> dataRecFuncSet;
   std::unordered_set<std::string> dataRecBBSet;
   std::unordered_set<std::string> dataRecInstSet;
+
+  void setupInstCFG(const std::string &instcfg);
+  void setupFuncCFG(const std::string &funccfg);
+
 public:
   static char ID;
   static const std::string castPrefix;
-  PTWritePass(std::string &cfg);
+  PTWritePass(const std::string &instcfg, const std::string &funccfg);
   bool runOnModule(llvm::Module &M) override;
 };
 

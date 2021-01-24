@@ -168,8 +168,10 @@ namespace klee {
     static void selectRandInst(llvm::Module *M, unsigned int target);
 
 
-    /// Add PTWrite instruction after specified instructions
-    static void addPTWrite(llvm::Module *M, std::string &cfg);
+    /// Add PTWrite instruction after specified instructions or inside specific
+    /// functions
+    static void addPTWrite(llvm::Module *M, const std::string &instcfg,
+                           const std::string &funccfg);
 
     /// Add Tag fake instruction after sepecified instructions
     static void addTag(llvm::Module *M, std::string &cfg, bool useDbgInfo);

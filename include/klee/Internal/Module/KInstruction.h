@@ -50,7 +50,8 @@ namespace klee {
   public:
     virtual ~KInstruction();
     std::string getSourceLocation() const;
-    unsigned int getLoadedFreq() const;
+    static unsigned int getLoadedFreq(llvm::Instruction *inst);
+    unsigned int getLoadedFreq() const { return getLoadedFreq(inst); }
     // recording cost == inst freq * inst width (bits)
     unsigned int getRecordingCost() const;
 

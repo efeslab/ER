@@ -28,7 +28,7 @@ std::string KInstruction::getSourceLocation() const {
   else return "[no debug info]";
 }
 
-unsigned int KInstruction::getLoadedFreq() const {
+unsigned int KInstruction::getLoadedFreq(llvm::Instruction *inst) {
   MDNode *MD = inst->getMetadata("klee.freq");
   if (MD) {
     if (ConstantAsMetadata *CMD = dyn_cast<ConstantAsMetadata>(MD->getOperand(0).get())) {

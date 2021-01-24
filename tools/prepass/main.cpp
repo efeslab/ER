@@ -92,10 +92,15 @@ llvm::cl::opt<bool> InsertPTWrite(
                    " (default=false)"),
     llvm::cl::init(false), llvm::cl::cat(klee::HASEPrePassCat));
 llvm::cl::opt<std::string>
-    PTWriteCFG("ptwrite-cfg",
+    PTWriteInstCFG("ptwrite-cfg",
                llvm::cl::desc("Which LLVM IR instruction should be recorded. "
                               "One instruction unique ID per line."),
                llvm::cl::init(""), llvm::cl::cat(klee::HASEPrePassCat));
+llvm::cl::opt<std::string> PTWriteWholeFunCFG(
+    "ptwrite-func-cfg",
+    llvm::cl::desc(
+        "A list of function names, whose entire body should be instrumented"),
+    llvm::cl::init(""), llvm::cl::cat(klee::HASEPrePassCat));
 llvm::cl::opt<bool>
     InsertTag("insert-tag",
               llvm::cl::desc("Insert tags to specific places. (default=false)"),
@@ -169,8 +174,8 @@ int main(int argc, char **argv) {
     }
 
     if (InsertPTWrite) {
-      if (PTWriteCFG!="")
-        KModule::addPTWrite(M, PTWriteCFG);
+      if (!PTWriteInstCFG.empty() || !PTWriteWholeFunCFG.empty())
+        KModule::addPTWrite(M, PTWriteInstCFG, PTWriteWholeFunCFG);
     }
 
     if (InsertTagLoc) {

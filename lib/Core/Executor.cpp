@@ -4881,7 +4881,7 @@ void Executor::getNextBranchConstraint(ExecutionState &state, ref<Expr> conditio
  */
 bool Executor::tryLoadDataRecording(ExecutionState &state, KInstruction *KI) {
   if (replayPath && replayDataRecEntries) {
-    std::string uniqID = getKInstUniqueID(KI);
+    std::string uniqID = KI->getUniqueID();
     PathEntry pe;
     DataRecEntry dre;
     getNextPathEntry(state, pe);
@@ -5002,7 +5002,7 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
  */
 bool Executor::tryStoreDataRecording(ExecutionState &state, KInstruction *KI) {
   if (pathWriter) {
-    std::string uniqID = getKInstUniqueID(KI);
+    std::string uniqID = KI->getUniqueID();
     PathEntry pe;
     ref<Expr> e = getDestCell(state, KI).value;
     ConstantExpr *CE = dyn_cast<ConstantExpr>(e);

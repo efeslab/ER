@@ -200,7 +200,7 @@ bool PTWritePass::runOnModule(Module &M) {
   InstrumentationManager mgr(M);
 
   for (Module::iterator f = M.begin(), fe = M.end(); f != fe; ++f) {
-    const std::string &fname = f->getName();
+    const std::string fname = KInstruction::getUniqueID(&(*f));
     if (dataRecWholeFuncSet.find(fname) != dataRecWholeFuncSet.end()) {
       // First match whole function instrumentation
       // For now, I instrument all LoadInst
@@ -219,14 +219,13 @@ bool PTWritePass::runOnModule(Module &M) {
       // (function name, BB ID, inst ID), note that the id of BB and inst are
       // assigned by the "assign-id" pass from tool/prepass
       for (Function::iterator b = f->begin(), be = f->end(); b != be; ++b) {
-        std::string bname = f->getName().str() + ":" + b->getName().str();
+        std::string bname = KInstruction::getUniqueID(&(*b));
         if (dataRecBBSet.find(bname) == dataRecBBSet.end()) {
           continue;
         }
 
         for (BasicBlock::iterator i = b->begin(), ie = b->end(); i != ie; ++i) {
-          std::string iname = f->getName().str() + ":" + b->getName().str() +
-                              ":" + i->getName().str();
+          std::string iname = KInstruction::getUniqueID(&(*i));
           if (dataRecInstSet.find(iname) == dataRecInstSet.end()) {
             continue;
           }
@@ -274,7 +273,7 @@ bool PTWritePass::runOnModule(Module &M) {
     std::sort(instinfo.begin(), instinfo.end(),
               [](auto &a, auto &b) { return a.freq >= b.freq; });
     for (InstInfo &ii : instinfo) {
-      llvm::errs() << KInstruction::getInstUniqueID(ii.I) << " freq " << ii.freq
+      llvm::errs() << KInstruction::getUniqueID(ii.I) << " freq " << ii.freq
                    << '\n';
     }
   }

@@ -139,22 +139,16 @@ void Expr::updateKInst(const KInstruction *newkinst) {
   }
 }
 
-std::string klee::getKInstUniqueID(const KInstruction *ki) {
+std::string klee::getKInstUniqueIDOrNull(const KInstruction *ki) {
   if (ki) {
-    return getInstUniqueID(ki->inst);
+    return ki->getUniqueID();
   }
   else {
     return "N/A";
   }
 }
 
-std::string klee::getInstUniqueID(const llvm::Instruction *I) {
-  const llvm::BasicBlock *BB = I->getParent();
-  const llvm::Function *F = BB->getParent();
-  return F->getName().str() + ":" + BB->getName().str() + ":" + I->getName().str();
-}
-
-std::string klee::getKInstDbgInfo(const KInstruction *ki) {
+std::string klee::getKInstDbgInfoOrNull(const KInstruction *ki) {
   if (ki) {
     const InstructionInfo *info = ki->info;
     if (info) {
@@ -171,7 +165,7 @@ std::string klee::getKInstDbgInfo(const KInstruction *ki) {
   }
 }
 
-std::string klee::getKInstIsPtrType(const KInstruction *ki) {
+std::string klee::getKInstIsPtrTypeOrNull(const KInstruction *ki) {
   if (ki) {
     if (ki->inst->getType()->isPointerTy()) {
       return "true";

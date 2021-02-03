@@ -54,6 +54,19 @@ namespace klee {
     unsigned int getLoadedFreq() const { return getLoadedFreq(inst); }
     // recording cost == inst freq * inst width (bits)
     unsigned int getRecordingCost() const;
+    // note that UniqueID depends on prepass to assign human-readable id
+    std::string getUniqueID() const { return getUniqueID(inst); }
+    static std::string getUniqueID(const llvm::Instruction *inst) {
+      const llvm::BasicBlock *bb = inst->getParent();
+      return getUniqueID(bb) + ':' + inst->getName().str();
+    }
+    static std::string getUniqueID(const llvm::BasicBlock *bb) {
+      const llvm::Function *f = bb->getParent();
+      return getUniqueID(f) + ':' + bb->getName().str();
+    }
+    static const std::string getUniqueID(const llvm::Function *f) {
+      return f->getName().str();
+    }
 
   };
 

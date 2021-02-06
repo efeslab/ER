@@ -88,7 +88,6 @@ int gettimeofday(struct timeval *__restrict tv, void *__restrict tz) {
 #endif
   static unsigned int call_cnt = 0;
   posix_debug_msg("called gettimeofday %u times\n", call_cnt);
-  klee_stack_trace();
   if (useSymbolicgettimeofday) {
     pthread_t tid = pthread_self();
     char symname[64];

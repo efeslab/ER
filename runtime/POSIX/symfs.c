@@ -242,6 +242,8 @@ static void _init_pure_symbolic_buffer(disk_file_t *dfile, size_t maxsize,
   // Note that the symname comes from argv, which is not managed by klee's
   // memory object model to my best knowledge.
   // By using this namebuf, klee_make_symbolic can access the string.
+  // TODO: can omit this namebuf by using dfile->name, which is allocated inside
+  // POSIX runtime
   static char namebuf[64];
 
   // Initializing the buffer contents...

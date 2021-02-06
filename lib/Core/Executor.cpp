@@ -4912,7 +4912,7 @@ void Executor::AssertNextBranchTaken(ExecutionState &state, bool br) {
     }
     klee_message("replay: %d/%lu runtime: %d recorded: %d, stack:\n", state.replayPosition-1, replayPath->size(), br, recorded_br);
     state.dumpStack(llvm::errs());
-    terminateStateOnError(state, "hit invalid branch in replay path mode", ReplayPath);
+    //terminateStateOnError(state, "hit invalid branch in replay path mode", ReplayPath);
   }
 }
 

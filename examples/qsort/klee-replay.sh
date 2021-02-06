@@ -7,7 +7,7 @@ source $(dirname $0)/klee-env.sh
 
 rm -rf ${KLEE_REPLAY_OUT_DIR}
 cp ${PREPASS_BC} ${RUN_BC}
-klee -solver-backend=stp -call-solver=false -output-stats=false \
+gdb --args klee -solver-backend=stp -call-solver=false -output-stats=false \
   -output-istats=false -use-forked-solver=false \
   -output-source=false -write-kqueries -write-paths --libc=uclibc \
   --posix-runtime -env-file=env_file \

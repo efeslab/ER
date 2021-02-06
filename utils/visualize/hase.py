@@ -925,14 +925,14 @@ class PyGraph(object):
             start = kinsts[0]
             while True:
                 k = kinsts.pop(0)
-                #print("Reasoning %s based on %s" % (k, ', '.join(kinsts)))
+                print("Reasoning %s based on %s" % (k, ', '.join(kinsts)))
                 kl, subh = self.buildRecKInstL(kinsts)
                 target_nids = kinst2nids[k]
                 RecNids = set()
                 for nid in target_nids:
                     SingleNodeNewRecNids = subh.MustConcretize(nid)
-                    #print("nid:%s, newRecNids: %s" % (nid,
-                    #    ','.join(SingleNodeNewRecNids)))
+                    print("nid:%s, newRecNids: %s" % (nid,
+                        ','.join(SingleNodeNewRecNids)))
                     RecNids |= SingleNodeNewRecNids
                 # FIXME: fix here RecNids could have "N/A" kinst by running
                 # MustConcretize on the initial strategy
@@ -943,8 +943,8 @@ class PyGraph(object):
                 # said to be the best practice in python3.X
                 for anynid in kinst2nids[k]: break
                 oldRecIsPointer = (self.id_map[anynid].ispointer == "true")
-                #print("newRecCost %d, oldRecCost %d, newKInstSet %s" % (
-                #    newRecCost, oldRecCost, ','.join(newKInstSet)))
+                print("newRecCost %d, oldRecCost %d, newKInstSet %s" % (
+                    newRecCost, oldRecCost, ','.join(newKInstSet)))
                 # When to replace old recording strategy with new ones?
                 # First, the old KInst has not to remain in new strategy
                 # Second, one of the following conditions should be true:
@@ -964,7 +964,7 @@ class PyGraph(object):
                     changed = True
                     # replace old kinst with the new ones
                     del kinst2nids[k]
-                    #print("Replace %s with %s" % (k, ','.join(newKInstSet)))
+                    print("Replace %s with %s" % (k, ','.join(newKInstSet)))
                     for nid in RecNids:
                         kinst2nids.setdefault(self.id_map[nid].kinst,
                                 set()).add(nid)

@@ -1,0 +1,18 @@
+[submodule "third-party/stp"]
+	path = third-party/stp
+	url = https://github.com/stp/stp
+[submodule "third-party/z3"]
+	path = third-party/z3
+	url = https://github.com/Z3Prover/z3
+[submodule "third-party/bugbasev2"]
+	path = third-party/bugbasev2
+	url = https://github.com/efeslab/bugbasev2
+[submodule "third-party/klee-uclibc"]
+	path = third-party/klee-uclibc
+	url = https://github.com/efeslab/klee-uclibc
+[submodule "third-party/cryptominisat"]
+	path = third-party/cryptominisat
+	url = https://github.com/msoos/cryptominisat
+[submodule "third-party/minisat"]
+	path = third-party/minisat
+	url = https://github.com/stp/minisat

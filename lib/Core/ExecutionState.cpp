@@ -45,7 +45,7 @@ cl::opt<bool> DebugLogStateMerge(
 cl::opt<bool>
     IgnorePOSIXPath("ignore-posix-path", cl::init(false),
                     cl::desc("Ignore (not recording or using) path traces "
-                             "inside POSIX runtime (default=false"),
+                             "inside POSIX runtime (default=false)"),
                     cl::cat(HASECat));
 }
 namespace klee {

@@ -246,7 +246,7 @@ bool IndependentSolver::computeInitialValuesPerFactor(
   IndepElemSetPtrSet_ty::const_iterator factors_end;
   // factors is only used if the query only contains a subset of constraints
   IndepElemSetPtrSet_ty factors;
-  size_t factors_size;
+  size_t factors_size __attribute__((unused));
   if (&query.constraints == &query.constraintMgr.getAllConstraints()) {
     // the query contains all constraints managed by the ConstraintManager
     factors_begin = query.constraintMgr.factor_begin();

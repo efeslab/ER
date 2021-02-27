@@ -711,7 +711,6 @@ int __fd_openat(int basefd, const char *pathname, int flags, mode_t mode) {
     basefd = bfile->concrete_fd;
   }
 
-  posix_echo_msg("Attempt to openat %s\n", pathname);
   if (__get_sym_file(pathname)) {
     /* for a symbolic file, it doesn't matter if/where it exists on disk */
     return __fd_open(pathname, flags, mode);

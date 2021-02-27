@@ -31,7 +31,7 @@
 #include <sys/wait.h>
 
 #include "klee/Config/config.h"
-#include "config.h"
+#include <posix-runtime-config.h>
 
 void klee_warning(const char*);
 void klee_warning_once(const char*);

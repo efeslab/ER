@@ -79,4 +79,9 @@
 //#define HAVE_FAKE_SETSID 1
 //#define HAVE_MODEL_MMAP 1
 
+////////////////////////////////////////////////////////////////////////////////
+// CMake managed macros
+////////////////////////////////////////////////////////////////////////////////
+#cmakedefine HAVE_GETTIMEOFDAY_TZ @HAVE_GETTIMEOFDAY_TZ@
+#cmakedefine HAVE_GETTIMEOFDAY_TZ_VOID @HAVE_GETTIMEOFDAY_TZ_VOID@
 #endif /* POSIX_CONFIG_H_ */

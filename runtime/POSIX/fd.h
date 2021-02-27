@@ -11,7 +11,7 @@
 #define KLEE_FD_H
 
 #include "klee/Config/config.h"
-#include "config.h"
+#include <posix-runtime-config.h>
 
 #ifndef _LARGEFILE64_SOURCE
 #error "_LARGEFILE64_SOURCE should be defined"

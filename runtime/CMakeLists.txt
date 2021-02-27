@@ -32,6 +32,19 @@ else()
   set(BUILD_POSIX_RUNTIME 0)
 endif()
 
+# prototypes
+check_prototype_definition(gettimeofday
+    "int gettimeofday(struct timeval *tv, struct timezone *tz)"
+    "-1"
+    "sys/time.h"
+    HAVE_GETTIMEOFDAY_TZ)
+
+check_prototype_definition(gettimeofday
+    "int gettimeofday(struct timeval *tv, void *tzp)"
+    "-1"
+    "sys/time.h"
+    HAVE_GETTIMEOFDAY_TZ_VOID)
+
 # Configure the bitcode build system
 configure_file("Makefile.cmake.bitcode.config.in"
   "Makefile.cmake.bitcode.config"
@@ -46,6 +59,7 @@ configure_file("Makefile.cmake.bitcode.rules" "Makefile.cmake.bitcode.rules" COP
 # Copy over makefiles for libraries
 set(BITCODE_LIBRARIES "Intrinsic" "klee-libc" "FreeStanding")
 if (ENABLE_POSIX_RUNTIME)
+  configure_file(POSIX/posix-runtime-config.h.in ${CMAKE_BINARY_DIR}/include/posix-runtime-config.h @ONLY)
   list(APPEND BITCODE_LIBRARIES "POSIX")
 endif()
 foreach (bl ${BITCODE_LIBRARIES})

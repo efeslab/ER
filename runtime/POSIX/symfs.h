@@ -35,7 +35,7 @@
 
 #include <sys/types.h>
 
-#include "config.h"
+#include <posix-runtime-config.h>
 #include "buffers.h"
 
 struct disk_file;

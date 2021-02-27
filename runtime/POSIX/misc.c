@@ -79,7 +79,13 @@ unsigned int sleep(unsigned int seconds) {
   return 0;
 }
 
+#ifdef HAVE_GETTIMEOFDAY_TZ
+int gettimeofday(struct timeval *__restrict tv, struct timezone *__restrict tz) {
+#elif HAVE_GETTIMEOFDAY_TZ_VOID
 int gettimeofday(struct timeval *__restrict tv, void *__restrict tz) {
+#else
+#error "Cannot find a proper prototype for gettimeofday"
+#endif
   static unsigned int call_cnt = 0;
   if (useSymbolicgettimeofday) {
     pthread_t tid = pthread_self();

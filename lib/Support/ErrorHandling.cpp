@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/Internal/Support/MiscCmdLine.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/CommandLine.h"
@@ -30,15 +31,6 @@ static const char *warningPrefix = "WARNING";
 static const char *warningOncePrefix = "WARNING ONCE";
 static const char *errorPrefix = "ERROR";
 static const char *notePrefix = "NOTE";
-
-namespace {
-cl::OptionCategory MiscCat("Miscellaneous options", "");
-cl::opt<bool> WarningsOnlyToFile(
-    "warnings-only-to-file", cl::init(false),
-    cl::desc("All warnings will be written to warnings.txt only.  If disabled, "
-             "they are also written on screen."),
-    cl::cat(MiscCat));
-} // namespace
 
 static bool shouldSetColor(const char *pfx, const char *msg,
                            const char *prefixToSearchFor) {

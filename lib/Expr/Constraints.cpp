@@ -524,24 +524,50 @@ void ConstraintManager::IndepElementSetIndexer::getIntersection(const Independen
   }
 }
 
-void ConstraintManager::IndepElementSetIndexer::redirect(const IndependentElementSet *src, IndependentElementSet *dst) {
+void ConstraintManager::IndepElementSetIndexer::redirect(
+    const IndependentElementSet *src, IndependentElementSet *dst) {
   for (const Array *arr : src->wholeObjects) {
-    assert(
-        elements_index.count(arr) == 0 &&
-        "Updating an invalid index: wholeObj and elements have the same Array");
+    // It is possible that an array is first accessed via independent elements
+    // and then accessed symbolically (i.e. wholeObjects) in a new constraint.
+    // When such scenario happens, there either be a few or a single old
+    // independent sets, which track independent elements, converted to a new
+    // independent set, which tracks wholeObjects.
+    //
+    // In the case of multiple old sets converted to a new set:
+    // Those old independent sets are always erased first (i.e. the expensive
+    // case in `UpdateIndependentSetAdd`) but an all-zero elements_index[arr]
+    // was not reclaimed.
+    //
+    // As for the second case, a single old independent set (tracks elements)
+    // should be updated to include a new independent set (tracks wholeObject).
+    // This is the lucky and cheap case in `UpdateIndependentSetAdd`, where the
+    // new independent set (param src is combined into the old one (param. dst).
+    // In this case, elements_index[arr] is not all-zero, but should still be
+    // erased.
+    elements_index.erase(arr);
     wholeObj_index[arr] = dst;
   }
   for (auto elem : src->elements) {
     const Array *arr = elem.first;
     DenseSet<unsigned> &index_set = elem.second;
-    assert(
-        wholeObj_index.count(arr) == 0 &&
-        "Updating an invalid index: elements and wholeObj have the same Array");
-    auto it = elements_index.emplace(std::make_pair(
-        arr,
-        std::move(std::vector<IndependentElementSet *>(arr->size, nullptr))));
-    for (unsigned index : index_set) {
-      it.first->second[index] = dst;
+    // It is possible that an array is accessed via independent elements but is
+    // accessed symbolically (i.e. wholeObjects) in existing constraints.
+    // In this scenario, there could only be one intersected independent set,
+    // which is the lucky and cheap case in `UpdateIndependentSetAdd`.
+    // When the exising independent set (dst) is updated to include the new
+    // independent set from the new constraint (src), we will find some
+    // src->elements may already tracked in wholeObj_index.
+    // In that case, we should only update wholeObj_index.
+    auto wholeObj_it = wholeObj_index.find(arr);
+    if (wholeObj_it != wholeObj_index.end()) {
+      wholeObj_it->second = dst;
+    } else {
+      auto it = elements_index.emplace(std::make_pair(
+          arr,
+          std::move(std::vector<IndependentElementSet *>(arr->size, nullptr))));
+      for (unsigned index : index_set) {
+        it.first->second[index] = dst;
+      }
     }
   }
 }

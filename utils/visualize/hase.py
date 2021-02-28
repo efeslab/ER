@@ -934,6 +934,8 @@ class PyGraph(object):
                     #print("nid:%s, newRecNids: %s" % (nid,
                     #    ','.join(SingleNodeNewRecNids)))
                     RecNids |= SingleNodeNewRecNids
+                # FIXME: fix here RecNids could have "N/A" kinst by running
+                # MustConcretize on the initial strategy
                 newKInstSet = self.GetKInstSetFromNids(RecNids)
                 newRecCost = self.GetKInstSetRecordingSize(newKInstSet)
                 oldRecCost = self.GetKInstSetRecordingSize([k])
@@ -943,10 +945,22 @@ class PyGraph(object):
                 oldRecIsPointer = (self.id_map[anynid].ispointer == "true")
                 #print("newRecCost %d, oldRecCost %d, newKInstSet %s" % (
                 #    newRecCost, oldRecCost, ','.join(newKInstSet)))
-                if newRecCost < oldRecCost or \
-                   (newRecCost == oldRecCost and \
-                    len(newKInstSet) == 1 and k not in newKInstSet) or \
-                   ((not PyGraph.ALLOWPTR) and oldRecIsPointer):
+                # When to replace old recording strategy with new ones?
+                # First, the old KInst has not to remain in new strategy
+                # Second, one of the following conditions should be true:
+                #    1. new cost is cheaper than old cost
+                #    2. new cost is the same as the old cost but new strategy
+                #    only records a single instruction (I forgot why I need
+                #    this)
+                #    3. old strategy is a pointer but pointer recording is
+                #    disallowed. Note that the above MustConcretize should
+                #    guarantee the new strategy does not record pointer if
+                #    disallowed.
+                if (k not in newKInstSet) and (
+                    (newRecCost < oldRecCost) or \
+                    (newRecCost == oldRecCost and len(newKInstSet) == 1) or \
+                    ((not PyGraph.ALLOWPTR) and oldRecIsPointer)
+                    ):
                     changed = True
                     # replace old kinst with the new ones
                     del kinst2nids[k]
@@ -1234,6 +1248,12 @@ if __name__ == "__main__":
         # @type: Dict(arrayname -> list of indirect depth of read/write
         # accessing this array
         arr2Indep = {}
+        # a heuristic score for each array used for ranking
+        # Current heuristic:
+        #   score = sum of [(accumulated length of a UN Node * indirect depth of
+        #   indirect read using a UN node as index) for all UN nodes in a chain]
+        # @type: Dict(arrayname -> integer)
+        arr2score = {}
         for n in subh.all_nodes_topo_order:
             if str(n.kind) == "UN":
                 arr2UNlen.setdefault(n.root, [0])[-1] += 1
@@ -1242,7 +1262,6 @@ if __name__ == "__main__":
                 if len(readNodes) > 0:
                     # this UpdateNode is pointed to by some ReadExpr
                     # a new chain of UN appears
-                    arr2UNlen[n.root].append(0)
                     IndirectReads = list(filter(lambda n: any([\
                             e.weight == 1.5 and str(e.target.kind) != "0" \
                             for e in subh.edges[n.id]]),
@@ -1250,9 +1269,17 @@ if __name__ == "__main__":
                     arr2ReadRef.setdefault(n.root, []).append(
                         [len(IndirectReads),
                          len(readNodes)-len(IndirectReads)])
-                    arr2Indep.setdefault(n.root, []).extend([
-                        subh.idep_map[n.id] for n in readNodes
-                        ])
+                    if len(IndirectReads) > 0:
+                        arr2Indep.setdefault(n.root, []).extend([
+                            subh.idep_map[n.id] for n in IndirectReads
+                            ])
+                    score = 0
+                    # accumulated length of UN chain at this point
+                    accu_l = sum(arr2UNlen[n.root])
+                    score = sum([accu_l*subh.idep_map[n.id] for n in
+                        IndirectReads])
+                    arr2score[n.root] = arr2score.get(n.root, 0) + score
+                    arr2UNlen[n.root].append(0)
             if str(n.kind) == "3" and (n.id in subh.edges) and \
                all([str(e.target.kind) != "UN" for e in subh.edges[n.id]]) and \
                any([e.weight == 1.5 for e in subh.edges[n.id]]):
@@ -1260,13 +1287,17 @@ if __name__ == "__main__":
                 # Should keep tracking of its root
                 arr2UNlen.setdefault(n.root, [0])
                 arr2ReadRef.setdefault(n.root, [[0,0]])[-1][0] += 1
-                arr2Indep.setdefault(n.root,
-                        []).append(subh.idep_map[n.id])
-
-        bigarray_name = []
-        for arr, UNL in arr2UNlen.items():
+        # rank array name
+        ranked_arr = sorted(arr2UNlen.keys(),
+                key=lambda arr: arr2score.get(arr,0), reverse=True)
+        print("# Format:\n"
+              "# Array: name[size]\n"
+              "#    UNlen(indirect ref, direct ref)" )
+        for arr in ranked_arr:
+            UNL = arr2UNlen[arr]
             print("Array: %s" % arr)
-            accu_l = int(arr[arr.find('[')+1:-1])
+            arrsize = int(arr[arr.find('[')+1:-1])
+            accu_l = 0
             accumulate_len = []
             for l in UNL:
                 accu_l += l
@@ -1274,12 +1305,12 @@ if __name__ == "__main__":
             print("\t%s" % ', '.join(["%d(%d,%d)@[%d]" % (l, IR, R, accu_l) \
                 for l, (IR, R) , accu_l in \
                 zip(UNL, arr2ReadRef.get(arr, [[0,0]]), accumulate_len)]))
-            print("\tindep: avg %f, max %d" %
-                    (sum(arr2Indep[arr])/len(arr2Indep[arr]),
-                        max(arr2Indep[arr])))
-            if accumulate_len[-1] > 4096:
-                bigarray_name.append(arr[0:arr.find('[')])
-        print("bigarray: %s" % ','.join(bigarray_name))
+            indep_l = arr2Indep.get(arr, [0])
+            print("\tindep: avg %f, max %d, score %d" %
+                    (sum(indep_l)/len(indep_l),
+                        max(indep_l), arr2score.get(arr,0)))
+        best_array = ranked_arr[0]
+        print("target_array:%s" % best_array.split('[')[0])
     elif len(query_nodes) > 0:
         for n in query_nodes:
             print("query %s, kinst: %s" % (n.label, n.kinst))

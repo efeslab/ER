@@ -363,6 +363,7 @@ private:
   // used for writing .ktest files
   int m_argc;
   char **m_argv;
+  std::time_t start_time;
 
 public:
   KleeHandler(int argc, char **argv);
@@ -379,6 +380,8 @@ public:
   void processTestCase(const ExecutionState  &state,
                        const char *errorMessage,
                        const char *errorSuffix);
+  void setStartTime(std::time_t t) { start_time = t; }
+  std::time_t getStartTime() const { return start_time; }
 
   std::string getOutputFilename(const std::string &filename);
   std::unique_ptr<llvm::raw_fd_ostream> openOutputFile(const std::string &filename);
@@ -1863,6 +1866,7 @@ int main(int argc, char **argv, char **envp) {
 
   auto endTime = std::time(nullptr);
   { // output end and elapsed time
+    klee_message("In-engine time:%lu\n", endTime - handler->getStartTime());
     std::uint32_t h;
     std::uint8_t m, s;
     std::tie(h,m,s) = time::seconds(endTime - startTime).toHMS();

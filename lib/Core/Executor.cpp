@@ -3394,6 +3394,7 @@ void Executor::run(ExecutionState &initialState) {
   searcher->update(0, newStates, std::vector<ExecutionState *>());
 
   std::time_t startT_time_t = std::time(nullptr);
+  interpreterHandler->setStartTime(startT_time_t);
   interpreterHandler->getInfoStream()
       << "Executor run started: "
       << std::asctime(std::localtime(&startT_time_t)) << '\n';

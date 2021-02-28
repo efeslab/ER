@@ -14,6 +14,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <ctime>
 #include "klee/Internal/Support/Serialize.h"
 struct KTest;
 
@@ -45,6 +46,9 @@ public:
   virtual void processTestCase(const ExecutionState &state,
                                const char *err,
                                const char *suffix) = 0;
+  /// Tell the interpreter when the symbolic engine started, excluding bitcode
+  /// parsing and other setup process.
+  virtual void setStartTime(std::time_t t) = 0;
 };
 
 class Interpreter {

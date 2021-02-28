@@ -234,7 +234,7 @@ bool PTWritePass::runOnModule(Module &M) {
           unsigned int type_width = DL.getTypeSizeInBits(itype);
           unsigned int freq = KInstruction::getLoadedFreq(inst);
           llvm::errs() << "Instruction " << iname << " (w" << type_width << ") "
-                       << " freq " << freq << " matched\n";
+                       << "freq " << freq << " matched\n";
           if (itype->isPointerTy()) {
             llvm::errs() << "Warning: pointer recording at " << iname
                          << " may not work due to undeterministic malloc\n";
@@ -264,12 +264,12 @@ bool PTWritePass::runOnModule(Module &M) {
   }
   llvm::errs() << "Total " << insts.size()
                << " instructions are instrumented\n";
-  llvm::errs() << "Actual Bytes to record: " << actual_bytes << '\n';
-  llvm::errs() << "PTWrite executed: " << ptwrite_freq << '\n';
-  llvm::errs() << "PTWrite Recorded: "
-               << ptwrite_freq * DL.getPointerSizeInBits() / 8 << '\n';
-  if (ptwrite_freq) {
+  if (actual_bytes && ptwrite_freq) {
     // report verbose recording cost information if frequency info is available
+    llvm::errs() << "Actual Bytes to record: " << actual_bytes << '\n';
+    llvm::errs() << "PTWrite executed: " << ptwrite_freq << '\n';
+    llvm::errs() << "PTWrite Recorded: "
+                 << ptwrite_freq * DL.getPointerSizeInBits() / 8 << '\n';
     std::sort(instinfo.begin(), instinfo.end(),
               [](auto &a, auto &b) { return a.freq >= b.freq; });
     for (InstInfo &ii : instinfo) {

@@ -447,6 +447,11 @@ cl::opt<bool>
                     cl::desc("Print debug info related to scheduling, context "
                              "switch, etc. (default=false)"),
                     cl::cat(HASECat));
+cl::opt<bool> DebugValueConcretization(
+    "debug-concretization", cl::init(false),
+    cl::desc("Print debug info related to value concretization from data "
+             "traces (default=false)"),
+    cl::cat(HASECat));
 } // namespace
 
 namespace klee {
@@ -4118,7 +4123,8 @@ void Executor::executeMemoryOperation(ExecutionState &state, bool isWrite,
           terminateStateOnError(state, "memory error: object read only",
                                 ReadOnly);
         } else {
-          ObjectState *wos = state.addressSpace.getWriteable(mo, os);
+          ObjectState *wos =
+              state.addressSpace.getWriteable(mo, os, true /*force*/);
           wos->write(offset, value, Expr::FLAG_INSTRUCTION_ROOT, target);
         }
       } else {
@@ -4900,7 +4906,9 @@ bool Executor::tryLoadDataRecording(ExecutionState &state, KInstruction *KI) {
     ref<ConstantExpr> loadedValue = ConstantExpr::alloc(dre.data, pe.body.drec.width);
     if (!isa<ConstantExpr>(replayedValue)) {
       ++stats::dataRecLoadedEffective;
-      klee_message("Effective dataRecLoaded at %u", state.replayDataRecEntriesPosition-1);
+      if (DebugValueConcretization)
+        klee_message("Effective dataRecLoaded at %u",
+                     state.replayDataRecEntriesPosition - 1);
     }
     concretizeKInst(state, KI, loadedValue, true);
     return true;
@@ -4969,8 +4977,9 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
         // 1. This is an instrumented ptwritecast
         // 2. This is a normal zext/sext IR happening to be recorded
         if (CastExpr *castE = dyn_cast<CastExpr>(replayedValue)) {
-          klee_message("Further CastInst concretization base on %s",
-              ci->getName().str().c_str());
+          if (DebugValueConcretization)
+            klee_message("Further CastInst concretization base on %s",
+                         ci->getName().str().c_str());
           ref<Expr> innerExpr = castE->src;
           assert(innerI != nullptr && innerKInst != nullptr);
           assert(innerI->getType() == ci->getSrcTy());
@@ -4983,8 +4992,9 @@ void Executor::concretizeKInst(ExecutionState &state, KInstruction *KI,
           shouldAddConstraint = false;
         } else if ((ci->getOpcode() == Instruction::PtrToInt) &&
                    isptwritecast) {
-          klee_message("Further PtrToInt concretization base on %s",
-                       ci->getName().str().c_str());
+          if (DebugValueConcretization)
+            klee_message("Further PtrToInt concretization base on %s",
+                         ci->getName().str().c_str());
           // This is an ptwritecast instruction instrumented by PTWritePass,
           // which helps record pointer values.
           // We should further concretize the underlying pointer value

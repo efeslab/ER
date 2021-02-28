@@ -35,10 +35,11 @@ const ObjectState *AddressSpace::findObject(const MemoryObject *mo) const {
 }
 
 ObjectState *AddressSpace::getWriteable(const MemoryObject *mo,
-                                        const ObjectState *os) {
-  if (os->readOnly) {
+                                        const ObjectState *os, bool force) {
+  if (!force && os->readOnly) {
     klee_warning("Attempt to write a readonly object, that is wrong unless you "
                  "are concretizing data from the trace");
+    abort();
   }
 
   // If this address space owns they object, return it

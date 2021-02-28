@@ -122,8 +122,11 @@ namespace klee {
     ///
     /// \param mo The MemoryObject to get a writeable ObjectState for.
     /// \param os The current binding of the MemoryObject.
+    /// \param force Ignore readonly properties (only for internal use, like
+    ///     symbolic value concretization from recorded trace
     /// \return A writeable ObjectState (\a os or a copy).
-    ObjectState *getWriteable(const MemoryObject *mo, const ObjectState *os);
+    ObjectState *getWriteable(const MemoryObject *mo, const ObjectState *os,
+                              bool force = false);
 
     /// Copy the concrete values of all managed ObjectStates into the
     /// actual system memory location they were allocated at.

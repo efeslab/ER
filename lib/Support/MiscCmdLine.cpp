@@ -24,4 +24,9 @@ cl::opt<bool> WarningsOnlyToFile(
     cl::desc("All warnings will be written to warnings.txt only.  If disabled, "
              "they are also written on screen."),
     cl::cat(MiscCat));
+cl::opt<bool> DebugDumpKQuery(
+    "debug-dump-kquery", cl::init(false),
+    cl::desc("Dump constraints to kquery for various debugging "
+             "purpose. (solver fail or took too long) (default=false)"),
+    cl::cat(MiscCat));
 } // namespace klee

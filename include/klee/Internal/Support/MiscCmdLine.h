@@ -22,6 +22,7 @@ namespace klee {
 // helper, etc.)
 extern llvm::cl::OptionCategory MiscCat;
 extern llvm::cl::opt<bool> WarningsOnlyToFile;
+extern llvm::cl::opt<bool> DebugDumpKQuery;
 } // namespace klee
 
 #endif /* KLEE_SOLVERCMDLINE_H */

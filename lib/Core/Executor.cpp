@@ -46,6 +46,7 @@
 #include "klee/Internal/Support/FileHandling.h"
 #include "klee/Internal/Support/FloatEvaluation.h"
 #include "klee/Internal/Support/ModuleUtil.h"
+#include "klee/Internal/Support/MiscCmdLine.h"
 #include "klee/Internal/System/MemoryUsage.h"
 #include "klee/Internal/System/Time.h"
 #include "klee/Interpreter.h"
@@ -4536,8 +4537,11 @@ bool Executor::getSymbolicSolution(const ExecutionState &state,
   solver->setTimeout(time::Span());
   if (!success) {
     klee_warning("unable to compute initial values (invalid constraints?)!");
-    ExprPPrinter::printQuery(llvm::errs(), state.constraints.getAllConstraints(),
-                             ConstantExpr::alloc(0, Expr::Bool));
+    if (DebugDumpKQuery) {
+      ExprPPrinter::printQuery(llvm::errs(),
+                               state.constraints.getAllConstraints(),
+                               ConstantExpr::alloc(0, Expr::Bool));
+    }
     return false;
   }
 
@@ -4686,12 +4690,15 @@ void Executor::printInfo(llvm::raw_ostream &os) {
          << " / " << (replayPath?std::to_string(replayPath->size()):"N/A") << '\n'
        << "  Stack:\n";
     s->dumpStack(msg_oss);
-    char filenamebuf[128];
-    std::snprintf(filenamebuf, 128, "constraints_cnt%03u_state%03u.kquery", cnt, i);
-    std::string constraints_per_state_filename =
-        interpreterHandler->getOutputFilename(filenamebuf);
-    debugDumpConstraints(*s, s->constraints, ref<Expr>(0),
-        constraints_per_state_filename.c_str());
+    if (DebugDumpKQuery) {
+      char filenamebuf[128];
+      std::snprintf(filenamebuf, 128, "constraints_cnt%03u_state%03u.kquery",
+                    cnt, i);
+      std::string constraints_per_state_filename =
+          interpreterHandler->getOutputFilename(filenamebuf);
+      debugDumpConstraints(*s, s->constraints, ref<Expr>(0),
+                           constraints_per_state_filename.c_str());
+    }
     ++i;
   }
   msg_oss << "=============== Statistics =============\n";

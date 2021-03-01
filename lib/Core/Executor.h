@@ -112,7 +112,8 @@ public:
     ReportError,
     User,
     Unhandled,
-    ReplayPath
+    ReplayPath,
+    Timeout,
   };
 
 private:
@@ -446,6 +447,11 @@ private:
                                  const llvm::Twine &message,
                                  const llvm::Twine &info="") {
     terminateStateOnError(state, message, Exec, NULL, info);
+  }
+  void exitOnSolverTimeout(ExecutionState &state, const llvm::Twine &message) {
+    terminateStateOnError(state, message, Timeout);
+    interpreterHandler->reportInEngineTime();
+    std::exit(0);
   }
 
   /// bindModuleConstants - Initialize the module constant table.

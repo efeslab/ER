@@ -31,6 +31,8 @@ namespace klee {
                                  std::string baseSolverQueryKQueryLogPath);
 }
 
-
+#define STRINGIZE(x) STRINGIZE2(x)
+#define STRINGIZE2(x) #x
+#define __LINE_STRING__ STRINGIZE(__LINE__)
 
 #endif /* KLEE_COMMON_H */

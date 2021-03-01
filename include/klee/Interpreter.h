@@ -49,6 +49,7 @@ public:
   /// Tell the interpreter when the symbolic engine started, excluding bitcode
   /// parsing and other setup process.
   virtual void setStartTime(std::time_t t) = 0;
+  virtual void reportInEngineTime() const = 0;
 };
 
 class Interpreter {

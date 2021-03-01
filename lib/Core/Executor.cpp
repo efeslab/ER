@@ -483,6 +483,7 @@ const char *Executor::TerminateReasonNames[] = {
   [ User ] = "user",
   [ Unhandled ] = "xxx",
   [ ReplayPath ] = "replaypath",
+  [ Timeout ] = "timeout",
 };
 
 
@@ -951,8 +952,10 @@ void Executor::branch(ExecutionState &state,
         bool success =
           solver->getValue(state, siit->assignment.evaluate(conditions[i]),
                            res);
-        assert(success && "FIXME: Unhandled solver failure");
-        (void) success;
+        if (!success) {
+          exitOnSolverTimeout(state, "solver timeout at " __FILE__
+                                      ":" __LINE_STRING__);
+        }
         if (res->isTrue())
           break;
       }
@@ -1014,8 +1017,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
                  stats::solverTime*MaxStaticCPSolvePct))) {
       ref<ConstantExpr> value;
       bool success = solver->getValue(current, condition, value);
-      assert(success && "FIXME: Unhandled solver failure");
-      (void) success;
+      if (!success) {
+        exitOnSolverTimeout(current,
+                             "solver timeout at " __FILE__ ":" __LINE_STRING__);
+      }
       addConstraint(current, EqExpr::create(value, condition));
       condition = value;
     }
@@ -1107,8 +1112,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
       ref<ConstantExpr> res;
       bool success =
         solver->getValue(current, siit->assignment.evaluate(static_cast<const ref<Expr>>(condition)), res);
-      assert(success && "FIXME: Unhandled solver failure");
-      (void) success;
+      if (!success) {
+        exitOnSolverTimeout(current,
+                             "solver timeout at " __FILE__ ":" __LINE_STRING__);
+      }
       if (res->isTrue()) {
         trueSeed = true;
       } else {
@@ -1177,8 +1184,10 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
         ref<ConstantExpr> res;
         bool success =
           solver->getValue(current, siit->assignment.evaluate(static_cast<const ref<Expr>>(condition)), res);
-        assert(success && "FIXME: Unhandled solver failure");
-        (void) success;
+        if (!success) {
+          exitOnSolverTimeout(current, "solver timeout at " __FILE__
+                                      ":" __LINE_STRING__);
+        }
         if (res->isTrue()) {
           trueSeeds.push_back(*siit);
         } else {
@@ -1259,8 +1268,10 @@ bool Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
       bool res;
       bool success =
         solver->mustBeFalse(state, siit->assignment.evaluate(condition), res);
-      assert(success && "FIXME: Unhandled solver failure");
-      (void) success;
+      if (!success) {
+        exitOnSolverTimeout(state,
+                             "solver timeout at " __FILE__ ":" __LINE_STRING__);
+      }
       if (res) {
         siit->patchSeed(state, condition, solver);
         warn = true;
@@ -1362,11 +1373,9 @@ Executor::toConstant(ExecutionState &state,
   ref<ConstantExpr> value;
   bool success = solver->getValue(state, e, value);
   if (!success) {
-    klee_message("toConstant Solver Timeout");
-    printInfo(llvm::errs());
+    exitOnSolverTimeout(state,
+                         "solver timeout at " __FILE__ ":" __LINE_STRING__);
   }
-  assert(success && "FIXME: Unhandled solver failure");
-  (void) success;
 
   std::string str;
   llvm::raw_string_ostream os(str);
@@ -1394,8 +1403,10 @@ void Executor::executeGetValue(ExecutionState &state,
     ref<ConstantExpr> value;
     e = optimizer.optimizeExpr(e, true);
     bool success = solver->getValue(state, e, value);
-    assert(success && "FIXME: Unhandled solver failure");
-    (void) success;
+    if (!success) {
+      exitOnSolverTimeout(state,
+                           "solver timeout at " __FILE__ ":" __LINE_STRING__);
+    }
     bindLocal(target, state, value);
   } else {
     std::set< ref<Expr> > values;
@@ -1405,8 +1416,10 @@ void Executor::executeGetValue(ExecutionState &state,
       cond = optimizer.optimizeExpr(cond, true);
       ref<ConstantExpr> value;
       bool success = solver->getValue(state, cond, value);
-      assert(success && "FIXME: Unhandled solver failure");
-      (void) success;
+      if (!success) {
+        exitOnSolverTimeout(state,
+                             "solver timeout at " __FILE__ ":" __LINE_STRING__);
+      }
       values.insert(value);
     }
 
@@ -1966,8 +1979,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
       // check feasibility
       bool result;
-      bool success __attribute__ ((unused)) = solver->mayBeTrue(state, e, result);
-      assert(success && "FIXME: Unhandled solver failure");
+      bool success = solver->mayBeTrue(state, e, result);
+      if (!success) {
+        exitOnSolverTimeout(state,
+                             "solver timeout at " __FILE__ ":" __LINE_STRING__);
+      }
       if (result) {
         bbindexMap[d] = bbindex;
         BBindex2bb.push_back(d);
@@ -1982,8 +1998,11 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     assert((BBindex2bb.size() == bbindex) && (index2exp.size() == bbindex) && "bb or expr size mismatch");
     // check errorCase feasibility
     bool isErrorCaseFeasible;
-    bool success __attribute__ ((unused)) = solver->mayBeTrue(state, errorCase, isErrorCaseFeasible);
-    assert(success && "FIXME: Unhandled solver failure");
+    bool success = solver->mayBeTrue(state, errorCase, isErrorCaseFeasible);
+    if (!success) {
+      exitOnSolverTimeout(state,
+                           "solver timeout at " __FILE__ ":" __LINE_STRING__);
+    }
 
     // concrete address
     if (const auto CE = dyn_cast<ConstantExpr>(address.get())) {
@@ -2259,8 +2278,10 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
           bool result;
           ref<Expr> &match = cases_constraints[caseit->getSuccessorIndex()];
           bool success = solver->mayBeTrue(state, match, result);
-          assert(success && "FIXME: Unhandled solver failure");
-          (void) success;
+          if (!success) {
+            exitOnSolverTimeout(state, "solver timeout at " __FILE__
+                                        ":" __LINE_STRING__);
+          }
           if (result) {
             const BasicBlock *caseSuccessor = caseit->getCaseSuccessor();
             // Handle the case that a basic block might be the target of multiple
@@ -2432,8 +2453,10 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         v = optimizer.optimizeExpr(v, true);
         ref<ConstantExpr> value;
         bool success = solver->getValue(*free, v, value);
-        assert(success && "FIXME: Unhandled solver failure");
-        (void) success;
+        if (!success) {
+          exitOnSolverTimeout(state, "solver timeout at " __FILE__
+                                      ":" __LINE_STRING__);
+        }
         StatePair res = fork(*free, EqExpr::create(v, value), true);
         if (res.first) {
           uint64_t addr = value->getZExtValue();
@@ -3453,8 +3476,9 @@ std::string Executor::getAddressInfo(ExecutionState &state,
   } else {
     ref<ConstantExpr> value;
     bool success = solver->getValue(state, address, value);
-    assert(success && "FIXME: Unhandled solver failure");
-    (void) success;
+    if (!success) {
+      return "(getAddressInfo solver timeout)";
+    }
     example = value->getZExtValue();
     info << "\texample: " << example << "\n";
     std::pair< ref<Expr>, ref<Expr> > res = solver->getRange(state, address);
@@ -3679,8 +3703,10 @@ void Executor::callExternalFunction(ExecutionState &state,
       // NOTE: here comes concolic behaviour (symbolic --assignment-> concrete)
       ref<ConstantExpr> ce;
       bool success = solver->getValue(state, *ai, ce);
-      assert(success && "FIXME: Unhandled solver failure");
-      (void) success;
+      if (!success) {
+        exitOnSolverTimeout(state,
+                             "solver timeout at " __FILE__ ":" __LINE_STRING__);
+      }
       ce->toMemory(&args[wordIndex]);
       ObjectPair op;
       // Checking to see if the argument is a pointer to something
@@ -3884,8 +3910,10 @@ void Executor::executeAlloc(ExecutionState &state,
 
     ref<ConstantExpr> example;
     bool success = solver->getValue(state, size, example);
-    assert(success && "FIXME: Unhandled solver failure");
-    (void) success;
+    if (!success) {
+      exitOnSolverTimeout(state,
+                           "solver timeout at " __FILE__ ":" __LINE_STRING__);
+    }
 
     // Try and start with a small example.
     Expr::Width W = example->getWidth();
@@ -3893,8 +3921,10 @@ void Executor::executeAlloc(ExecutionState &state,
       ref<ConstantExpr> try_smaller = example->LShr(ConstantExpr::alloc(1, W));
       bool res;
       bool success = solver->mayBeTrue(state, EqExpr::create(try_smaller, size), res);
-      assert(success && "FIXME: Unhandled solver failure");
-      (void) success;
+      if (!success) {
+        exitOnSolverTimeout(state,
+                             "solver timeout at " __FILE__ ":" __LINE_STRING__);
+      }
       if (!res)
         break;
       example = try_smaller;
@@ -3906,14 +3936,18 @@ void Executor::executeAlloc(ExecutionState &state,
       // Check for exactly two values
       ref<ConstantExpr> example2;
       bool success = solver->getValue(*fixedSize.second, size, example2);
-      assert(success && "FIXME: Unhandled solver failure");
-      (void) success;
+      if (!success) {
+        exitOnSolverTimeout(state,
+                             "solver timeout at " __FILE__ ":" __LINE_STRING__);
+      }
       bool res;
       success = solver->mustBeTrue(*fixedSize.second,
                                    EqExpr::create(example2, size),
                                    res);
-      assert(success && "FIXME: Unhandled solver failure");
-      (void) success;
+      if (!success) {
+        exitOnSolverTimeout(state,
+                             "solver timeout at " __FILE__ ":" __LINE_STRING__);
+      }
       if (res) {
         executeAlloc(*fixedSize.second, example2, isLocal,
                      target, zeroMemory, reallocFrom);
@@ -4105,9 +4139,8 @@ void Executor::executeMemoryOperation(ExecutionState &state, bool isWrite,
       bool success = solver->mustBeTrue(state, check, inBounds);
       solver->setTimeout(time::Span());
       if (!success) {
-        state.pc() = state.prevPC();
-        terminateStateEarly(state, "Query timed out (bounds check).");
-        return;
+        exitOnSolverTimeout(state,
+                             "solver timeout at " __FILE__ ":" __LINE_STRING__);
       }
     }
     else {

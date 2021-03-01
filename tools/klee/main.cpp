@@ -382,6 +382,10 @@ public:
                        const char *errorSuffix);
   void setStartTime(std::time_t t) { start_time = t; }
   std::time_t getStartTime() const { return start_time; }
+  void reportInEngineTime() const {
+    std::time_t endTime = std::time(nullptr);
+    klee_message("In-engine time:%lu\n", endTime - start_time);
+  }
 
   std::string getOutputFilename(const std::string &filename);
   std::unique_ptr<llvm::raw_fd_ostream> openOutputFile(const std::string &filename);

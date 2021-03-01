@@ -108,6 +108,8 @@ Solver::getInitialValues(const Query& query,
   return success;
 }
 
+// FIXME: to better handle solver timeout, getRange prototype should be changed
+// to return bool indicating success or not.
 std::pair< ref<Expr>, ref<Expr> > Solver::getRange(const Query& query) {
   ref<Expr> e = query.expr;
   Expr::Width width = e->getWidth();

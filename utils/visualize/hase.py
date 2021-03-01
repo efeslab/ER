@@ -1151,6 +1151,20 @@ class HaseUtils(object):
 def setVisible(gs, subgraph):
     gs['visible'] = subgraph
 
+"""
+Util Functions
+"""
+"""
+@type arr string
+@param arr has the format "arrname[arrsize]"
+"""
+def getarrSize(arr):
+    return int(arr[arr.find('[')+1:-1])
+def getarrName(arr):
+    return arr.split('[')[0]
+"""
+main
+"""
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=
       "HASE cosntraint graph analysis cli mode (python3)")
@@ -1241,12 +1255,15 @@ if __name__ == "__main__":
         print(h.getRecInstsInfo(input_kinst_list))
 
     if args.getUN:
-        # @type: Dict(arrayname -> list of UN len)
-        arr2UNlen = {}
+        # @type: Dict(arrayname -> list of Indirect UN len)
+        arr2UNlenID = {}
+        # @type: Dict(arrayname -> list of Direct UN len)
+        arr2UNlenD = {}
         # @type: Dict(arrayname -> list of [Indirect Read CNT, Direct Read CNT])
         arr2ReadRef = {}
         # @type: Dict(arrayname -> list of indirect depth of read/write
         # accessing this array
+        # NOTE: this is currently not very helpful and not used in ranking
         arr2Indep = {}
         # a heuristic score for each array used for ranking
         # Current heuristic:
@@ -1256,7 +1273,12 @@ if __name__ == "__main__":
         arr2score = {}
         for n in subh.all_nodes_topo_order:
             if str(n.kind) == "UN":
-                arr2UNlen.setdefault(n.root, [0])[-1] += 1
+                arr2UNlenD.setdefault(n.root, [0])
+                arr2UNlenID.setdefault(n.root, [0])
+                if any([e.weight == 1.5  for e in subh.edges[n.id]]):
+                    arr2UNlenID[n.root][-1] += 1
+                else:
+                    arr2UNlenD[n.root][-1] += 1
                 readNodes = [e.source for e in subh.redges[n.id] \
                         if str(e.source.kind) == "3"]
                 if len(readNodes) > 0:
@@ -1269,48 +1291,62 @@ if __name__ == "__main__":
                     arr2ReadRef.setdefault(n.root, []).append(
                         [len(IndirectReads),
                          len(readNodes)-len(IndirectReads)])
-                    if len(IndirectReads) > 0:
-                        arr2Indep.setdefault(n.root, []).extend([
-                            subh.idep_map[n.id] for n in IndirectReads
-                            ])
+                    arr2Indep.setdefault(n.root, []).extend([
+                        subh.idep_map[n.id] for n in readNodes
+                        ])
                     score = 0
                     # accumulated length of UN chain at this point
-                    accu_l = sum(arr2UNlen[n.root])
-                    score = sum([accu_l*subh.idep_map[n.id] for n in
+                    accu_l = sum(arr2UNlenID[n.root])
+                    score = sum([accu_l*(subh.idep_map[n.id]+1) for n in
                         IndirectReads])
                     arr2score[n.root] = arr2score.get(n.root, 0) + score
-                    arr2UNlen[n.root].append(0)
+                    arr2UNlenID[n.root].append(0)
+                    arr2UNlenD[n.root].append(0)
             if str(n.kind) == "3" and (n.id in subh.edges) and \
                all([str(e.target.kind) != "UN" for e in subh.edges[n.id]]) and \
                any([e.weight == 1.5 for e in subh.edges[n.id]]):
                 # this is a Read Node not depending on any UN
                 # Should keep tracking of its root
-                arr2UNlen.setdefault(n.root, [0])
+                arr2UNlenID.setdefault(n.root, [0])
+                arr2UNlenD.setdefault(n.root, [0])
                 arr2ReadRef.setdefault(n.root, [[0,0]])[-1][0] += 1
+                arr2Indep.setdefault(n.root, []).append(subh.idep_map[n.id])
         # rank array name
-        ranked_arr = sorted(arr2UNlen.keys(),
-                key=lambda arr: arr2score.get(arr,0), reverse=True)
+        # (heuristic_score, length, arr_size)
+        ranked_arr = sorted(arr2UNlenD.keys(),
+                key=lambda arr:
+                  (arr2score.get(arr,0),
+                   sum(arr2UNlenID.get(arr, 0),
+                   getarrSize(arr))),
+                reverse=True)
+        size_ranked_arr = sorted(arr2UNlenD.keys(),
+                key=lambda arr: getarrSize(arr),
+                reverse=True)
         print("# Format:\n"
               "# Array: name[size]\n"
-              "#    UNlen(indirect ref, direct ref)" )
+              "#    (indirect UNlen, direct)(indirect ref, direct ref)" )
         for arr in ranked_arr:
-            UNL = arr2UNlen[arr]
+            UNLID = arr2UNlenID[arr]
+            UNLD = arr2UNlenD[arr]
             print("Array: %s" % arr)
-            arrsize = int(arr[arr.find('[')+1:-1])
             accu_l = 0
             accumulate_len = []
-            for l in UNL:
-                accu_l += l
+            for l_ID, l_D in zip(UNLID, UNLD):
+                accu_l += l_ID + l_D
                 accumulate_len.append(accu_l)
-            print("\t%s" % ', '.join(["%d(%d,%d)@[%d]" % (l, IR, R, accu_l) \
-                for l, (IR, R) , accu_l in \
-                zip(UNL, arr2ReadRef.get(arr, [[0,0]]), accumulate_len)]))
+            print("\t%s" % ', '.join(["(%d,%d)(%d,%d)@[%d]" % \
+                    (l_ID, l_D, IR, R, accu_l) \
+                for l_ID, l_D, (IR, R) , accu_l in \
+                zip(UNLID, UNLD, arr2ReadRef.get(arr, [[0,0]]), accumulate_len)]))
             indep_l = arr2Indep.get(arr, [0])
             print("\tindep: avg %f, max %d, score %d" %
                     (sum(indep_l)/len(indep_l),
                         max(indep_l), arr2score.get(arr,0)))
-        best_array = ranked_arr[0]
-        print("target_array:%s" % best_array.split('[')[0])
+        target_array=set()
+        target_array.add(ranked_arr[0])
+        target_array.add(size_ranked_arr[0])
+        print("target_array:%s" %
+                (','.join([getarrName(arr) for arr in target_array])))
     elif len(query_nodes) > 0:
         for n in query_nodes:
             print("query %s, kinst: %s" % (n.label, n.kinst))

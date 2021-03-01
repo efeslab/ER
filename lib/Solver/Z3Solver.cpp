@@ -10,6 +10,7 @@
 #include "klee/Config/config.h"
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Internal/Support/FileHandling.h"
+#include "klee/Internal/Support/MiscCmdLine.h"
 #include "klee/OptionCategories.h"
 
 #ifdef ENABLE_Z3
@@ -20,6 +21,7 @@
 #include "klee/Expr/Constraints.h"
 #include "klee/Expr/Assignment.h"
 #include "klee/Expr/ExprUtil.h"
+#include "klee/Expr/ExprDebugHelper.h"
 #include "klee/Solver/Solver.h"
 #include "klee/Solver/SolverImpl.h"
 #include "llvm/Support/CommandLine.h"
@@ -325,6 +327,18 @@ bool Z3SolverImpl::internalRunSolver(
   // ``Query`` rather than only sharing within a single call to
   // ``builder->construct()``.
   builder->clearConstructCache();
+
+  time::Span queryTimeOnce = t.check();
+  if (t.isMaxUpdated() && DebugDumpKQuery) {
+    if (objects) {
+      char dumpfilename[128];
+      snprintf(dumpfilename, sizeof(dumpfilename),
+               "queryTimeMaxOnce_%lu.kquery", queryTimeOnce.toMicroseconds());
+      debugDumpConstraintsImpl(query.constraints, *objects, dumpfilename);
+    } else {
+      klee_warning("queryTimeMaxOnce Updated but objects is NULL");
+    }
+  }
 
   if (runStatusCode == SolverImpl::SOLVER_RUN_STATUS_SUCCESS_SOLVABLE ||
       runStatusCode == SolverImpl::SOLVER_RUN_STATUS_SUCCESS_UNSOLVABLE) {

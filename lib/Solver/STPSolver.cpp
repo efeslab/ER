@@ -16,7 +16,9 @@
 #include "klee/Expr/Assignment.h"
 #include "klee/Expr/Constraints.h"
 #include "klee/Expr/ExprUtil.h"
+#include "klee/Expr/ExprDebugHelper.h"
 #include "klee/Internal/Support/ErrorHandling.h"
+#include "klee/Internal/Support/MiscCmdLine.h"
 #include "klee/OptionCategories.h"
 #include "klee/Solver/SolverImpl.h"
 
@@ -333,7 +335,7 @@ bool STPSolverImpl::computeInitialValues(
     const Query &query, const std::vector<const Array *> &objects,
     std::vector<std::vector<unsigned char>> &values, bool &hasSolution) {
   runStatusCode = SOLVER_RUN_STATUS_FAILURE;
-  TimerStatIncrementer t(stats::queryTime);
+  TimerStatIncrementerWithMax t(stats::queryTime, stats::queryTimeMaxOnce);
 
   vc_push(vc);
 
@@ -363,6 +365,14 @@ bool STPSolverImpl::computeInitialValues(
     runStatusCode = runAndGetCex(vc, builder, stp_e, objects, values,
                                  query.indep_elemset, hasSolution);
     success = true;
+  }
+
+  time::Span queryTimeOnce = t.check();
+  if (t.isMaxUpdated() && DebugDumpKQuery) {
+    char dumpfilename[128];
+    snprintf(dumpfilename, sizeof(dumpfilename), "queryTimeMaxOnce_%lu.kquery",
+             queryTimeOnce.toMicroseconds());
+    debugDumpConstraintsImpl(query.constraints, objects, dumpfilename);
   }
 
   if (success) {

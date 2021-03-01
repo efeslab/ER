@@ -164,11 +164,11 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modules")
 # directly modifying CMAKE_CXX_FLAGS so that other code can be easily built with
 # different flags.
 ################################################################################
-set(KLEE_COMPONENT_EXTRA_INCLUDE_DIRS "")
-set(KLEE_COMPONENT_CXX_DEFINES "")
-set(KLEE_COMPONENT_CXX_FLAGS "")
-set(KLEE_SOLVER_LIBRARIES "")
-set(KLEE_COMPONENT_EXTRA_LIBRARIES "")
+set(KLEE_COMPONENT_CXX_DEFINES ${KLEE_COMPONENT_CXX_DEFINES})
+set(KLEE_COMPONENT_CXX_FLAGS ${KLEE_COMPONENT_CXX_FLAGS})
+set(KLEE_SOLVER_LIBRARIES ${KLEE_SOLVER_LIBRARIES})
+set(KLEE_COMPONENT_EXTRA_INCLUDE_DIRS ${KLEE_COMPONENT_EXTRA_INCLUDE_DIRS})
+set(KLEE_COMPONENT_EXTRA_LIBRARIES ${KLEE_COMPONENT_EXTRA_LIBRARIES})
 
 
 ################################################################################

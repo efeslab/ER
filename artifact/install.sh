@@ -78,5 +78,10 @@ pip3 install wllvm
 
 ### bugbasev2
 echo Installing Dependencies for bugbasev2
-#sqlite: tcl
-apt-get install -y tcl
+#sqlite: tcl-dev
+apt-get install -y tcl-dev
+cd ${WORKDIR}/ER/third-party/bugbasev2
+make -C sqlite-7be932d all-bc
+make -C sqlite-4e8e485 all-bc
+make -C sqlite-787fa71 all-bc
+make -C php-74194 all-bc

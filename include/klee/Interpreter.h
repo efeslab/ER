@@ -44,6 +44,7 @@ public:
   virtual void incPathsExplored() = 0;
 
   virtual void processTestCase(const ExecutionState &state,
+                               bool getSymbolicSolution,
                                const char *err,
                                const char *suffix) = 0;
   /// Tell the interpreter when the symbolic engine started, excluding bitcode

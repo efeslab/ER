@@ -377,9 +377,8 @@ public:
 
   void setInterpreter(Interpreter *i);
 
-  void processTestCase(const ExecutionState  &state,
-                       const char *errorMessage,
-                       const char *errorSuffix);
+  void processTestCase(const ExecutionState &state, bool getSymbolicSolution,
+                       const char *errorMessage, const char *errorSuffix);
   void setStartTime(std::time_t t) { start_time = t; }
   std::time_t getStartTime() const { return start_time; }
   void reportInEngineTime() const {
@@ -570,47 +569,48 @@ static inline const char *double2percent(double f) {
 
 /* Outputs all files (.ktest, .kquery, .cov etc.) describing a test case */
 void KleeHandler::processTestCase(const ExecutionState &state,
+                                  bool getSymbolicSolution,
                                   const char *errorMessage,
                                   const char *errorSuffix) {
   int64_t total_queryCost_us = state.queryCost.toMicroseconds();
   if (!WriteNone) {
-    std::vector< std::pair<std::string, std::vector<unsigned char> > > out;
-    bool success = m_interpreter->getSymbolicSolution(state, out);
-
-    if (!success)
-      klee_warning("unable to get symbolic solution, losing test case");
-
-    const auto start_time = time::getWallTime();
-
     unsigned id = ++m_numTotalTests;
+    const auto start_time = time::getWallTime();
+    if (getSymbolicSolution) {
+      std::vector<std::pair<std::string, std::vector<unsigned char>>> out;
+      bool success = m_interpreter->getSymbolicSolution(state, out);
 
-    if (success) {
-      KTest b;
-      b.numArgs = m_argc;
-      b.args = m_argv;
-      b.symArgvs = 0;
-      b.symArgvLen = 0;
-      b.numObjects = out.size();
-      b.objects = new KTestObject[b.numObjects];
-      assert(b.objects);
-      for (unsigned i=0; i<b.numObjects; i++) {
-        KTestObject *o = &b.objects[i];
-        o->name = const_cast<char*>(out[i].first.c_str());
-        o->numBytes = out[i].second.size();
-        o->bytes = new unsigned char[o->numBytes];
-        assert(o->bytes);
-        std::copy(out[i].second.begin(), out[i].second.end(), o->bytes);
+      if (!success)
+        klee_warning("unable to get symbolic solution, losing test case");
+      else {
+        KTest b;
+        b.numArgs = m_argc;
+        b.args = m_argv;
+        b.symArgvs = 0;
+        b.symArgvLen = 0;
+        b.numObjects = out.size();
+        b.objects = new KTestObject[b.numObjects];
+        assert(b.objects);
+        for (unsigned i = 0; i < b.numObjects; i++) {
+          KTestObject *o = &b.objects[i];
+          o->name = const_cast<char *>(out[i].first.c_str());
+          o->numBytes = out[i].second.size();
+          o->bytes = new unsigned char[o->numBytes];
+          assert(o->bytes);
+          std::copy(out[i].second.begin(), out[i].second.end(), o->bytes);
+        }
+
+        if (!kTest_toFile(
+                &b, getOutputFilename(getTestFilename("ktest", id)).c_str())) {
+          klee_warning("unable to write output test case, losing it");
+        } else {
+          ++m_numGeneratedTests;
+        }
+
+        for (unsigned i = 0; i < b.numObjects; i++)
+          delete[] b.objects[i].bytes;
+        delete[] b.objects;
       }
-
-      if (!kTest_toFile(&b, getOutputFilename(getTestFilename("ktest", id)).c_str())) {
-        klee_warning("unable to write output test case, losing it");
-      } else {
-        ++m_numGeneratedTests;
-      }
-
-      for (unsigned i=0; i<b.numObjects; i++)
-        delete[] b.objects[i].bytes;
-      delete[] b.objects;
     }
 
     if (errorMessage) {

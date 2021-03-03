@@ -3549,7 +3549,8 @@ void Executor::terminateStateEarly(ExecutionState &state,
                                    const Twine &message) {
   if (!OnlyOutputStatesCoveringNew || state.coveredNew ||
       (AlwaysOutputSeeds && seedMap.count(&state)))
-    interpreterHandler->processTestCase(state, (message + "\n").str().c_str(),
+    interpreterHandler->processTestCase(state, /*getSymbolicSolution*/ true,
+                                        (message + "\n").str().c_str(),
                                         "early");
   terminateState(state);
 }
@@ -3557,7 +3558,8 @@ void Executor::terminateStateEarly(ExecutionState &state,
 void Executor::terminateStateOnExit(ExecutionState &state) {
   if (!OnlyOutputStatesCoveringNew || state.coveredNew ||
       (AlwaysOutputSeeds && seedMap.count(&state)))
-    interpreterHandler->processTestCase(state, 0, 0);
+    interpreterHandler->processTestCase(state, /*getSymbolicSolution*/ true, 0,
+                                        0);
   terminateState(state);
 }
 
@@ -3654,8 +3656,12 @@ void Executor::terminateStateOnError(ExecutionState &state,
       suffix_buf += ".err";
       suffix = suffix_buf.c_str();
     }
-
-    interpreterHandler->processTestCase(state, msg.str().c_str(), suffix);
+    // Upon solver timeout, get Symbolic assignment for this test case is both
+    // time-consuming and useless (the generated inputs are not for the whole
+    // trace).
+    bool getSymbolicSolution = (termReason != Timeout);
+    interpreterHandler->processTestCase(state, getSymbolicSolution,
+                                        msg.str().c_str(), suffix);
   }
 
   terminateState(state);

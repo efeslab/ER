@@ -452,6 +452,11 @@ cl::opt<bool> DebugValueConcretization(
     cl::desc("Print debug info related to value concretization from data "
              "traces (default=false)"),
     cl::cat(HASECat));
+cl::opt<unsigned>
+    ReportInterval("--report-interval", cl::init(300),
+                   cl::desc("How frequent (every n seconds) klee should print "
+                            "execution info. (default=300)"),
+                   cl::cat(HASECat));
 } // namespace
 
 namespace klee {
@@ -3428,10 +3433,10 @@ void Executor::run(ExecutionState &initialState) {
       << std::asctime(std::localtime(&startT_time_t)) << '\n';
   time::Point lastReportT = time::getWallTime();
   while (!states.empty() && !haltExecution) {
-    // report per 5 mins
+    // default report interval is 5 mins
     time::Point nowT = time::getWallTime();
     time::Span elapsed = nowT - lastReportT;
-    if (elapsed.toSeconds() >= 60*5) {
+    if (elapsed.toSeconds() >= ReportInterval) {
       lastReportT = nowT;
       info_requested = true;
     }

@@ -10,7 +10,7 @@ Throughout this README, all commands should be executed in a terminal will be en
 
 ** Setup
 
-First, please download our artifact package paper618.tar.gz using the provided link and load it into docker.
+First, please download our artifact package paper618.tar.gz using the link provided on HotCrp and load it into docker.
 E.g. on linux, run
 ```bash
 gzip -c -d paper618.tar.gz | docker load

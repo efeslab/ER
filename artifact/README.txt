@@ -75,6 +75,7 @@ cd /ER/third-party/bugbasev2/php-74194
 cd /ER/third-party/bugbasev2/python-2018-1000030
 ```
 You can refer to the Table 1 for expected number of iterations (the "#Occur" column) and time cost (the "Symbex Time" column).
+But note that column "Symbex Time" does not include the time to record failure trace, nor KLEE initialization. So you may end up spend more than (but should < 2x) the "Symbex Time" to reproduce a failure.
 
 ** Availability
 

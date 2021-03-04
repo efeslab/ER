@@ -57,9 +57,9 @@ You should be able to see the following sequences of messages in stdout:
 3. "Fully replayed, abort"
   This message should appear right after the third iteration. It means two iterations already fully replayed the failure trace so there is no need for a third iteration. Then, ER will run klee again to verify the genereated inputs indeed reproduce the origin failure.
 
-4. "Checking whether ER reproduce the same control flow"
+4. "Checking whether ER reproduces the same control flow"
   This message reports the failure reproduction result.
-  If it says "Same control flow verified", then ER successfully reproduce the failure.
+  If it says "Same control flow verified", then ER successfully reproduces the failure.
 
 5. "ER Finished"
   Congratulations! You have successfully run ER on one sqlite bug. Script will report the total number of iterations and time spent in offline symbolic execution.

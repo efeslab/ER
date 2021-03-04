@@ -85,3 +85,4 @@ make -C sqlite-7be932d all-bc
 make -C sqlite-4e8e485 all-bc
 make -C sqlite-787fa71 all-bc
 make -C php-74194 all-bc
+make -C python-2018-1000030 all-bc

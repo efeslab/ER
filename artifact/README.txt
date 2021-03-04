@@ -75,7 +75,7 @@ cd /ER/third-party/bugbasev2/php-74194
 cd /ER/third-party/bugbasev2/python-2018-1000030
 ```
 You can refer to the Table 1 for expected number of iterations (the "#Occur" column) and time cost (the "Symbex Time" column).
-But note that column "Symbex Time" does not include the time to record failure trace, nor KLEE initialization. So you may end up spend more than (but should < 2x) the "Symbex Time" to reproduce a failure.
+Note that column "Symbex Time" does not include the time to record failure trace, nor KLEE initialization. So you may end up spend more than the "Symbex Time" to reproduce a failure.
 
 ** Availability
 
@@ -181,6 +181,9 @@ Then you can use the tool `pathviewer -dump` to compare two control-flow traces 
 ```bash
 make verify
 ```
+Note that for concurrent applications (e.g. python-2018-1000030), we should also enforce the recorded thread-interleaving while running the program with er-generated inputs.
+However, the thread-interleaving enforcement has not been implemented. As a result, for concurrent applications, you may find the control-flow mismatches in this precise comparison.
+In such case, you can only rely on the above `make elf-fail` and `make elf-fail-er` to verify that the er-generated inputs lead to the same failure.
 
 In the end, you can also see ER statistics (number of iterations and symbolic replay time):
 ```bash

@@ -174,7 +174,8 @@ usage: (klee_init_env) [options] [program arguments]\n\
   -symbolic-sock-handler    - Inform socket handler that it is used during a\n\
                               symbolic replay. (default=false)\n\
   -symbolic-urandom <size>  - Specify the size (>0) of a symbolic /dev/urandom\n\
-  -conc-urandom <file>      - Specify the content of a concrete fake /dev/urandom\n");
+  -conc-urandom <file>      - Specify the content of a concrete fake /dev/urandom\n\
+  -argv0 <string>           - Overwrite argv[0] to please certain applications\n");
   }
 
   while (k < argc) {
@@ -358,6 +359,12 @@ usage: (klee_init_env) [options] [program arguments]\n\
       if (++k == argc)
         __emit_error(msg);
       fid.conc_urandom_path = argv[k++];
+    } else if (__streq(argv[k], "--argv0") ||
+               __streq(argv[k], "-argv0")) {
+      const char *msg = "--argv0 expects a string argument";
+      if (++k == argc)
+        __emit_error(msg);
+      new_argv[0] = argv[k++];
     } else {
       /* simply copy arguments */
       __add_arg(&new_argc, new_argv, argv[k++], 1024);

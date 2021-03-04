@@ -103,7 +103,17 @@ int gettimeofday(struct timeval *__restrict tv, void *__restrict tz) {
     ++call_cnt;
   } else {
     if (tv) {
-      uint64_t ktime = klee_get_time();
+      // FIXME: here should be
+      // uint64_t ktime = klee_get_time();
+      // Or even call the underlying syscall
+      // However, I haven't built the infrastructure to record and replay
+      // posix/syscall arguments. Without that, I cannot craft an oracle ktest
+      // nor make use of the er-generated posix/syscall arguments.
+      // This is not a fundamental limitation of ER, but hundreds of lines of
+      // engineering effort.
+      // I use fake time (always zero) for the artifact evaluation, which can
+      // help me replay the python-2018-1000030 failure.
+      uint64_t ktime = 0;
       tv->tv_sec = ktime / 1000000;
       tv->tv_usec = ktime % 1000000;
     }

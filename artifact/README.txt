@@ -129,7 +129,7 @@ The recorded trace locates in `record.1.klee-out/test000001.path`, you can use t
 # see a summary of recorded events like branches(FORK), data recording (DATAREC), etc.
 pathviewer record.1.klee-out/test000001.path
 # see a complete dump of the trace
-pathviewer -dump recorded.1.klee-out/test000001.path | less
+pathviewer -dump record.1.klee-out/test000001.path | less
 ```
 
 In later iterations, you should use iteration number as part of the make target. E.g.

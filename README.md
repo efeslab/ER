@@ -1,6 +1,12 @@
-# Execution Reconstruction
+# Execution Reconstruction(ER)
 
-This repo contains the implementation of the PLDI'21 paper "Reproducing Production Failures with Execution Reconstruction". Our implementation is based on [KLEE](https://klee.github.io/) v2.1 and llvm-8.
+This repo contains the implementation of the PLDI'21 paper "Execution Reconstruction: Harnessing Failure Reoccurrences for Failure Reproduction". Our implementation is based on [KLEE](https://klee.github.io/) v2.1 and llvm-8.
+
+## Description
+
+ER is a hybrid failure reproduction tool utilizing symbolic execution and record/replay. At runtime, ER collects control-flow traces of reoccurring failures and incrementally traces selective data values everytime failure reoccurs. At offline, ER runs symbolic execution (KLEE) to gather path constraints of the failure-incurring input and reconstruct input data by constraint solving. When the path constraints become too complex for solver to reason, ER analyzes the constraint and instruct runtime data tracing to also record data which if known can simplify the complex constraint.
+
+After such iterative procedures of online tracing and offline symbolic execution, ER generates the failure-incurring input which is guaranteed to reproduce the reoccurring failure.
 
 ## Build from source
 
@@ -93,4 +99,11 @@ make -j`nprocs` install
 
 ## Usage
 
-Please refer to our [artifact documentation](artifact/README.md) for installation and basic usage.
+### Re-run the experiment in our paper
+
+Please refer to our [artifact documentation](artifact/README.txt) for docker image installation and basic usage.
+
+### Run arbitrary program with ER
+
+Since ER is based on KLEE, a symbolic execution engine running on LLVM IR bitcode, you need to first compile the program into LLVM IR (e.g. using wllvm, please refer to [klee coreutils example](https://klee.github.io/tutorials/testing-coreutils/) for more information) and be able to run it concretly with KLEE's POSIX environment (using KLEE as a LLVM bitcode interpreter).
+To reconstruct a failing execution, ER also requires an oracle failure-incurring input to simulate failure reoccurrences and iterative control-flow + data values tracing in KLEE.

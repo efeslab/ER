@@ -1,4 +1,4 @@
-* Artifact for submission "Reproducing Production Failures with Execution Reconstruction"
+* Artifact for submission "Execution Reconstruction: Harnessing Failure Reoccurrences for Failure Reproduction"
 
 Thank you for evaluating the software artifact of ER. This artifact is designed for the ACM Artifacts Available and Functional Badge.
 
@@ -10,10 +10,10 @@ Throughout this README, all commands should be executed in a terminal will be en
 
 ** Setup
 
-First, please download our artifact package paper618.tar.gz using the link provided on HotCrp and load it into docker.
+First, the docker image "er-docker.tar.gz" should be available in the same directory of this README.txt, Please load it into docker.
 E.g. on linux, run
 ```bash
-gzip -c -d paper618.tar.gz | docker load
+gzip -c -d er-docker.tar.gz | docker load
 ```
 Alternatively, if permitted to use external files from dockerhub, you can also simply pull our artifact image:
 ```bash
@@ -216,7 +216,7 @@ This is exactly what `/ER/third-party/bugbasev2/utils/run-er.sh` does.
 * List of claims from the paper supported by this artifact
 
 1. At the end of Introduction: Shepherded Symbolic Execution plus Key Data Value Selection can overcome solver bottlenecks.
-  Supported by ER can reproduce the failure with control-flow and selected data value. However, simply running KLEE, even with full control-flow trace but without data values, cannot reproduce the same failure.
+  ER can reproduce the failure with control-flow and selected data value. However, simply running KLEE, even with full control-flow trace but without data values, cannot reproduce the same failure.
   To compare ER with KLEE+control-flow trace, you need to disable the solver timeout detection so that you can symbolically replay the first iteration (which does not record data values) as long as possible.
   ```bash
   make replay.1.klee-out ENABLETIMEOUT=0

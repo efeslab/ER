@@ -129,3 +129,11 @@ Please refer to our [artifact documentation](artifact/README.txt) for docker ima
 
 Since ER is based on KLEE, a symbolic execution engine running on LLVM IR bitcode, you need to first compile the program into LLVM IR (e.g. using wllvm, please refer to [klee coreutils example](https://klee.github.io/tutorials/testing-coreutils/) for more information) and be able to run it concretly with KLEE's POSIX environment (using KLEE as a LLVM bitcode interpreter).
 To reconstruct a failing execution, ER also requires an oracle failure-incurring input to simulate failure reoccurrences and iterative control-flow + data values tracing in KLEE.
+
+
+
+## Special Thanks
+
+- [Yiming Shi](https://github.com/syiming) analysed some KLEE constraint solving statistics and optimized the independent solver.
+- [Yongwei Yuan](https://github.com/VictorYYW) and [Ruiyang Zhu](https://github.com/ry4nzhu) helped put together [a collection of software failures](https://github.com/efeslab/bugbasev2) for our evaluation.
+

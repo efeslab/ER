@@ -8,6 +8,28 @@ ER is a hybrid failure reproduction tool utilizing symbolic execution and record
 
 After such iterative procedures of online tracing and offline symbolic execution, ER generates the failure-incurring input which is guaranteed to reproduce the reoccurring failure.
 
+## Components
+
+1. Sherperded Symbolic Execution: modified based on KLEE.
+
+   (1) [Symbolic Execution Engine](lib/)
+
+   (2) [POSIX runtime](runtime/POSIX)
+
+2. Key Data Value Selection:
+
+   (1) KLEE Constraint Graph to DOT or JSON [converter](tools/kleaver)
+
+   (2) Constraint Graph visualization: DOT viewer [Gephi](https://gephi.org/) (external tool), [Gephi python plugin for better visualization](utils/visualize/hase.py)
+
+   (3) [Graph analysis script](utils/visualize/hase.py)
+
+3. Data Recording (PTWrite) Instrumentation: [cmdline tool](tools/prepass), [instrumentation pass](lib/Module/PTWritePass.cpp)
+
+4. Software Execution Trace: [examination tool](tools/pathviewer)
+
+5. [Artifact and Docker image building instructions](artifact/)
+
 ## Build from source
 
 The following build instructions are tested on Ubuntu 18.04. Assume your working directory is `${WORKDIR}`.

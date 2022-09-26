@@ -490,7 +490,7 @@ static bool AnalyzeInputAST(const char *Filename,
                    ((aname == bname) && (aDepth < bDepth)) ||
                    ((aname == bname) && (aDepth == bDepth) && (aIdx >= bIdx));
           });
-      for (const ref<Expr> &e: tosort) {
+      for (const ref<ReadExpr> &e: tosort) {
         e->print(os);
         os << " : " << IDCalc.query(e) << '\n';
       }

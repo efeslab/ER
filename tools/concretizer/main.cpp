@@ -33,9 +33,10 @@ int main(int argc, char **argv) {
   cl::SetVersionPrinter(klee::printVersion);
   StringMap<cl::Option *> &map = cl::getRegisteredOptions();
   for (auto &elem : map) {
-      if (elem.second->Category == &llvm::cl::GeneralCategory) {
-          elem.second->setHiddenFlag(cl::Hidden);
-      }
+    auto &categories = elem.second->Categories;
+    if (std::find(categories.begin(), categories.end(), &llvm::cl::GeneralCategory) != categories.end()) {
+            elem.second->setHiddenFlag(cl::Hidden);
+    }
   }
   cl::ParseCommandLineOptions(argc, argv);
 

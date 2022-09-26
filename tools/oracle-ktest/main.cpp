@@ -73,7 +73,8 @@ static KTest *GetKTest(std::string &path) {
 static void HideOptions(cl::OptionCategory &Category) {
     StringMap<cl::Option *> &map = cl::getRegisteredOptions();
     for (auto &elem : map) {
-        if (elem.second->Category == &Category) {
+	auto &categories = elem.second->Categories;
+        if (std::find(categories.begin(), categories.end(), &Category) != categories.end()) {
             elem.second->setHiddenFlag(cl::Hidden);
         }
     }

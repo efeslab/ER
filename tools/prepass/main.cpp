@@ -130,7 +130,8 @@ llvm::cl::opt<bool> AssignDebugIR(
 static void HideOptions() {
     StringMap<cl::Option *> &map = cl::getRegisteredOptions();
     for (auto &elem : map) {
-        if (elem.second->Category != &klee::HASEPrePassCat) {
+	auto &categories = elem.second->Categories;
+        if (std::find(categories.begin(), categories.end(), &klee::HASEPrePassCat) != categories.end()) {
             elem.second->setHiddenFlag(cl::Hidden);
         }
     }

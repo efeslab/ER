@@ -687,7 +687,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
       auto f = openTestFile("stack.path", id);
       if (f) {
         unsigned i = 0;
-        for (const auto s : stackPaths) {
+        for (const auto &s : stackPaths) {
           *f << i++ << " Instr: " << s.instcnt << '\n'
              << s.str << '\n';
         }
@@ -700,7 +700,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
                                     consPaths);
       auto f = openTestFile("cons.path", id);
       if (f) {
-        for (const auto cs : consPaths) {
+        for (const auto &cs : consPaths) {
           *f << "Instr: " << cs.instcnt << '\n'
              << "New: " << cs.str << '\n';
         }
@@ -741,7 +741,7 @@ void KleeHandler::processTestCase(const ExecutionState &state,
         int64_t final_queryCost = (last_inst_iter == statsPaths.end())? 0 : last_inst_iter->queryCost_us;
         sort(statsPaths.begin(), statsPaths.end(), [](auto a, auto b){return a.queryCost_increment_us > b.queryCost_increment_us;});
         double queryCost_acc = 0.0;
-        for (const auto exs : statsPaths) {
+        for (const auto &exs : statsPaths) {
           double queryCost_percent = ((double)(exs.queryCost_us)/total_queryCost_us);
           double queryCost_increment_percent = ((double)(exs.queryCost_increment_us)/final_queryCost);
           *f << "Instr " << exs.instructions_cnt << '\n'

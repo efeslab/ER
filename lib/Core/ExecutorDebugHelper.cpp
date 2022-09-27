@@ -1,4 +1,4 @@
-#include "ExecutorDebugHelper.h"
+#include "klee/ExecutorDebugHelper.h"
 #include <fstream>
 
 #include "llvm/Support/raw_ostream.h"
@@ -28,7 +28,7 @@ void debugDumpLLVMValue(llvm::Value *V) {
 /// FIXME: this is no longer a debug helper. iterative constraints
 ///   simplification depends on this function to dump the constraints from on going
 ///   symbolic replay.
-void debugDumpConstraintsEval(ExecutionState &state, ConstraintManager &cm,
+void debugDumpConstraintsEval(const ExecutionState &state, const ConstraintManager &cm,
                               const std::vector<ref<Expr>> &expr_vec,
                               const char *filename) {
   std::vector<const Array*> symbolic_objs;
@@ -49,7 +49,7 @@ void debugDumpConstraintsEval(ExecutionState &state, ConstraintManager &cm,
 ///   If null, the query will evalute `false` and ask for assignment.
 ///   You can use `debugExpr` as a null ref<Expr> in gdb
 ref<Expr> debugExpr = ref<Expr>(0);
-void debugDumpConstraints(ExecutionState &state, ConstraintManager &cm, ref<Expr> expr, const char *filename) {
+void debugDumpConstraints(const ExecutionState &state, const ConstraintManager &cm, ref<Expr> expr, const char *filename) {
   std::vector<ref<Expr>> exprs;
   if (!expr.isNull()) {
     exprs.push_back(expr);

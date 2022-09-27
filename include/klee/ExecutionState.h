@@ -147,6 +147,12 @@ public:
   /// of a trace
   std::unordered_map<std::string, unsigned int> func_inst_map;
 
+  /// @brief Tracks problematic symbolic values which terminate current state if they cannot be concretized
+  struct {
+    std::vector<ref<Expr>> symbolicMallocSize;
+    std::vector<ref<Expr>> symbolicPOSIXArgs;
+  } errorSymbolicEvals;
+
 private:
   ExecutionState() : replayPosition(0), replayDataRecEntriesPosition(0), nbranches_rec(0), ptreeNode(0) {}
 

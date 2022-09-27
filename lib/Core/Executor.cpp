@@ -23,13 +23,13 @@
 #include "StatsTracker.h"
 #include "TimingSolver.h"
 #include "UserSearcher.h"
-#include "ExecutorDebugHelper.h"
 #include "ExecutorConfig.h"
 
 #include "klee/Common.h"
 #include "klee/Config/Version.h"
 #include "klee/ExecutionState.h"
 #include "klee/ExecutorCmdLine.h"
+#include "klee/ExecutorDebugHelper.h"
 #include "klee/Expr/Assignment.h"
 #include "klee/Expr/Expr.h"
 #include "klee/Expr/ExprPPrinter.h"
@@ -1759,13 +1759,13 @@ void Executor::executeCall(ExecutionState &state,
         argmask <<= 1;
       }
       if (!AllowSymbolicPOSIXCall && hasSymbolicArgs) {
+        state.errorSymbolicEvals.symbolicPOSIXArgs = symbolicArgs;
         std::string sbuf;
         llvm::raw_string_ostream sos(sbuf);
+        sos << "Calling POSIX Runtime with symbolic args:\n";
         state.dumpStack(sos);
-        klee_message("Calling POSIX Runtime with symbolic args:\n%s\n", sos.str().c_str());
-        std::string file_path = interpreterHandler->getOutputFilename("symbolicPOSIX.kquery");
-        debugDumpConstraintsEval(state, state.constraints, symbolicArgs, file_path.c_str());
-        terminateStateOnError(state, "symbolic args in the POSIX", Abort);
+        sos << "\n";
+        terminateStateOnError(state, sos.str(), Abort, ".symbolicPOSIX");
       }
     }
   }
@@ -3343,7 +3343,6 @@ void Executor::doDumpStates() {
   if (!DumpStatesOnHalt || states.empty())
     return;
 
-  printInfo(llvm::errs());
   klee_message("halting execution, dumping remaining states");
   for (const auto &state : states)
     terminateStateEarly(*state, "Execution halting.");
@@ -3523,7 +3522,7 @@ std::string Executor::getAddressInfo(ExecutionState &state,
 
 
 void Executor::terminateState(ExecutionState &state) {
-  printInfo(llvm::errs());
+  //printInfo(llvm::errs());
 
   if (replayKTest && state.replayPosition!=replayKTest->numObjects) {
     klee_warning_once(replayKTest,
@@ -3896,15 +3895,13 @@ void Executor::executeAlloc(ExecutionState &state,
   } else if (!AllowSymbolicMalloc) {
     // we need to stop replaying and dump the symbolic "size" so that ptwrite
     // can be instrumented and help us concretize this in the next iteration.
+    state.errorSymbolicEvals.symbolicMallocSize.push_back(size);
     std::string sbuf;
     llvm::raw_string_ostream sos(sbuf);
+    sos << "Calling malloc with symbolic size:\n";
     state.dumpStack(sos);
-    std::vector<ref<Expr>> symbolicEvals;
-    symbolicEvals.push_back(size);
-    klee_message("Calling malloc with symbolic size:\n%s\n", sos.str().c_str());
-    std::string file_path = interpreterHandler->getOutputFilename("symbolicMalloc.kquery");
-    debugDumpConstraintsEval(state, state.constraints, symbolicEvals, file_path.c_str());
-    terminateStateOnError(state, "calling malloc with symbolic size", Abort);
+    sos << "\n";
+    terminateStateOnError(state, sos.str(), Abort, ".symbolicmalloc");
   } else {
     // XXX For now we just pick a size. Ideally we would support
     // symbolic sizes fully but even if we don't it would be better to

@@ -12,6 +12,7 @@
 #include "klee/Config/Version.h"
 #include "klee/ExecutionState.h"
 #include "klee/ExecutorCmdLine.h"
+#include "klee/ExecutorDebugHelper.h"
 #include "klee/Expr/Expr.h"
 #include "klee/Internal/ADT/KTest.h"
 #include "klee/Internal/ADT/TreeStream.h"
@@ -855,6 +856,16 @@ void KleeHandler::processTestCase(const ExecutionState &state,
             *f << funcname << '\n';
         }
       }
+    }
+
+    // Dump problematic symbolic expressions that could not be evaluated to concrete values
+    if (!state.errorSymbolicEvals.symbolicMallocSize.empty()) {
+      std::string fpath = getOutputFilename(getTestFilename("symbolicMalloc.kquery", id));
+      debugDumpConstraintsEval(state, state.constraints, state.errorSymbolicEvals.symbolicMallocSize, fpath.c_str());
+    }
+    else if (!state.errorSymbolicEvals.symbolicPOSIXArgs.empty()) {
+      std::string fpath = getOutputFilename(getTestFilename("symbolicPOSIX.kquery", id));
+      debugDumpConstraintsEval(state, state.constraints, state.errorSymbolicEvals.symbolicMallocSize, fpath.c_str());
     }
   } // if (!WriteNone)
 

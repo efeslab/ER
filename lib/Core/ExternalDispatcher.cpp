@@ -292,7 +292,7 @@ Function *ExternalDispatcherImpl::createDispatcher(Function *target,
 
   // Get the target function type.
   FunctionType *FTy = cast<FunctionType>(
-      cast<PointerType>(target->getType())->getElementType());
+      cast<PointerType>(target->getType())->getPointerElementType());
 
   // Each argument will be passed by writing it into gTheArgsP[i].
   unsigned i = 0, idx = 2;

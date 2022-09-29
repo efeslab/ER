@@ -789,7 +789,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
       // better we could support user definition, or use the EXE style
       // hack where we check the object file information.
 
-      Type *ty = i->getType()->getElementType();
+      Type *ty = i->getType()->getPointerElementType();
       uint64_t size = 0;
       if (ty->isSized()) {
 	size = kmodule->targetData->getTypeStoreSize(ty);
@@ -839,7 +839,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
           os->write8(offset, ((unsigned char*)addr)[offset], Expr::FLAG_INITIALIZATION, nullptr);
       }
     } else {
-      Type *ty = i->getType()->getElementType();
+      Type *ty = i->getType()->getPointerElementType();
       uint64_t size = kmodule->targetData->getTypeStoreSize(ty);
       MemoryObject *mo = memory->allocate(size, /*isLocal=*/false,
                                           /*isGlobal=*/true, /*allocSite=*/v,
@@ -2411,9 +2411,9 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     if (f) {
       const FunctionType *fType =
-        dyn_cast<FunctionType>(cast<PointerType>(f->getType())->getElementType());
+        dyn_cast<FunctionType>(cast<PointerType>(f->getType())->getPointerElementType());
       const FunctionType *fpType =
-        dyn_cast<FunctionType>(cast<PointerType>(fp->getType())->getElementType());
+        dyn_cast<FunctionType>(cast<PointerType>(fp->getType())->getPointerElementType());
 
       // special case the call with a bitcast case
       if (fType != fpType) {
@@ -4678,7 +4678,7 @@ size_t Executor::getAllocationAlignment(const llvm::Value *allocSite) const {
       llvm::PointerType *ptrType =
           dyn_cast<llvm::PointerType>(globalVar->getType());
       assert(ptrType && "globalVar's type is not a pointer");
-      type = ptrType->getElementType();
+      type = ptrType->getPointerElementType();
     } else {
       type = GO->getType();
     }

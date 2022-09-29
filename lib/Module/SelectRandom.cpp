@@ -51,11 +51,11 @@ bool SelectRandomPass::runOnModule(Module &M) {
   const llvm::DataLayout &DL = M.getDataLayout();
   for (Module::iterator f = M.begin(), fe = M.end(); f != fe; ++f) {
     for (Function::iterator b = f->begin(), be = f->end(); b != be; ++b) {
-      std::string bname = b->getName();
+      std::string bname = b->getName().str();
       if (bname.substr(0, 4) == "POST")
         continue;
       for (BasicBlock::iterator i = b->begin(), ie = b->end(); i != ie; ++i) {
-        std::string iname = i->getName();
+        std::string iname = i->getName().str();
         if (iname.substr(0, 4) == "POST")
           continue;
         llvm::Type *itype = i->getType();

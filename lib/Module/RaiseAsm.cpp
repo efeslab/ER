@@ -17,7 +17,11 @@
 
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Host.h"
+#if LLVM_VERSION_CODE >= LLVM_VERSION(14, 0)
+#include "llvm/MC/TargetRegistry.h"
+#else
 #include "llvm/Support/TargetRegistry.h"
+#endif
 #if LLVM_VERSION_CODE >= LLVM_VERSION(6, 0)
 #include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
@@ -47,7 +51,7 @@ bool RaiseAsmPass::runOnInstruction(Module &M, Instruction *I) {
   if (!ci)
     return false;
 
-  InlineAsm *ia = dyn_cast<InlineAsm>(ci->getCalledValue());
+  InlineAsm *ia = dyn_cast<InlineAsm>(ci->getCalledOperand());
   if (!ia)
     return false;
 

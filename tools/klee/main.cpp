@@ -1496,7 +1496,7 @@ trySaveFinalModuleToFile(llvm::Module *M, const std::string &suffix_msg) {
     return;
 
   std::error_code EC;
-  llvm::raw_fd_ostream fs(SaveFinalModulePath, EC, llvm::sys::fs::F_None);
+  llvm::raw_fd_ostream fs(SaveFinalModulePath, EC, llvm::sys::fs::OF_None);
 
 #if LLVM_VERSION_CODE >= LLVM_VERSION(7, 0)
   llvm::WriteBitcodeToFile(*M, fs);
@@ -1599,7 +1599,7 @@ static void linkExternalModules(const Interpreter::ModuleOptions &Opts,
 int main(int argc, char **argv, char **envp) {
   atexit(llvm::llvm_shutdown);  // Call llvm_shutdown() on exit.
 
-  KCommandLine::HideOptions(llvm::cl::GeneralCategory);
+  KCommandLine::HideOptions(llvm::cl::getGeneralCategory());
 
   llvm::InitializeNativeTarget();
 

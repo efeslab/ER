@@ -178,6 +178,9 @@ private:
   const std::vector<PathEntry> *replayPath;
   const std::vector<DataRecEntry> *replayDataRecEntries;
 
+  /// @brief  Track the set of symbolic expressions that caused Executor to fork new states.
+  ExprHashSet branchConditions;
+
   /// The index into the current \ref replayKTest or \ref replayPath
   /// object. (moved inside ExecutionState, since we might replay multiple states at the same time)
   /// unsigned replayPosition;

@@ -12,7 +12,11 @@
 
 #include "klee/Config/Version.h"
 
-#include "llvm/IR/CallSite.h"
+#if LLVM_VERSION_CODE < LLVM_VERSION(8, 0)
+#include "llvm/IR/CallBase.h"
+#else
+#include "llvm/IR/InstrTypes.h"
+#endif
 #include "llvm/IR/Module.h"
 
 #include <memory>
@@ -41,9 +45,9 @@ linkModules(std::vector<std::unique_ptr<llvm::Module>> &modules,
 /// another possibility).
 ///
 /// If `moduleIsFullyLinked` is set to true it will be assumed that the
-///  module containing the `llvm::CallSite` is fully linked. This assumption
+///  module containing the `llvm::CallBase` is fully linked. This assumption
 ///  allows resolution of functions that are marked as overridable.
-llvm::Function *getDirectCallTarget(llvm::CallSite, bool moduleIsFullyLinked);
+llvm::Function *getDirectCallTarget(const llvm::CallBase &, bool moduleIsFullyLinked);
 
 /// Return true iff the given Function value is used in something
 /// other than a direct call (or a constant expression that

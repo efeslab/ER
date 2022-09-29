@@ -82,7 +82,7 @@ static void HideOptions(cl::OptionCategory &Category) {
 
 int main(int argc, char **argv) {
     sys::PrintStackTraceOnErrorSignal(argv[0]);
-    HideOptions(llvm::cl::GeneralCategory);
+    HideOptions(llvm::cl::getGeneralCategory());
     cl::SetVersionPrinter(klee::printVersion);
     cl::ParseCommandLineOptions(argc, argv);
 

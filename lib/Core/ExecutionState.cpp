@@ -385,7 +385,7 @@ void ExecutionState::pushFrame(Thread &t, KInstIterator caller, KFunction *kf) {
   // of functions which get executed during the suffix of a trace.
   if (DumpFunctionListSuffixLen > 0) {
     if (isInTargetProgram())
-      func_inst_map[kf->function->getName()] = steppedInstructions;
+      func_inst_map[kf->function->getName().str()] = steppedInstructions;
   }
 }
 

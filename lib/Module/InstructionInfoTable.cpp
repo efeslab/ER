@@ -120,7 +120,7 @@ public:
     if (dsub != nullptr) {
       auto path = dsub->getFilename();
       return std::unique_ptr<FunctionInfo>(new FunctionInfo(
-          0, getInternedString(path), dsub->getLine(), asmLine));
+          0, getInternedString(path.str()), dsub->getLine(), asmLine));
     }
 
     // Fallback: Mark as unknown
@@ -151,7 +151,7 @@ public:
         }
       }
       return std::unique_ptr<InstructionInfo>(new InstructionInfo(
-          0, getInternedString(full_path), line, column, asmLine));
+          0, getInternedString(full_path.str()), line, column, asmLine));
     }
 
     if (f != nullptr)

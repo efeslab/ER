@@ -17,6 +17,9 @@
 #include "klee/OptionCategories.h"
 
 #include "llvm/ADT/Hashing.h"
+#if LLVM_VERSION_CODE >= LLVM_VERSION(13, 0)
+#include "llvm/ADT/StringExtras.h"
+#endif
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instruction.h"
@@ -514,7 +517,11 @@ void ConstantExpr::toMemory(void *address) {
 }
 
 void ConstantExpr::toString(std::string &Res, unsigned radix) const {
+#if LLVM_VERSION_CODE >= LLVM_VERSION(13, 0)
+  Res = llvm::toString(value, radix, false);
+#else
   Res = value.toString(radix, false);
+#endif
 }
 
 ref<ConstantExpr> ConstantExpr::Concat(const ref<ConstantExpr> &RHS) {

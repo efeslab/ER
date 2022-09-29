@@ -25,7 +25,7 @@ klee_open_output_file(const std::string &path, std::string &error) {
   error = "";
   std::unique_ptr<llvm::raw_fd_ostream> f;
   std::error_code ec;
-  f = std::unique_ptr<llvm::raw_fd_ostream>(new llvm::raw_fd_ostream(path.c_str(), ec, llvm::sys::fs::F_None)); // FIXME C++14
+  f = std::unique_ptr<llvm::raw_fd_ostream>(new llvm::raw_fd_ostream(path.c_str(), ec, llvm::sys::fs::OF_None)); // FIXME C++14
   if (ec)
     error = ec.message();
   if (!error.empty()) {

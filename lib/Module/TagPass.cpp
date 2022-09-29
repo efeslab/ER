@@ -173,7 +173,7 @@ bool TagPass::runOnModuleByLoc(Module &M) {
           continue;
 
         auto *Scope = cast<DIScope>(loc.getScope());
-        std::string filename = Scope->getFilename();
+        std::string filename = Scope->getFilename().str();
 
         if (fileSet.find(filename) == fileSet.end()) {
           funcNotMatched = true;

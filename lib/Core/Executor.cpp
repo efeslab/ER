@@ -13,6 +13,7 @@
 #include "Context.h"
 #include "CoreStats.h"
 #include "ExternalDispatcher.h"
+#include "GetElementPtrTypeIterator.h"
 #include "ImpliedValue.h"
 #include "Memory.h"
 #include "MemoryManager.h"
@@ -54,13 +55,14 @@
 #include "klee/Solver/SolverCmdLine.h"
 #include "klee/Solver/SolverStats.h"
 #include "klee/TimerStatIncrementer.h"
-#include "klee/util/GetElementPtrTypeIterator.h"
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
+#if LLVM_VERSION_CODE < LLVM_VERSION(8, 0)
 #include "llvm/IR/CallSite.h"
+#endif
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
@@ -576,7 +578,7 @@ Executor::setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
     SmallString<128> LibPath(opts.LibraryDir);
     llvm::sys::path::append(LibPath, "libkleeRuntimeIntrinsic.bca");
     std::string error;
-    if (!klee::loadFile(LibPath.str(), modules[0]->getContext(), modules,
+    if (!klee::loadFile(LibPath.c_str(), modules[0]->getContext(), modules,
                         error)) {
       klee_error("Could not load KLEE intrinsic file %s", LibPath.c_str());
     }
@@ -728,7 +730,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
     // not defined in this module; if it isn't resolvable then it
     // should be null.
     if (f->hasExternalWeakLinkage() &&
-        !externalDispatcher->resolveSymbol(f->getName())) {
+        !externalDispatcher->resolveSymbol(f->getName().str())) {
       addr = Expr::createPointer(0);
     } else {
       addr = Expr::createPointer(reinterpret_cast<std::uint64_t>(f));
@@ -827,7 +829,7 @@ void Executor::initializeGlobals(ExecutionState &state) {
         if (i->getName() == "__dso_handle") {
           addr = &__dso_handle; // wtf ?
         } else {
-          addr = externalDispatcher->resolveSymbol(i->getName());
+          addr = externalDispatcher->resolveSymbol(i->getName().str());
         }
         if (!addr)
           klee_error("unable to load symbol(%s) while initializing globals.",
@@ -1218,6 +1220,7 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
     processTree->attach(current.ptreeNode, falseState, trueState);
     ref<Expr> true_constraint = condition;
     ref<Expr> false_constraint = Expr::createIsZero(condition);
+    branchConditions.insert(condition);
 
     if (!isInternal && !current.isInPOSIX()) {
       assert(current.isInUserMain && "We assumed state fork won't happen in uClibc, wrong!");
@@ -1874,8 +1877,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
           Expr::Width to = getWidthForLLVMType(t);
 
           if (from != to) {
-            CallSite cs = (isa<InvokeInst>(caller) ? CallSite(cast<InvokeInst>(caller)) :
-                           CallSite(cast<CallInst>(caller)));
+#if LLVM_VERSION_CODE >= LLVM_VERSION(8, 0)
+            const CallBase &cs = cast<CallBase>(*caller);
+#else
+            const CallSite cs(isa<InvokeInst>(caller)
+                            ? CallSite(cast<InvokeInst>(caller))
+                            : CallSite(cast<CallInst>(caller)));
+#endif
 
             // XXX need to check other param attrs ?
 #if LLVM_VERSION_CODE >= LLVM_VERSION(5, 0)
@@ -2340,10 +2348,15 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     // Ignore debug intrinsic calls
     if (isa<DbgInfoIntrinsic>(i))
       break;
-    CallSite cs(i);
+
+#if LLVM_VERSION_CODE >= LLVM_VERSION(8, 0)
+    const CallBase &cs = cast<CallBase>(*i);
+#else
+    const CallSite cs(i);
+#endif
 
     unsigned numArgs = cs.arg_size();
-    Value *fp = cs.getCalledValue();
+    Value *fp = cs.getCalledOperand();
 
     if (llvm::InlineAsm *AI = dyn_cast<llvm::InlineAsm>(fp)) {
       if (AI->getAsmString() == "ptwrite $0") {
@@ -2364,7 +2377,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         const DebugLoc &loc = i->getDebugLoc();
         if (loc) {
           auto *Scope = cast<llvm::DIScope>(loc.getScope());
-          std::string filename = Scope->getFilename();
+          std::string filename = Scope->getFilename().str();
           int line = loc.getLine();
           llvm::errs() << "Tag @ " << filename << ":" << line
                       << ", " << "Instructions: " << mcnt << "," << lcnt << ","
@@ -3692,7 +3705,7 @@ void Executor::callExternalFunction(ExecutionState &state,
     return;
 
   if (ExternalCalls == ExternalCallPolicy::None
-      && !okExternals.count(function->getName())) {
+      && !okExternals.count(function->getName().str())) {
     klee_warning("Disallowed call to external function: %s\n",
                function->getName().str().c_str());
     terminateStateOnError(state, "external calls disallowed", User);
@@ -4664,10 +4677,14 @@ size_t Executor::getAllocationAlignment(const llvm::Value *allocSite) const {
     type = AI->getAllocatedType();
   } else if (isa<InvokeInst>(allocSite) || isa<CallInst>(allocSite)) {
     // FIXME: Model the semantics of the call to use the right alignment
+#if LLVM_VERSION_CODE >= LLVM_VERSION(8, 0)
+    const CallBase &cs = cast<CallBase>(*allocSite);
+#else
     llvm::Value *allocSiteNonConst = const_cast<llvm::Value *>(allocSite);
-    const CallSite cs = (isa<InvokeInst>(allocSiteNonConst)
-                             ? CallSite(cast<InvokeInst>(allocSiteNonConst))
-                             : CallSite(cast<CallInst>(allocSiteNonConst)));
+    const CallSite cs(isa<InvokeInst>(allocSiteNonConst)
+                          ? CallSite(cast<InvokeInst>(allocSiteNonConst))
+                          : CallSite(cast<CallInst>(allocSiteNonConst)));
+#endif
     llvm::Function *fn =
         klee::getDirectCallTarget(cs, /*moduleIsFullyLinked=*/true);
     if (fn)
@@ -4754,6 +4771,13 @@ void Executor::printInfo(llvm::raw_ostream &os) {
   infoStream << msg_oss.str();
   infoStream.flush();
   os << msg_oss.str();
+  {
+    // dump branchConditions
+    char filenamebuf[128];
+    std::snprintf(filenamebuf, sizeof(filenamebuf), "branchConditions_cnt%03u.kquery", cnt);
+    std::string branchConditionsFilename = interpreterHandler->getOutputFilename(filenamebuf);
+    debugDumpConstraintsEval(**(states.begin()), ConstraintManager(), std::vector<ref<Expr>>(branchConditions.begin(), branchConditions.end()), branchConditionsFilename.c_str());
+  }
   ++cnt;
 }
 

@@ -15,7 +15,6 @@
 #else
 #include "llvm/Bitcode/ReaderWriter.h"
 #endif
-#include "llvm/IR/CallSite.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -160,7 +159,7 @@ int main(int argc, char **argv) {
     }
 
     std::error_code EC;
-    raw_fd_ostream fs(OutputFile, EC, llvm::sys::fs::F_None);
+    raw_fd_ostream fs(OutputFile, EC, llvm::sys::fs::OF_None);
     if (EC) {
       klee_error("error opening output file");
     }

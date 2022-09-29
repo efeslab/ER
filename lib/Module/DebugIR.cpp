@@ -215,13 +215,13 @@ public:
     DebugLoc NewLoc;
     if (Loc) {
       // I had a previous debug location: re-use the DebugLoc
-      NewLoc = DebugLoc::get(Line, Col,
+      NewLoc = DILocation::get(I.getContext(), Line, Col,
                              // Loc.getScope(RealInst->getContext()),
                              Loc.getScope(),
                              // Loc.getInlinedAt(RealInst->getContext()));
                              Loc.getInlinedAt());
     } else if (DINode *scope = findScope(&I)) {
-      NewLoc = DebugLoc::get(Line, Col, scope, nullptr);
+      NewLoc = DILocation::get(I.getContext(), Line, Col, scope, nullptr);
     } else {
       KLEE_DEBUG(dbgs() << "WARNING: no valid scope for instruction " << &I
                    << ". no DebugLoc will be present."
@@ -245,7 +245,7 @@ private:
       // unique_ptr<DICompileUnit> ExistingCU = CUToReplace->clone();
       Producer = CUToReplace->getProducer();
       IsOptimized = CUToReplace->isOptimized();
-      Flags = CUToReplace->getFlags();
+      Flags = CUToReplace->getFlags().str();
       RuntimeVersion = CUToReplace->getRuntimeVersion();
       SplitName = CUToReplace->getSplitDebugFilename();
     } else {
@@ -447,10 +447,10 @@ bool getSourceInfoFromModule(const Module &M, std::string &Directory,
   if (PathStr.length() == 0 || PathStr == "<stdin>")
     return false;
 
-  Filename = sys::path::filename(PathStr);
+  Filename = sys::path::filename(PathStr).str();
   SmallVector<char, 16> Path(PathStr.begin(), PathStr.end());
   sys::path::remove_filename(Path);
-  Directory = StringRef(Path.data(), Path.size());
+  Directory = std::string(Path.data(), Path.size());
   return true;
 }
 
@@ -468,8 +468,8 @@ bool getSourceInfoFromDI(const Module &M, std::string &Directory,
   // if (!CU->Verify())
   //  return false;
 
-  Filename = CU->getFilename();
-  Directory = CU->getDirectory();
+  Filename = CU->getFilename().str();
+  Directory = CU->getDirectory().str();
   return true;
 }
 
@@ -508,9 +508,9 @@ void DebugIR::generateFilename(std::unique_ptr<int> &fd) {
   fd.reset(new int);
   sys::fs::createTemporaryFile("debug-ir", "ll", *fd, PathVec);
   StringRef Path(PathVec.data(), PathVec.size());
-  Filename = sys::path::filename(Path);
+  Filename = sys::path::filename(Path).str();
   sys::path::remove_filename(PathVec);
-  Directory = StringRef(PathVec.data(), PathVec.size());
+  Directory = std::string(PathVec.data(), PathVec.size());
 
   GeneratedPath = true;
 }
@@ -529,7 +529,7 @@ void DebugIR::writeDebugBitcode(const Module *M, int *fd) {
 
   if (!fd) {
     std::string Path = getPath();
-    Out.reset(new raw_fd_ostream(Path, EC, sys::fs::F_Text));
+    Out.reset(new raw_fd_ostream(Path, EC, sys::fs::OF_Text));
     KLEE_DEBUG(dbgs() << "WRITING debug bitcode from Module " << M << " to file "
                  << Path << "\n");
   } else {

@@ -83,11 +83,11 @@ GetAllUndefinedSymbols(Module *M, std::set<std::string> &UndefinedSymbols) {
   for (auto const &Function : *M) {
     if (Function.hasName()) {
       if (Function.isDeclaration())
-        UndefinedSymbols.insert(Function.getName());
+        UndefinedSymbols.insert(Function.getName().str());
       else if (!Function.hasLocalLinkage()) {
         assert(!Function.hasDLLImportStorageClass() &&
                "Found dllimported non-external symbol!");
-        DefinedSymbols.insert(Function.getName());
+        DefinedSymbols.insert(Function.getName().str());
       }
     }
   }
@@ -96,17 +96,17 @@ GetAllUndefinedSymbols(Module *M, std::set<std::string> &UndefinedSymbols) {
        I != E; ++I)
     if (I->hasName()) {
       if (I->isDeclaration())
-        UndefinedSymbols.insert(I->getName());
+        UndefinedSymbols.insert(I->getName().str());
       else if (!I->hasLocalLinkage()) {
         assert(!I->hasDLLImportStorageClass() && "Found dllimported non-external symbol!");
-        DefinedSymbols.insert(I->getName());
+        DefinedSymbols.insert(I->getName().str());
       }
     }
 
   for (Module::const_alias_iterator I = M->alias_begin(), E = M->alias_end();
        I != E; ++I)
     if (I->hasName())
-      DefinedSymbols.insert(I->getName());
+      DefinedSymbols.insert(I->getName().str());
 
 
   // Prune out any defined symbols from the undefined symbols set
@@ -253,8 +253,14 @@ klee::linkModules(std::vector<std::unique_ptr<llvm::Module>> &modules,
   return composite;
 }
 
-Function *klee::getDirectCallTarget(CallSite cs, bool moduleIsFullyLinked) {
-  Value *v = cs.getCalledValue();
+Function *klee::getDirectCallTarget(
+#if LLVM_VERSION_CODE >= LLVM_VERSION(8, 0)
+    const CallBase &cs,
+#else
+    const CallSite &cs,
+#endif
+    bool moduleIsFullyLinked) {
+  Value *v = cs.getCalledOperand();
   bool viaConstantExpr = false;
   // Walk through aliases and bitcasts to try to find
   // the function being called.
@@ -289,11 +295,16 @@ Function *klee::getDirectCallTarget(CallSite cs, bool moduleIsFullyLinked) {
 
 static bool valueIsOnlyCalled(const Value *v) {
   for (auto user : v->users()) {
+#if LLVM_VERSION_CODE >= LLVM_VERSION(8, 0)
+    // Make sure the instruction is a call or invoke.
+    if (const auto *cs_ptr = dyn_cast<CallBase>(user)) {
+      const CallBase &cs = *cs_ptr;
+#else
     if (const auto *instr = dyn_cast<Instruction>(user)) {
       // Make sure the instruction is a call or invoke.
-      CallSite cs(const_cast<Instruction *>(instr));
+      const CallSite cs(const_cast<Instruction *>(instr));
       if (!cs) return false;
-
+#endif
       // Make sure that the value is only the target of this call and
       // not an argument.
       if (cs.hasArgument(v))

@@ -361,7 +361,7 @@ inline int Z3SolverImpl::Z3GetInitialRead(const Array *array,
 
   __attribute__((unused)) bool successfulEval =
       Z3_model_eval(builder->ctx, theModel, initial_read,
-                    /*model_completion=*/Z3_TRUE, &arrayElementExpr);
+                    /*model_completion=*/true, &arrayElementExpr);
   assert(successfulEval && "Failed to evaluate model");
   Z3_inc_ref(builder->ctx, arrayElementExpr);
   assert(Z3_get_ast_kind(builder->ctx, arrayElementExpr) == Z3_NUMERAL_AST &&
@@ -463,7 +463,7 @@ bool Z3SolverImpl::validateZ3Model(::Z3_solver &theSolver, ::Z3_model &theModel)
     __attribute__((unused))
     bool successfulEval =
         Z3_model_eval(builder->ctx, theModel, constraint,
-                      /*model_completion=*/Z3_TRUE, &rawEvaluatedExpr);
+                      /*model_completion=*/true, &rawEvaluatedExpr);
     assert(successfulEval && "Failed to evaluate model");
 
     // Use handle to do ref-counting.

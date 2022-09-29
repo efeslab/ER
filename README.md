@@ -2,6 +2,8 @@
 
 This repo contains the implementation of the PLDI'21 paper "Execution Reconstruction: Harnessing Failure Reoccurrences for Failure Reproduction". Our implementation is based on [KLEE](https://klee.github.io/) v2.1 and llvm-8.
 
+2022-09-28: ported to work with llvm 14.0.6
+
 ## Description
 
 ER is a hybrid failure reproduction tool utilizing symbolic execution and record/replay. At runtime, ER collects control-flow traces of reoccurring failures and incrementally traces selective data values everytime failure reoccurs. At offline, ER runs symbolic execution (KLEE) to gather path constraints of the failure-incurring input and reconstruct input data by constraint solving. When the path constraints become too complex for solver to reason, ER analyzes the constraint and instruct runtime data tracing to also record data which if known can simplify the complex constraint.

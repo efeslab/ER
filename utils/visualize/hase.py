@@ -117,7 +117,7 @@ class RecordableInst(object):
         self.recordSize = self.freq * 8 # 8B (64b), not self.width,
                                         # because of ptwrite limitation
         self.recordSizeNONPT = self.freq * self.width / 8
-        self.coverageScoreFreq = self.coverageScore / self.recordSize
+        self.coverageScoreFreq = self.coverageScore / self.recordSize if self.recordSize else 0
         if RecordableInst.SUBGRAPH:
             subgraph = pygraph.buildFromPyGraph(self.pygraph, concretized_nodes)
             self.max_idep = subgraph.max_idep()
@@ -163,10 +163,14 @@ class RecordableInst(object):
 Check if the kinst of a GyNode is valid
 node(GyNode)
 """
-def isKInstValid(node):
-    return (node.kinst is not None) and \
-            (len(node.kinst) > 0) and \
-            node.kinst != 'N/A'
+def isNodeKInstValid(node):
+    return (node.kinst is not None) and isKInstValid(node.kinst)
+
+"""
+Check if a given kinst string is valid
+"""
+def isKInstValid(kinstStr):
+    return len(kinstStr) > 0 and kinstStr != 'N/A'
 
 """
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -388,7 +392,7 @@ class PyGraph(object):
     def build_kinst2nodes(self):
         self.kinst2nodes = {}
         for node in self.gynodes:
-            if isKInstValid(node):
+            if isNodeKInstValid(node):
                 self.kinst2nodes.setdefault(node.kinst, set()).add(node.id)
 
     """
@@ -488,7 +492,7 @@ class PyGraph(object):
                   "dangling constant nodes detected")
 
         for seqid, n in enumerate(self.all_nodes_topo_order):
-            if (isKInstValid(n)) and (n.id not in checked_kinst_set):
+            if (isNodeKInstValid(n)) and (n.id not in checked_kinst_set):
                 for nid in self.kinst2nodes[n.kinst]:
                     checked_kinst_set.add(nid)
                 newRecordableInst = self.analyze_single_kinst(n.kinst,
@@ -531,7 +535,7 @@ class PyGraph(object):
                     # this node is hidden if:
                     # 1) it can be concretized here
                     # 2) it has a valid KInst
-                    if len(known_symbolic_nodes) > 0 and isKInstValid(node):
+                    if len(known_symbolic_nodes) > 0 and isNodeKInstValid(node):
                         hidden_nodes.add(node.id)
                 if len(const_nodes) + len(known_symbolic_nodes) > \
                 len(self.edges[node.id]):
@@ -587,7 +591,8 @@ class PyGraph(object):
     """
     @classmethod
     def coverageScoreFreq(cls, recinsts):
-        return cls.coverageScore(recinsts) / cls.recordSize(recinsts)
+        recSize = cls.recordSize(recinsts)
+        return cls.coverageScore(recinsts) / recSize if recSize else 0
 
     """
     same as above
@@ -761,7 +766,7 @@ class PyGraph(object):
     """
     def GetKInstSetRecordingSize(self, kinstset):
         return sum([self.GetNodeRecordingSize(n) for n in
-            [self.id_map[list(self.kinst2nodes[k])[0]] for k in kinstset]
+            [self.id_map[list(self.kinst2nodes[k])[0]] for k in kinstset if isKInstValid(k)]
             ])
 
     """
@@ -810,7 +815,7 @@ class PyGraph(object):
                 worklist.pop()
                 # collect and compare with children
                 n = self.id_map[wnid]
-                if isKInstValid(n) and (self.ALLOWPTR or n.ispointer == "false"):
+                if isNodeKInstValid(n) and (self.ALLOWPTR or n.ispointer == "false"):
                     self_bytes = self.GetNodeRecordingSize(n)
                 else:
                     self_bytes = maxint
@@ -1369,7 +1374,7 @@ if __name__ == "__main__":
                 f.close()
             print("All Label:")
             print("%s" % ', '.join(sorted([subh.id_map[nid].label
-                for kinst in kinst_sorted for nid in subh.kinst2nodes[kinst]])))
+                for kinst in kinst_sorted if isKInstValid(kinst) for nid in subh.kinst2nodes[kinst]])))
         else:
             print("Already Concretized!")
     elif args.recordUN is not None:
@@ -1396,7 +1401,7 @@ if __name__ == "__main__":
             f.close()
         print("All Label:")
         print("%s" % ', '.join(sorted([subh.id_map[nid].label
-            for kinst in kinst_sorted for nid in subh.kinst2nodes[kinst]])))
+            for kinst in kinst_sorted if isKInstValid(kinst) for nid in subh.kinst2nodes[kinst]])))
     else:
         r = subh.analyze_recordable(input_kinst_list)
         print("%d recordable instructions" % len(r))

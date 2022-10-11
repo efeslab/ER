@@ -152,6 +152,9 @@ public:
     std::vector<ref<Expr>> symbolicMallocSize;
     std::vector<ref<Expr>> symbolicPOSIXArgs;
   } errorSymbolicEvals;
+  /// @brief Tracks the total amount of non-Local (i.e., via malloc) memory has been allocated per state
+  /// Used to simulate out of memory behavior
+  uint64_t allocatedSize = 0;
 
 private:
   ExecutionState() : replayPosition(0), replayDataRecEntriesPosition(0), nbranches_rec(0), ptreeNode(0) {}

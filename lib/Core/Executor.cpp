@@ -415,6 +415,12 @@ cl::opt<bool> DebugCheckForImpliedValues(
     "debug-check-for-implied-values", cl::init(false),
     cl::desc("Debug the implied value optimization"),
     cl::cat(DebugCat));
+
+cl::opt<bool> DebugDumpAllocationSize(
+    "debug-dump-allocation-size", cl::init(false),
+    cl::desc("Debug the allocation size per state. Useful to determine the "
+             "--max-allocate-size and model out of memory behavior"),
+    cl::cat(DebugCat));
 /*** HASE related Options ***/
 cl::opt<bool>
     CallSolver("call-solver", cl::init(true),
@@ -459,6 +465,13 @@ cl::opt<unsigned>
                    cl::desc("How frequent (every n seconds) klee should print "
                             "execution info. (default=300)"),
                    cl::cat(HASECat));
+
+cl::opt<uint64_t> MaxAllocSize(
+    "max-allocate-size",
+    cl::desc("Max allocation size (per state) before return NULL. Simulate out "
+             "of memory behavior. (default=0, unlimited)"),
+    cl::init(0), cl::cat(HASECat));
+
 } // namespace
 
 namespace klee {
@@ -3888,31 +3901,46 @@ void Executor::executeAlloc(ExecutionState &state,
   TimerStatIncrementer timer(stats::executeAllocTime);
   size = toUnique(state, size);
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(size)) {
-    const llvm::Value *allocSite = state.prevPC()->inst;
-    if (allocationAlignment == 0) {
-      allocationAlignment = getAllocationAlignment(allocSite);
-    }
-    MemoryObject *mo =
-        memory->allocate(CE->getZExtValue(), isLocal, /*isGlobal=*/false,
-                         allocSite, allocationAlignment,
-                         /*isDeterm=*/state.shouldRecord());
-    if (!mo) {
-      bindLocal(target, state,
-                ConstantExpr::alloc(0, Context::get().getPointerWidth()));
+    uint64_t allocSize = CE->getZExtValue();
+    // Return NULL if max allocation size is reached. This is to simulate out of memory behavior
+    if (MaxAllocSize > 0 && state.allocatedSize + allocSize > MaxAllocSize && !isLocal) {
+      klee_warning("Max alloc reached, return NULL");
+      state.dumpStack();
+        bindLocal(target, state,
+                  ConstantExpr::alloc(0, Context::get().getPointerWidth()));
     } else {
-      ObjectState *os = bindObjectInState(state, mo, isLocal);
-      if (zeroMemory) {
-        os->initializeToZero();
-      } else {
-        os->initializeToRandom();
+      const llvm::Value *allocSite = state.prevPC()->inst;
+      if (allocationAlignment == 0) {
+        allocationAlignment = getAllocationAlignment(allocSite);
       }
-      bindLocal(target, state, mo->getBaseExpr());
+      MemoryObject *mo =
+          memory->allocate(allocSize, isLocal, /*isGlobal=*/false,
+                          allocSite, allocationAlignment,
+                          /*isDeterm=*/state.shouldRecord());
+      if (!mo) {
+        bindLocal(target, state,
+                  ConstantExpr::alloc(0, Context::get().getPointerWidth()));
+      } else {
+        if (!isLocal) {
+          state.allocatedSize += allocSize;
+          if (DebugDumpAllocationSize) {
+            klee_message("Alloc Size %lu, MaxAllocSize %lu", state.allocatedSize, MaxAllocSize.getValue());
+          }
+        }
+        ObjectState *os = bindObjectInState(state, mo, isLocal);
+        if (zeroMemory) {
+          os->initializeToZero();
+        } else {
+          os->initializeToRandom();
+        }
+        bindLocal(target, state, mo->getBaseExpr());
 
-      if (reallocFrom) {
-        unsigned count = std::min(reallocFrom->size, os->size);
-        for (unsigned i=0; i<count; i++)
-          os->write(i, reallocFrom->read8(i), Expr::FLAG_INSTRUCTION_ROOT, target);
-        state.addressSpace.unbindObject(reallocFrom->getObject());
+        if (reallocFrom) {
+          unsigned count = std::min(reallocFrom->size, os->size);
+          for (unsigned i=0; i<count; i++)
+            os->write(i, reallocFrom->read8(i), Expr::FLAG_INSTRUCTION_ROOT, target);
+          state.addressSpace.unbindObject(reallocFrom->getObject());
+        }
       }
     }
   } else if (!AllowSymbolicMalloc) {
